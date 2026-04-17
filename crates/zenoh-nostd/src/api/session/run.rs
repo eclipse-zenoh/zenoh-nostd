@@ -20,12 +20,16 @@ where
                 match msg.body {
                     NetworkBody::Push(Push {
                         wire_expr,
-                        payload: PushBody::Put(Put { payload, .. }),
+                        payload: PushBody::Put(Put {
+                            payload,
+                            encoding,
+                            ..
+                        }),
                         ..
                     }) => {
                         let ke = wire_expr.suffix;
                         let ke = keyexpr::new(ke)?;
-                        let sample = Sample::new(ke, payload);
+                        let sample = Sample::with_encoding_id(ke, payload, encoding.id);
 
                         for cb in state.sub_callbacks.intersects(ke) {
                             cb.call_try_sync(&sample).await;
@@ -41,9 +45,13 @@ where
                         let ke = keyexpr::new(ke)?;
                         let response = match payload {
                             ResponseBody::Reply(Reply {
-                                payload: PushBody::Put(Put { payload, .. }),
+                                payload: PushBody::Put(Put {
+                                    payload,
+                                    encoding,
+                                    ..
+                                }),
                                 ..
-                            }) => GetResponse::Ok(Sample::new(ke, payload)),
+                            }) => GetResponse::Ok(Sample::with_encoding_id(ke, payload, encoding.id)),
                             ResponseBody::Err(Err { payload, .. }) => {
                                 GetResponse::Err(Sample::new(ke, payload))
                             }

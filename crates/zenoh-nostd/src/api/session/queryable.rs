@@ -270,6 +270,30 @@ impl<'res, Config> Session<'res, Config>
 where
     Config: ZSessionConfig,
 {
+    pub async fn undeclare_queryable(&self, id: u32) -> core::result::Result<(), SessionError> {
+        let msg = Declare {
+            body: DeclareBody::UndeclareQueryable(UndeclareQueryable {
+                id,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        self.state().await.queryable_callbacks.remove(id)?;
+
+        self.driver
+            .tx()
+            .await
+            .send(core::iter::once(NetworkMessage {
+                reliability: Reliability::default(),
+                qos: QoS::default(),
+                body: NetworkBody::Declare(msg),
+            }))
+            .await?;
+
+        Ok(())
+    }
+
     pub async fn reply(
         &self,
         rid: u32,

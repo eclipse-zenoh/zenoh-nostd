@@ -6,11 +6,20 @@ use zenoh_proto::{CollectionError, keyexpr};
 pub struct Sample<'a> {
     ke: &'a keyexpr,
     payload: &'a [u8],
+    encoding_id: u16,
 }
 
 impl<'a> Sample<'a> {
     pub fn new(ke: &'a keyexpr, payload: &'a [u8]) -> Self {
-        Self { ke, payload }
+        Self::with_encoding_id(ke, payload, 0)
+    }
+
+    pub fn with_encoding_id(ke: &'a keyexpr, payload: &'a [u8], encoding_id: u16) -> Self {
+        Self {
+            ke,
+            payload,
+            encoding_id,
+        }
     }
 
     pub fn keyexpr(&self) -> &keyexpr {
@@ -20,12 +29,17 @@ impl<'a> Sample<'a> {
     pub fn payload(&self) -> &[u8] {
         self.payload
     }
+
+    pub fn encoding_id(&self) -> u16 {
+        self.encoding_id
+    }
 }
 
 #[derive(Debug)]
 pub struct FixedCapacitySample<const MAX_KEYEXPR: usize, const MAX_PAYLOAD: usize> {
     ke: heapless::String<MAX_KEYEXPR>,
     payload: heapless::Vec<u8, MAX_PAYLOAD>,
+    encoding_id: u16,
 }
 
 impl<const MAX_KEYEXPR: usize, const MAX_PAYLOAD: usize>
@@ -39,10 +53,15 @@ impl<const MAX_KEYEXPR: usize, const MAX_PAYLOAD: usize>
         self.payload.as_slice()
     }
 
+    pub fn encoding_id(&self) -> u16 {
+        self.encoding_id
+    }
+
     pub fn as_ref(&self) -> Sample<'_> {
         Sample {
             ke: self.keyexpr(),
             payload: self.payload(),
+            encoding_id: self.encoding_id,
         }
     }
 }
@@ -58,6 +77,7 @@ impl<const MAX_KEYEXPR: usize, const MAX_PAYLOAD: usize> TryFrom<&Sample<'_>>
                 .map_err(|_| CollectionError::CollectionTooSmall)?,
             payload: heapless::Vec::from_slice(value.payload())
                 .map_err(|_| CollectionError::CollectionTooSmall)?,
+            encoding_id: value.encoding_id(),
         })
     }
 }
@@ -67,6 +87,7 @@ impl<const MAX_KEYEXPR: usize, const MAX_PAYLOAD: usize> TryFrom<&Sample<'_>>
 pub struct AllocSample {
     ke: alloc::string::String,
     payload: alloc::vec::Vec<u8>,
+    encoding_id: u16,
 }
 
 #[cfg(feature = "alloc")]
@@ -79,10 +100,15 @@ impl AllocSample {
         self.payload.as_slice()
     }
 
+    pub fn encoding_id(&self) -> u16 {
+        self.encoding_id
+    }
+
     pub fn as_ref(&self) -> Sample<'_> {
         Sample {
             ke: self.keyexpr(),
             payload: self.payload(),
+            encoding_id: self.encoding_id,
         }
     }
 }
@@ -95,6 +121,7 @@ impl TryFrom<&Sample<'_>> for AllocSample {
         Ok(Self {
             ke: alloc::string::String::from(value.keyexpr().as_str()),
             payload: alloc::vec::Vec::from(value.payload()),
+            encoding_id: value.encoding_id(),
         })
     }
 }

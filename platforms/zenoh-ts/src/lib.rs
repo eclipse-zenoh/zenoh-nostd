@@ -7,9 +7,8 @@
 #![no_std]
 extern crate alloc;
 
-use alloc::{boxed::Box, format, string::String, vec::Vec};
-use core::cell::UnsafeCell;
-use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use alloc::{boxed::Box, collections::BTreeMap, format, rc::Rc, string::String, vec::Vec};
+use core::cell::{Cell, UnsafeCell};
 use core::time::Duration;
 
 use wasm_bindgen::prelude::*;
@@ -99,34 +98,32 @@ fn require_session(idx: usize) -> Result<&'static Session<'static, WasmConfig>, 
         .ok_or_else(|| JsValue::from_str("No open Zenoh session"))
 }
 
-// ── Per-get "done" slots ──────────────────────────────────────────────────────
-//
-// When ResponseFinal is received the session fires GetResponse::Done.
-// The get() polling loop checks this flag and exits early instead of waiting
-// the full timeout, which allows the reply channel to close promptly.
-//
-// 16 slots is enough for any realistic concurrent-get depth in tests.
-const DONE_SLOTS: usize = 16;
-static G_GET_DONE: [AtomicBool; DONE_SLOTS] = [
-    AtomicBool::new(false), AtomicBool::new(false),
-    AtomicBool::new(false), AtomicBool::new(false),
-    AtomicBool::new(false), AtomicBool::new(false),
-    AtomicBool::new(false), AtomicBool::new(false),
-    AtomicBool::new(false), AtomicBool::new(false),
-    AtomicBool::new(false), AtomicBool::new(false),
-    AtomicBool::new(false), AtomicBool::new(false),
-    AtomicBool::new(false), AtomicBool::new(false),
-];
-static G_GET_SLOT: AtomicU32 = AtomicU32::new(0);
+struct KeyexprCache(UnsafeCell<BTreeMap<String, &'static keyexpr>>);
+// SAFETY: wasm32-unknown-unknown is single-threaded.
+unsafe impl Sync for KeyexprCache {}
+
+static G_KEYEXPRS: KeyexprCache = KeyexprCache(UnsafeCell::new(BTreeMap::new()));
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-/// Leak a string into a `'static keyexpr`.
-/// Memory is bounded by the number of unique key expressions ever registered.
-fn leak_keyexpr(s: &str) -> Result<&'static keyexpr, JsValue> {
-    let owned: Box<str> = s.into();
-    let leaked: &'static str = Box::leak(owned);
-    keyexpr::new(leaked).map_err(|e| JsValue::from_str(&format!("Invalid keyexpr: {e}")))
+fn parse_keyexpr<'a>(s: &'a str) -> Result<&'a keyexpr, JsValue> {
+    keyexpr::new(s).map_err(|e| JsValue::from_str(&format!("Invalid keyexpr: {e}")))
+}
+
+/// Cache key expressions that must outlive the current call.
+fn intern_keyexpr(s: &str) -> Result<&'static keyexpr, JsValue> {
+    parse_keyexpr(s)?;
+
+    let cache = unsafe { &mut *G_KEYEXPRS.0.get() };
+    if let Some(ke) = cache.get(s) {
+        return Ok(*ke);
+    }
+
+    let owned = String::from(s);
+    let leaked: &'static str = Box::leak(owned.clone().into_boxed_str());
+    let ke = keyexpr::from_str_unchecked(leaked);
+    cache.insert(owned, ke);
+    Ok(ke)
 }
 
 fn js_err(e: impl core::fmt::Display) -> JsValue {
@@ -155,7 +152,7 @@ fn sample_to_js(s: &zenoh_nostd::session::Sample<'_>) -> JsSample {
     JsSample {
         key_expr: s.keyexpr().as_str().into(),
         payload: s.payload().to_vec(),
-        encoding_id: 0,
+        encoding_id: s.encoding_id() as u32,
         kind: 0,
     }
 }
@@ -313,32 +310,35 @@ impl JsSession {
         encoding_id: u32,
         attachment: Option<Vec<u8>>,
     ) -> Result<(), JsValue> {
-        let _ = (encoding_id, attachment);
         let session = require_session(self.slot)?;
-        let ke = leak_keyexpr(&key_expr)?;
-        session
-            .put(ke, &payload)
-            .finish()
-            .await
-            .map_err(|e| js_err(e))
+        let ke = parse_keyexpr(&key_expr)?;
+        let encoding_id =
+            u16::try_from(encoding_id).map_err(|_| JsValue::from_str("Encoding id out of range"))?;
+
+        let mut builder = session.put(ke, &payload).encoding(zenoh_proto::fields::Encoding {
+            id: encoding_id,
+            schema: None,
+        });
+        if let Some(ref attachment) = attachment {
+            builder = builder.attachment(attachment.as_slice());
+        }
+
+        builder.finish().await.map_err(|e| js_err(e))
     }
 
-    /// Send a delete notification for `key_expr`. Returns `Promise<void>`.
+    /// Delete notifications are not supported yet by zenoh-nostd.
     pub async fn delete(&self, key_expr: String) -> Result<(), JsValue> {
-        let session = require_session(self.slot)?;
-        let ke = leak_keyexpr(&key_expr)?;
-        session
-            .put(ke, &[])
-            .finish()
-            .await
-            .map_err(|e| js_err(e))
+        let _ = key_expr;
+        Err(JsValue::from_str(
+            "Delete is not yet implemented in zenoh-nostd",
+        ))
     }
 
     // ── Publisher ─────────────────────────────────────────────────────────────
 
     /// Declare a publisher. Synchronous — returns `JsPublisher` immediately.
     pub fn declare_publisher(&self, key_expr: String) -> Result<JsPublisher, JsValue> {
-        let _ = leak_keyexpr(&key_expr)?;
+        let _ = parse_keyexpr(&key_expr)?;
         Ok(JsPublisher { slot: self.slot, ke: key_expr })
     }
 
@@ -352,7 +352,7 @@ impl JsSession {
         callback: js_sys::Function,
     ) -> Result<JsSubscriber, JsValue> {
         let session = require_session(self.slot)?;
-        let ke = leak_keyexpr(&key_expr)?;
+        let ke = intern_keyexpr(&key_expr)?;
 
         let sub = session
             .declare_subscriber(ke)
@@ -378,7 +378,7 @@ impl JsSession {
         callback: js_sys::Function,
     ) -> Result<JsQueryable, JsValue> {
         let session: &'static Session<'static, WasmConfig> = require_session(self.slot)?;
-        let ke = leak_keyexpr(&key_expr)?;
+        let ke = intern_keyexpr(&key_expr)?;
         let slot_idx = self.slot;
 
         let queryable = session
@@ -412,7 +412,7 @@ impl JsSession {
         key_expr: String,
         timeout_ms: u32,
     ) -> Result<JsQuerier, JsValue> {
-        let _ = leak_keyexpr(&key_expr)?;
+        let _ = parse_keyexpr(&key_expr)?;
         Ok(JsQuerier { slot: self.slot, ke: key_expr, timeout_ms })
     }
 
@@ -435,10 +435,8 @@ impl JsSession {
         consolidation: Option<u8>,
     ) -> Result<(), JsValue> {
         let session = require_session(self.slot)?;
-        let ke = leak_keyexpr(&key_expr)?;
-
-        let slot = G_GET_SLOT.fetch_add(1, Ordering::Relaxed) as usize % DONE_SLOTS;
-        G_GET_DONE[slot].store(false, Ordering::Relaxed);
+        let ke = intern_keyexpr(&key_expr)?;
+        let done = Rc::new(Cell::new(false));
 
         let query_target = match target.unwrap_or(0) {
             1 => QueryTarget::All,
@@ -460,16 +458,14 @@ impl JsSession {
             .consolidation(query_consolidation);
 
         if let Some(ref params) = parameters {
-            let leaked: &'static str = Box::leak(params.clone().into_boxed_str());
-            builder = builder.parameters(leaked);
+            builder = builder.parameters(params.as_str());
         }
 
         if let Some(ref p) = payload {
-            // Leak the payload slice for the 'static requirement.
-            let leaked: &'static [u8] = Box::leak(p.clone().into_boxed_slice());
-            builder = builder.payload(leaked);
+            builder = builder.payload(p.as_slice());
         }
 
+        let done_callback = done.clone();
         builder
             .callback_sync(move |reply| {
                 match reply {
@@ -482,7 +478,7 @@ impl JsSession {
                         let _ = callback.call1(&JsValue::NULL, &JsValue::from(js_reply));
                     }
                     GetResponse::Done => {
-                        G_GET_DONE[slot].store(true, Ordering::Relaxed);
+                        done_callback.set(true);
                     }
                 }
             })
@@ -494,7 +490,7 @@ impl JsSession {
         const STEP_MS: u32 = 5;
         let mut elapsed = 0u32;
         while elapsed < timeout_ms {
-            if G_GET_DONE[slot].load(Ordering::Relaxed) {
+            if done.get() {
                 break;
             }
             js_sleep(STEP_MS).await;
@@ -521,25 +517,27 @@ impl JsPublisher {
         encoding_id: u32,
         attachment: Option<Vec<u8>>,
     ) -> Result<(), JsValue> {
-        let _ = (encoding_id, attachment);
         let session = require_session(self.slot)?;
-        let ke = leak_keyexpr(&self.ke)?;
-        session
-            .put(ke, &payload)
-            .finish()
-            .await
-            .map_err(|e| js_err(e))
+        let ke = parse_keyexpr(&self.ke)?;
+        let encoding_id =
+            u16::try_from(encoding_id).map_err(|_| JsValue::from_str("Encoding id out of range"))?;
+
+        let mut builder = session.put(ke, &payload).encoding(zenoh_proto::fields::Encoding {
+            id: encoding_id,
+            schema: None,
+        });
+        if let Some(ref attachment) = attachment {
+            builder = builder.attachment(attachment.as_slice());
+        }
+
+        builder.finish().await.map_err(|e| js_err(e))
     }
 
-    /// Send a delete notification via this publisher.
+    /// Delete notifications are not supported yet by zenoh-nostd.
     pub async fn delete(&self) -> Result<(), JsValue> {
-        let session = require_session(self.slot)?;
-        let ke = leak_keyexpr(&self.ke)?;
-        session
-            .put(ke, &[])
-            .finish()
-            .await
-            .map_err(|e| js_err(e))
+        Err(JsValue::from_str(
+            "Delete is not yet implemented in zenoh-nostd",
+        ))
     }
 
     /// Undeclare this publisher (no-op; future: send interest cancellation).
@@ -555,8 +553,18 @@ impl JsSubscriber {
         self.id
     }
 
-    /// Undeclare this subscriber (no-op; future: send UndeclareSubscriber).
-    pub fn undeclare(self) {}
+    /// Undeclare this subscriber.
+    pub async fn undeclare(&self) -> Result<(), JsValue> {
+        if slot(self.slot).session.is_none() {
+            return Ok(());
+        }
+
+        let session = require_session(self.slot)?;
+        session
+            .undeclare_subscriber(self.id)
+            .await
+            .map_err(|e| js_err(e))
+    }
 }
 
 // ── JsQueryable ──────────────────────────────────────────────────────────────
@@ -568,8 +576,18 @@ impl JsQueryable {
         self.id
     }
 
-    /// Undeclare this queryable (no-op; future: send UndeclareQueryable).
-    pub fn undeclare(self) {}
+    /// Undeclare this queryable.
+    pub async fn undeclare(&self) -> Result<(), JsValue> {
+        if slot(self.slot).session.is_none() {
+            return Ok(());
+        }
+
+        let session = require_session(self.slot)?;
+        session
+            .undeclare_queryable(self.id)
+            .await
+            .map_err(|e| js_err(e))
+    }
 }
 
 // ── JsQuerier ────────────────────────────────────────────────────────────────
@@ -587,26 +605,23 @@ impl JsQuerier {
         timeout_ms: Option<u32>,
     ) -> Result<(), JsValue> {
         let session = require_session(self.slot)?;
-        let ke = leak_keyexpr(&self.ke)?;
+        let ke = intern_keyexpr(&self.ke)?;
         let tms = timeout_ms.unwrap_or(self.timeout_ms);
-
-        let slot = G_GET_SLOT.fetch_add(1, Ordering::Relaxed) as usize % DONE_SLOTS;
-        G_GET_DONE[slot].store(false, Ordering::Relaxed);
+        let done = Rc::new(Cell::new(false));
 
         let mut builder = session
             .get(ke)
             .timeout(Duration::from_millis(tms as u64));
 
         if let Some(ref params) = parameters {
-            let leaked: &'static str = Box::leak(params.clone().into_boxed_str());
-            builder = builder.parameters(leaked);
+            builder = builder.parameters(params.as_str());
         }
 
         if let Some(ref p) = payload {
-            let leaked: &'static [u8] = Box::leak(p.clone().into_boxed_slice());
-            builder = builder.payload(leaked);
+            builder = builder.payload(p.as_slice());
         }
 
+        let done_callback = done.clone();
         builder
             .callback_sync(move |reply| {
                 match reply {
@@ -619,7 +634,7 @@ impl JsQuerier {
                         let _ = callback.call1(&JsValue::NULL, &JsValue::from(js_reply));
                     }
                     GetResponse::Done => {
-                        G_GET_DONE[slot].store(true, Ordering::Relaxed);
+                        done_callback.set(true);
                     }
                 }
             })
@@ -630,7 +645,7 @@ impl JsQuerier {
         const STEP_MS: u32 = 5;
         let mut elapsed = 0u32;
         while elapsed < tms {
-            if G_GET_DONE[slot].load(Ordering::Relaxed) {
+            if done.get() {
                 break;
             }
             js_sleep(STEP_MS).await;
@@ -651,7 +666,7 @@ impl JsQuery {
     /// Send a successful reply to this query.
     pub async fn reply(&self, ke: String, payload: Vec<u8>) -> Result<(), JsValue> {
         let session = require_session(self.slot)?;
-        let ke_ref = leak_keyexpr(&ke)?;
+        let ke_ref = parse_keyexpr(&ke)?;
         session
             .reply(self.rid, ke_ref, &payload)
             .await
@@ -661,7 +676,7 @@ impl JsQuery {
     /// Send an error reply to this query.
     pub async fn reply_err(&self, payload: Vec<u8>) -> Result<(), JsValue> {
         let session = require_session(self.slot)?;
-        let ke_ref = leak_keyexpr(&self.key_expr)?;
+        let ke_ref = parse_keyexpr(&self.key_expr)?;
         session
             .err(self.rid, ke_ref, &payload)
             .await

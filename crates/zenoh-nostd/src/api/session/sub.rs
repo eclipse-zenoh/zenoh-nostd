@@ -227,6 +227,30 @@ impl<'res, Config> Session<'res, Config>
 where
     Config: ZSessionConfig,
 {
+    pub async fn undeclare_subscriber(&self, id: u32) -> core::result::Result<(), SessionError> {
+        let msg = Declare {
+            body: DeclareBody::UndeclareSubscriber(UndeclareSubscriber {
+                id,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        self.state().await.sub_callbacks.remove(id)?;
+
+        self.driver
+            .tx()
+            .await
+            .send(core::iter::once(NetworkMessage {
+                reliability: Reliability::default(),
+                qos: QoS::default(),
+                body: NetworkBody::Declare(msg),
+            }))
+            .await?;
+
+        Ok(())
+    }
+
     pub fn declare_subscriber(&self, ke: &'static keyexpr) -> SubscriberBuilder<'_, 'res, Config> {
         SubscriberBuilder::new(self, ke)
     }

@@ -66,6 +66,7 @@ where
     pub async fn finish(self) -> core::result::Result<(), SessionError> {
         let ke = self.ke;
         let payload = self.payload;
+        let encoding_id = self.encoding.id;
 
         let msg = Push {
             wire_expr: WireExpr::from(ke),
@@ -94,7 +95,7 @@ where
         // Local delivery: call own subscriber callbacks for matching key expressions.
         // The broker does not route publications back to the sender, so the session
         // must deliver locally to any subscriber declared on this same session.
-        let sample = Sample::new(ke, payload);
+        let sample = Sample::with_encoding_id(ke, payload, encoding_id);
         let mut state = self.session.state().await;
         for cb in state.sub_callbacks.intersects(ke) {
             cb.call_try_sync(&sample).await;
