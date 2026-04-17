@@ -14,8 +14,13 @@ use crate::api::callbacks::AllocCallbacks;
 use crate::{
     api::{
         arg::QueryableQueryRef,
-        callbacks::{AsyncCallback, DynCallback, FixedCapacityCallbacks, SyncCallback, ZCallbacks},
+        callbacks::{
+            AsyncCallback, DynCallback, FixedCapacityCallbacks, SyncCallback, ZCallbacks,
+            ZDynCallback,
+        },
         query::QueryableQuery,
+        response::GetResponse,
+        sample::Sample,
         session::Session,
     },
     config::ZSessionConfig,
@@ -48,6 +53,10 @@ impl<Config, OwnedQuery, const CHANNEL: bool> Queryable<Config, OwnedQuery, CHAN
 where
     Config: ZSessionConfig,
 {
+    pub fn id(&self) -> u32 {
+        self.id
+    }
+
     #[allow(dead_code)]
     async fn undeclare(self) -> core::result::Result<(), SessionError> {
         let msg = Declare {
@@ -261,12 +270,27 @@ impl<'res, Config> Session<'res, Config>
 where
     Config: ZSessionConfig,
 {
-    pub(crate) async fn reply(
+    pub async fn reply(
         &self,
         rid: u32,
         ke: &keyexpr,
         payload: &[u8],
     ) -> core::result::Result<(), SessionError> {
+        // Local loopback: if `rid` belongs to a get issued on this very session,
+        // deliver the reply directly to the waiting callback instead of routing
+        // through the network (the router never sends a Response back to the
+        // session that originated the corresponding Request).
+        {
+            let mut state = self.state().await;
+            if let Some(cb) = state.get_callbacks.get(rid) {
+                let sample = Sample::new(ke, payload);
+                let response = GetResponse::Ok(sample);
+                cb.call_try_sync(&response).await;
+                return Ok(());
+            }
+        }
+
+        // Remote query: send Response over the wire.
         Ok(self
             .driver
             .tx()
@@ -290,12 +314,23 @@ where
             .await?)
     }
 
-    pub(crate) async fn err(
+    pub async fn err(
         &self,
         rid: u32,
         ke: &keyexpr,
         payload: &[u8],
     ) -> core::result::Result<(), SessionError> {
+        // Local loopback for error replies: same logic as reply().
+        {
+            let mut state = self.state().await;
+            if let Some(cb) = state.get_callbacks.get(rid) {
+                let sample = Sample::new(ke, payload);
+                let response = GetResponse::Err(sample);
+                cb.call_try_sync(&response).await;
+                return Ok(());
+            }
+        }
+
         Ok(self
             .driver
             .tx()
@@ -316,20 +351,57 @@ where
             .await?)
     }
 
-    pub(crate) async fn finalize(&self, rid: u32) -> core::result::Result<(), SessionError> {
-        if self.state().await.queryable_callbacks.decrease(rid) {
-            self.driver
-                .tx()
-                .await
-                .send(core::iter::once(NetworkMessage {
-                    reliability: Reliability::default(),
-                    qos: QoS::default(),
-                    body: NetworkBody::ResponseFinal(ResponseFinal {
-                        rid,
-                        ..Default::default()
-                    }),
-                }))
-                .await?;
+    pub async fn finalize(&self, rid: u32) -> core::result::Result<(), SessionError> {
+        let counter_reached_zero = {
+            let mut state = self.state().await;
+            state.queryable_callbacks.decrease(rid)
+        };
+
+        if counter_reached_zero {
+            // Local loopback: if this rid belongs to a local get, handle cleanup
+            // locally instead of sending ResponseFinal over the wire.
+            //
+            // Additionally, finish() may have set a counter of 1 on get_callbacks
+            // to signal that a remote ResponseFinal is expected.  Consume that flag
+            // here: if it was set, leave Done-delivery and cleanup to the incoming
+            // ResponseFinal so that remote replies are not dropped.  If it was not
+            // set, clean up immediately (no remote pending).
+            let (is_local, pending_remote) = {
+                let mut state = self.state().await;
+                let is_local = state.get_callbacks.get(rid).is_some();
+                // decrease() returns true only when a counter entry existed and
+                // reached zero — i.e. the "pending remote" flag was consumed.
+                let pending_remote =
+                    if is_local { state.get_callbacks.decrease(rid) } else { false };
+                (is_local, pending_remote)
+            };
+
+            if is_local {
+                if !pending_remote {
+                    // No remote outstanding: deliver Done and remove the callback now.
+                    let mut state = self.state().await;
+                    let done = GetResponse::Done;
+                    if let Some(cb) = state.get_callbacks.get(rid) {
+                        cb.call_try_sync(&done).await;
+                    }
+                    state.get_callbacks.remove(rid)?;
+                }
+                // else: pending_remote == true — the incoming ResponseFinal will
+                // deliver Done and remove the callback; nothing to do here.
+            } else {
+                self.driver
+                    .tx()
+                    .await
+                    .send(core::iter::once(NetworkMessage {
+                        reliability: Reliability::default(),
+                        qos: QoS::default(),
+                        body: NetworkBody::ResponseFinal(ResponseFinal {
+                            rid,
+                            ..Default::default()
+                        }),
+                    }))
+                    .await?;
+            }
         }
 
         Ok(())

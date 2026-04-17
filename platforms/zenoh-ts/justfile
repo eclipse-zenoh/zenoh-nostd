@@ -1,0 +1,99 @@
+# zenoh-ts WASM build pipeline
+# Requires: cargo, wasm-bindgen-cli, deno (or node/npx)
+
+wasm_target   := "wasm32-unknown-unknown"
+wasm_features := "web_console"
+wasm_out      := "ts/pkg"
+# The zenoh-ts crate is outside the main workspace, so it gets its own target dir.
+wasm_artifact := "target/" + wasm_target + "/release/zenoh_ts_wasm.wasm"
+
+# ── Build ─────────────────────────────────────────────────────────────────────
+
+# Build WASM binary
+build-wasm-bin:
+    RUSTFLAGS='--cfg getrandom_backend="wasm_js"' \
+    cargo build \
+        --manifest-path Cargo.toml \
+        --no-default-features \
+        --features {{ wasm_features }} \
+        --target {{ wasm_target }} \
+        --release
+
+# Run wasm-bindgen to produce JS glue code
+# Install with: cargo install wasm-bindgen-cli
+build-wasm-bindgen: build-wasm-bin
+    wasm-bindgen \
+        --target web \
+        --out-dir {{ wasm_out }} \
+        {{ wasm_artifact }} \
+        --out-name zenoh_ts_wasm
+    deno run --allow-read --allow-write \
+        scripts/patch-wasm-js.ts {{ wasm_out }}/zenoh_ts_wasm.js
+
+# Full WASM build (binary + bindgen glue)
+build-wasm: build-wasm-bindgen
+
+# TypeScript type-check (no emit)
+check-ts:
+    cd ts && npx tsc --noEmit
+
+# Full build: WASM + TS type-check
+build: build-wasm check-ts
+
+# ── Tests ─────────────────────────────────────────────────────────────────────
+
+# Run pure-TS tests (no network, no WASM required)
+test-pure:
+    cd ts && deno test \
+        tests/src/z_channels.ts \
+        tests/src/z_encoding.ts \
+        tests/src/z_parameters.ts \
+        tests/src/z_keyexpr.ts
+
+# Run integration tests (requires running Zenoh router at ws/127.0.0.1:10000)
+# --no-check: wasm-bindgen generates JS with 'env' imports Deno's type-checker
+#             cannot resolve; behaviour is still fully validated at runtime.
+test-integration:
+    cd ts && deno test --no-check --allow-net --allow-env --allow-read \
+        tests/src/z_api_pub_sub.ts \
+        tests/src/z_api_queryable_get.ts
+
+# Run all tests
+test: test-pure test-integration
+
+# Start the Zenoh router for integration tests (port 10000 for upstream test compat)
+router:
+    /Users/kydos/kylab/eclipse-zenoh/target/release/zenohd -l ws/127.0.0.1:10000
+
+# ── Examples ──────────────────────────────────────────────────────────────────
+
+# Run a Deno example: just example z_pub
+example name *args:
+    cd ts && deno run --allow-net examples/deno/src/{{ name }}.ts {{ args }}
+
+# Serve the web example at http://localhost:8000/examples/web/
+# Router must be running: just router-ws  (port 7447)
+serve-web:
+    cd ts && deno run --allow-net --allow-read examples/web/serve.ts
+
+# Start the Zenoh router with WebSocket on port 7447 (for the web example)
+router-ws:
+    /Users/kydos/kylab/eclipse-zenoh/target/release/zenohd -l ws/127.0.0.1:7447
+
+# ── Dev helpers ───────────────────────────────────────────────────────────────
+
+# Show the size of the WASM binary (raw Rust output)
+wasm-size:
+    @ls -lh {{ wasm_artifact }} 2>/dev/null || echo "WASM not built yet. Run: just build-wasm"
+    @ls -lh {{ wasm_out }}/zenoh_ts_wasm_bg.wasm 2>/dev/null || echo "(wasm-bindgen optimized output not yet produced)"
+
+# Optimize the WASM binary with wasm-opt (requires binaryen)
+wasm-opt:
+    wasm-opt -O3 --strip-debug \
+        {{ wasm_out }}/zenoh_ts_wasm_bg.wasm \
+        -o {{ wasm_out }}/zenoh_ts_wasm_bg.wasm
+
+# Clean build outputs
+clean:
+    rm -rf {{ wasm_out }}/*.wasm {{ wasm_out }}/*.js {{ wasm_out }}/*.ts 2>/dev/null || true
+    rm -rf ts/dist 2>/dev/null || true

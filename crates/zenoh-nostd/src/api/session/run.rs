@@ -54,8 +54,12 @@ where
                         }
                     }
                     NetworkBody::ResponseFinal(ResponseFinal { rid, .. }) => {
+                        // Signal completion to any callback/channel waiting on this get.
+                        let done = GetResponse::Done;
+                        if let Some(cb) = state.get_callbacks.get(rid) {
+                            cb.call_try_sync(&done).await;
+                        }
                         state.get_callbacks.remove(rid)?;
-                        // TODO: also close channels
                     }
                     NetworkBody::Request(Request {
                         id,

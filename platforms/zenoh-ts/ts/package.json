@@ -1,0 +1,20 @@
+{
+  "name": "@eclipse-zenoh/zenoh-ts",
+  "version": "0.1.0-nostd",
+  "description": "zenoh-nostd WASM TypeScript bindings — native Zenoh v9 protocol",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build:wasm": "cd .. && RUSTFLAGS='--cfg getrandom_backend=\"wasm_js\"' cargo build --manifest-path Cargo.toml --no-default-features --features=web_console --target wasm32-unknown-unknown --release && wasm-bindgen --target web --out-dir ts/pkg ../../target/wasm32-unknown-unknown/release/zenoh_ts_wasm.wasm --out-name zenoh_ts_wasm",
+    "build:ts": "tsc --noEmit",
+    "build": "npm run build:wasm && npm run build:ts",
+    "check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "typescript": "^5.9.3"
+  }
+}

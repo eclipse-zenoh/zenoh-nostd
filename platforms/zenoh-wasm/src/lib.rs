@@ -1,6 +1,5 @@
 use std::net::SocketAddr;
 
-use yawc::WebSocket;
 use zenoh_nostd::platform::*;
 
 pub mod ws;
@@ -23,6 +22,21 @@ pub enum WasmLinkRx<'link> {
     Ws(ws::WasmWsLinkRx<'link>),
 }
 
+impl WasmLink {
+    /// Close the underlying browser WebSocket.
+    ///
+    /// Calling this causes the session run loop's `rx.recv()` to return an
+    /// error (via the onclose channel), making `driver.run()` exit. On the
+    /// broker side, the TCP/WS connection termination causes `driver.run()` to
+    /// return an error too, which lets the broker's `accept()` loop call
+    /// `listen()` again and accept the next incoming connection.
+    pub fn close_ws(&self) {
+        match self {
+            WasmLink::Ws(ws) => ws.close_ws(),
+        }
+    }
+}
+
 impl ZLinkManager for WasmLinkManager {
     type Link<'a>
         = WasmLink
@@ -40,12 +54,8 @@ impl ZLinkManager for WasmLinkManager {
             "ws" => {
                 let dst_addr = SocketAddr::try_from(address)?;
                 let url = format!("ws://{}", dst_addr);
-                let socket =
-                    WebSocket::connect(url.parse().map_err(|_| LinkError::CouldNotConnect)?)
-                        .await
-                        .map_err(|_| LinkError::CouldNotConnect)?;
-
-                Ok(Self::Link::Ws(ws::WasmWsLink::new(socket)))
+                let link = ws::WasmWsLink::connect(&url).await?;
+                Ok(Self::Link::Ws(link))
             }
             _ => zenoh::zbail!(LinkError::CouldNotParseProtocol),
         }

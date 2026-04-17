@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zenoh Web Demo</title>
+  <style>
+    :root {
+      --bg:          #0d1117;
+      --surface:     #161b22;
+      --surface2:    #21262d;
+      --border:      #30363d;
+      --text:        #e6edf3;
+      --muted:       #7d8590;
+      --accent:      #79c0ff;
+      --accent2:     #d2a8ff;
+      --green:       #3fb950;
+      --red:         #f85149;
+      --yellow:      #e3b341;
+      --radius:      6px;
+      --mono:        'Cascadia Code', 'Fira Code', ui-monospace, monospace;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body { height: 100%; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      font-size: 13px;
+      background: var(--bg);
+      color: var(--text);
+      height: 100%;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ──────────────────────────────────────────────── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+    header h1 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--accent);
+      white-space: nowrap;
+    }
+    .session-bar {
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+      flex: 1;
+      flex-wrap: wrap;
+    }
+    .session-bar .field { display: flex; flex-direction: column; gap: 3px; }
+    .session-bar .field label { font-size: 11px; color: var(--muted); }
+    .session-bar input { width: 230px; }
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--red);
+      transition: background .3s;
+    }
+    .dot.on { background: var(--green); }
+
+    /* ── Main grid ───────────────────────────────────────────── */
+    main {
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+      gap: 12px;
+      padding: 12px;
+    }
+
+    /* ── Cards ───────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-height: 0;
+    }
+    .card-head {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: var(--muted);
+    }
+    .card-form {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .row { display: flex; gap: 8px; align-items: flex-end; }
+    .row .field { flex: 1; }
+    .card-list {
+      padding: 10px 14px;
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .empty-hint {
+      font-size: 11px;
+      color: var(--muted);
+      font-style: italic;
+      padding: 4px 0;
+    }
+
+    /* ── Form controls ───────────────────────────────────────── */
+    .field { display: flex; flex-direction: column; gap: 3px; }
+    .field label { font-size: 11px; color: var(--muted); }
+
+    input[type=text], input[type=number], select {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 12px;
+      padding: 5px 8px;
+      width: 100%;
+      outline: none;
+      transition: border-color .15s;
+    }
+    input:focus, select:focus { border-color: var(--accent); }
+    input::placeholder { color: var(--muted); opacity: 1; }
+    select option { background: var(--surface2); }
+
+    button {
+      background: var(--accent);
+      color: #000;
+      border: none;
+      border-radius: var(--radius);
+      padding: 6px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: opacity .15s;
+    }
+    button:hover:not(:disabled) { opacity: .85; }
+    button:disabled { opacity: .35; cursor: not-allowed; }
+    button.ghost {
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      font-weight: 500;
+    }
+    button.danger { background: var(--red); color: #fff; }
+    button.sm { padding: 3px 9px; font-size: 11px; }
+
+    /* ── Item cards ──────────────────────────────────────────── */
+    .item {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 8px 10px;
+    }
+    .item-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+    }
+    .item-ke {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--accent);
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .badge {
+      font-size: 10px;
+      padding: 1px 6px;
+      border-radius: 10px;
+      background: var(--accent2);
+      color: #000;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .item-meta {
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 5px;
+    }
+    .item-log {
+      font-family: var(--mono);
+      font-size: 11px;
+      max-height: 72px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+
+    /* ── Subscriber card: log fills the remaining box height ─────── */
+    #sub-list {
+      max-height: none;
+      overflow: hidden;
+    }
+    #sub-list .item {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-height: 0;
+    }
+    #sub-list .item-log {
+      flex: 1;
+      max-height: none;
+      min-height: 0;
+    }
+    .entry { padding: 1px 0; }
+    .entry.recv  { color: var(--accent); }
+    .entry.query { color: var(--yellow); }
+    .entry.reply-sent { color: var(--green); }
+    .entry.ok    { color: var(--green); }
+    .entry.err   { color: var(--red); }
+    .entry.info  { color: var(--muted); }
+
+    /* ── Log footer ──────────────────────────────────────────── */
+    #log-panel {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      max-height: 160px;
+    }
+    #log-head {
+      padding: 7px 20px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    #log-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 6px 20px;
+      font-family: var(--mono);
+      font-size: 11px;
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+    .log-line { padding: 1px 0; }
+    .log-line.ok    { color: var(--green); }
+    .log-line.error { color: var(--red); }
+    .log-line.send  { color: var(--accent2); }
+    .log-line.recv  { color: var(--accent); }
+    .log-line.info  { color: var(--muted); }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────────── -->
+<header>
+  <h1>⬡ Zenoh Web Demo</h1>
+  <div class="session-bar">
+    <div class="field">
+      <label for="locator">Router locator</label>
+      <input id="locator" type="text" value="ws/127.0.0.1:7447" placeholder="ws/host:port">
+    </div>
+    <button id="btn-connect">Connect</button>
+    <div class="status-indicator">
+      <div class="dot" id="dot"></div>
+      <span id="status-text">Disconnected</span>
+    </div>
+  </div>
+</header>
+
+<!-- ── Main grid ───────────────────────────────────────────────── -->
+<main>
+
+  <!-- Publishers -->
+  <div class="card">
+    <div class="card-head">Publishers</div>
+    <div class="card-form">
+      <div class="row">
+        <div class="field">
+          <label>Key expression</label>
+          <input id="pub-ke" type="text" value="demo/example" placeholder="demo/example">
+        </div>
+        <div class="field">
+          <label>Payload text</label>
+          <input id="pub-payload" type="text" value="Hello, Zenoh!" placeholder="payload">
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label>Period ms (0 = manual only)</label>
+          <input id="pub-period" type="number" value="0" min="0" step="100">
+        </div>
+        <button id="btn-pub" disabled>Declare Publisher</button>
+      </div>
+    </div>
+    <div class="card-list" id="pub-list">
+      <div class="empty-hint" id="pub-empty">No publishers declared.</div>
+    </div>
+  </div>
+
+  <!-- Subscribers -->
+  <div class="card">
+    <div class="card-head">Subscribers</div>
+    <div class="card-form">
+      <div class="row">
+        <div class="field">
+          <label>Key expression</label>
+          <input id="sub-ke" type="text" value="demo/**" placeholder="demo/**">
+        </div>
+        <button id="btn-sub" disabled>Subscribe</button>
+      </div>
+    </div>
+    <div class="card-list" id="sub-list">
+      <div class="empty-hint" id="sub-empty">No subscribers declared.</div>
+    </div>
+  </div>
+
+  <!-- Queryables -->
+  <div class="card">
+    <div class="card-head">Queryables</div>
+    <div class="card-form">
+      <div class="row">
+        <div class="field">
+          <label>Key expression</label>
+          <input id="qbl-ke" type="text" value="demo/example" placeholder="demo/example">
+        </div>
+        <div class="field">
+          <label>Reply text</label>
+          <input id="qbl-reply" type="text" value="Pong!" placeholder="reply payload">
+        </div>
+      </div>
+      <div class="row" style="justify-content:flex-end">
+        <button id="btn-qbl" disabled>Declare Queryable</button>
+      </div>
+    </div>
+    <div class="card-list" id="qbl-list">
+      <div class="empty-hint" id="qbl-empty">No queryables declared.</div>
+    </div>
+  </div>
+
+  <!-- Get -->
+  <div class="card">
+    <div class="card-head">Get</div>
+    <div class="card-form">
+      <div class="row">
+        <div class="field">
+          <label>Selector</label>
+          <input id="get-sel" type="text" value="demo/example" placeholder="demo/example">
+        </div>
+        <div class="field">
+          <label>Parameters</label>
+          <input id="get-params" type="text" placeholder="key=value (optional)">
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label>Payload (optional)</label>
+          <input id="get-payload" type="text" placeholder="optional payload">
+        </div>
+        <div class="field" style="max-width:130px">
+          <label>Target</label>
+          <select id="get-target">
+            <option value="0">BestMatching</option>
+            <option value="1">All</option>
+            <option value="2">AllComplete</option>
+          </select>
+        </div>
+        <div class="field" style="max-width:120px">
+          <label>Consolidation</label>
+          <select id="get-consolidation">
+            <option value="0">Auto</option>
+            <option value="1">None</option>
+            <option value="2">Monotonic</option>
+            <option value="3">Latest</option>
+          </select>
+        </div>
+        <div class="field" style="max-width:100px">
+          <label>Timeout ms</label>
+          <input id="get-timeout" type="number" value="5000" min="100" step="500">
+        </div>
+        <button id="btn-get" disabled>Get</button>
+      </div>
+    </div>
+    <div class="card-list" id="get-list">
+      <div class="empty-hint" id="get-empty">Replies will appear here.</div>
+    </div>
+  </div>
+
+</main>
+
+<!-- ── Log ─────────────────────────────────────────────────────── -->
+<div id="log-panel">
+  <div id="log-head">
+    Log
+    <button class="ghost sm" onclick="document.getElementById('log-body').innerHTML=''">Clear</button>
+  </div>
+  <div id="log-body"></div>
+</div>
+
+<script type="module">
+// ─────────────────────────────────────────────────────────────────
+// Import the wasm-bindgen output.  The path is relative to this
+// file: ts/examples/web/ → ts/pkg/
+// ─────────────────────────────────────────────────────────────────
+import init, { JsSession, cancelAllWasmTimers } from '../../pkg/zenoh_ts_wasm.js';
+
+const enc = new TextEncoder();
+const dec = new TextDecoder();
+const toBytes  = s  => enc.encode(String(s));
+const fromBytes = b => dec.decode(b instanceof Uint8Array ? b : new Uint8Array(b));
+const ts = () => {
+  const d = new Date();
+  const hms = d.toLocaleTimeString('en', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  return `${hms}.${String(d.getMilliseconds()).padStart(3, '0')}`;
+};
+
+// ─── State ────────────────────────────────────────────────────────
+let session   = null;
+let nextId    = 1;
+const pubs    = new Map(); // id → { handle, ke, payload, period, timer }
+const subs    = new Map(); // id → { handle, ke }
+const qbls    = new Map(); // id → { handle, ke, replyText }
+
+// ─── Logging ──────────────────────────────────────────────────────
+function log(level, msg) {
+  const body = document.getElementById('log-body');
+  const el   = document.createElement('div');
+  el.className = `log-line ${level}`;
+  el.textContent = `[${ts()}] ${msg}`;
+  body.prepend(el);
+  while (body.children.length > 300) body.lastChild.remove();
+}
+
+// ─── Session controls ─────────────────────────────────────────────
+function setConnected(on) {
+  document.getElementById('dot').classList.toggle('on', on);
+  document.getElementById('status-text').textContent = on ? 'Connected' : 'Disconnected';
+  document.getElementById('btn-connect').textContent  = on ? 'Disconnect' : 'Connect';
+  ['btn-pub','btn-sub','btn-qbl','btn-get']
+    .forEach(id => document.getElementById(id).disabled = !on);
+}
+
+document.getElementById('btn-connect').addEventListener('click', async () => {
+  if (session) { await doDisconnect(); } else { await doConnect(); }
+});
+
+async function doConnect() {
+  const locator = document.getElementById('locator').value.trim();
+  if (!locator) return;
+  log('info', `Connecting to ${locator} …`);
+  try {
+    session = await JsSession.open(locator);
+    setConnected(true);
+    log('ok', `Connected to ${locator}`);
+  } catch (e) {
+    log('error', `Connection failed: ${e}`);
+  }
+}
+
+async function doDisconnect() {
+  // Stop periodic timers and undeclare everything.
+  for (const [, p] of pubs)  { clearInterval(p.timer); p.handle.undeclare(); }
+  for (const [, s] of subs)  { s.handle.undeclare(); }
+  for (const [, q] of qbls)  { q.handle.undeclare(); }
+  pubs.clear(); subs.clear(); qbls.clear();
+  document.getElementById('pub-list').innerHTML = '<div class="empty-hint">No publishers declared.</div>';
+  document.getElementById('sub-list').innerHTML = '<div class="empty-hint">No subscribers declared.</div>';
+  document.getElementById('qbl-list').innerHTML = '<div class="empty-hint">No queryables declared.</div>';
+  document.getElementById('get-list').innerHTML = '<div class="empty-hint">Replies will appear here.</div>';
+
+  cancelAllWasmTimers();
+  session.close();
+  session = null;
+  setConnected(false);
+  log('info', 'Session closed');
+}
+
+// ─── Utilities for item cards ──────────────────────────────────────
+function prependItem(listId, el) {
+  const list = document.getElementById(listId);
+  // Remove empty-hint if present.
+  const hint = list.querySelector('.empty-hint');
+  if (hint) hint.remove();
+  list.prepend(el);
+}
+
+function removeItem(listId, emptyMsg, domId) {
+  document.getElementById(domId)?.remove();
+  const list = document.getElementById(listId);
+  if (!list.children.length) {
+    const hint = document.createElement('div');
+    hint.className = 'empty-hint';
+    hint.textContent = emptyMsg;
+    list.appendChild(hint);
+  }
+}
+
+function addEntry(logEl, cls, text) {
+  if (!logEl) return;
+  const el = document.createElement('div');
+  el.className = `entry ${cls}`;
+  el.textContent = `[${ts()}] ${text}`;
+  logEl.prepend(el);
+  while (logEl.children.length > 60) logEl.lastChild.remove();
+}
+
+// ─── Publishers ────────────────────────────────────────────────────
+document.getElementById('btn-pub').addEventListener('click', async () => {
+  const ke      = document.getElementById('pub-ke').value.trim();
+  const payload = document.getElementById('pub-payload').value;
+  const period  = Math.max(0, parseInt(document.getElementById('pub-period').value) || 0);
+  if (!ke) return;
+
+  try {
+    const handle = session.declare_publisher(ke);
+    const id = nextId++;
+
+    // Build card
+    const card = document.createElement('div');
+    card.className = 'item';
+    card.id = `pub-${id}`;
+    card.innerHTML = `
+      <div class="item-row">
+        <span class="item-ke">${ke}</span>
+        ${period > 0 ? `<span class="badge">every ${period} ms</span>` : ''}
+        <button class="ghost sm" onclick="pubNow(${id})">Publish now</button>
+        <button class="danger sm" onclick="removePub(${id})">✕ Remove</button>
+      </div>
+      <div class="item-meta">payload: <code>"${payload}"</code>${period === 0 ? ' · manual' : ''}</div>
+    `;
+    prependItem('pub-list', card);
+
+    const timer = period > 0
+      ? setInterval(async () => {
+          try {
+            await handle.put(toBytes(payload), 0, null);
+            log('send', `[pub] → ${ke}: "${payload}"`);
+          } catch (e) { log('error', `Auto-publish failed: ${e}`); }
+        }, period)
+      : null;
+
+    pubs.set(id, { handle, ke, payload, period, timer });
+    log('ok', `Publisher declared on "${ke}"` + (period > 0 ? ` (every ${period} ms)` : ''));
+  } catch (e) {
+    log('error', `declare_publisher failed: ${e}`);
+  }
+});
+
+window.pubNow = async function(id) {
+  const p = pubs.get(id);
+  if (!p) return;
+  try {
+    await p.handle.put(toBytes(p.payload), 0, null);
+    log('send', `[pub] → ${p.ke}: "${p.payload}"`);
+  } catch (e) { log('error', `Publish failed: ${e}`); }
+};
+
+window.removePub = function(id) {
+  const p = pubs.get(id);
+  if (!p) return;
+  clearInterval(p.timer);
+  p.handle.undeclare();
+  pubs.delete(id);
+  removeItem('pub-list', 'No publishers declared.', `pub-${id}`);
+  log('info', `Publisher removed: ${p.ke}`);
+};
+
+// ─── Subscribers ───────────────────────────────────────────────────
+document.getElementById('btn-sub').addEventListener('click', async () => {
+  const ke = document.getElementById('sub-ke').value.trim();
+  if (!ke) return;
+
+  try {
+    const id = nextId++;
+
+    const card = document.createElement('div');
+    card.className = 'item';
+    card.id = `sub-${id}`;
+    card.innerHTML = `
+      <div class="item-row">
+        <span class="item-ke">${ke}</span>
+        <button class="danger sm" onclick="removeSub(${id})">✕ Remove</button>
+      </div>
+      <div class="item-log" id="sub-log-${id}"></div>
+    `;
+    prependItem('sub-list', card);
+
+    const handle = await session.declare_subscriber(ke, (jsSample) => {
+      const text = fromBytes(jsSample.payload);
+      const subLog = document.getElementById(`sub-log-${id}`);
+      addEntry(subLog, 'recv', `${jsSample.key_expr}: "${text}"`);
+      log('recv', `[sub] ← ${jsSample.key_expr}: "${text}"`);
+    });
+
+    subs.set(id, { handle, ke });
+    log('ok', `Subscriber declared on "${ke}"`);
+  } catch (e) {
+    log('error', `declare_subscriber failed: ${e}`);
+  }
+});
+
+window.removeSub = function(id) {
+  const s = subs.get(id);
+  if (!s) return;
+  s.handle.undeclare();
+  subs.delete(id);
+  removeItem('sub-list', 'No subscribers declared.', `sub-${id}`);
+  log('info', `Subscriber removed: ${s.ke}`);
+};
+
+// ─── Queryables ─────────────────────────────────────────────────────
+document.getElementById('btn-qbl').addEventListener('click', async () => {
+  const ke        = document.getElementById('qbl-ke').value.trim();
+  const replyText = document.getElementById('qbl-reply').value;
+  if (!ke) return;
+
+  try {
+    const id = nextId++;
+
+    const card = document.createElement('div');
+    card.className = 'item';
+    card.id = `qbl-${id}`;
+    card.innerHTML = `
+      <div class="item-row">
+        <span class="item-ke">${ke}</span>
+        <button class="danger sm" onclick="removeQbl(${id})">✕ Remove</button>
+      </div>
+      <div class="item-meta">reply text: <code>"${replyText}"</code></div>
+      <div class="item-log" id="qbl-log-${id}"></div>
+    `;
+    prependItem('qbl-list', card);
+
+    const handle = await session.declare_queryable(ke, async (jsQuery) => {
+      const selector = jsQuery.parameters
+        ? `${jsQuery.key_expr}?${jsQuery.parameters}` : jsQuery.key_expr;
+      const qblLog = document.getElementById(`qbl-log-${id}`);
+      addEntry(qblLog, 'query', `← query: ${selector}`);
+      log('recv', `[qbl] ← query: ${selector}`);
+
+      try {
+        await jsQuery.reply(jsQuery.key_expr, toBytes(replyText));
+        await jsQuery.finalize();
+        addEntry(qblLog, 'reply-sent', `→ replied: "${replyText}"`);
+        log('send', `[qbl] → reply on ${jsQuery.key_expr}: "${replyText}"`);
+      } catch (e) {
+        log('error', `[qbl] reply failed: ${e}`);
+      }
+    });
+
+    qbls.set(id, { handle, ke, replyText });
+    log('ok', `Queryable declared on "${ke}"`);
+  } catch (e) {
+    log('error', `declare_queryable failed: ${e}`);
+  }
+});
+
+window.removeQbl = function(id) {
+  const q = qbls.get(id);
+  if (!q) return;
+  q.handle.undeclare();
+  qbls.delete(id);
+  removeItem('qbl-list', 'No queryables declared.', `qbl-${id}`);
+  log('info', `Queryable removed: ${q.ke}`);
+};
+
+// ─── Get ────────────────────────────────────────────────────────────
+document.getElementById('btn-get').addEventListener('click', async () => {
+  const selector  = document.getElementById('get-sel').value.trim();
+  const params    = document.getElementById('get-params').value.trim() || null;
+  const payloadTx = document.getElementById('get-payload').value.trim();
+  const target        = parseInt(document.getElementById('get-target').value);
+  const consolidation = parseInt(document.getElementById('get-consolidation').value);
+  const timeout       = Math.max(100, parseInt(document.getElementById('get-timeout').value) || 5000);
+  if (!selector) return;
+
+  const targetNames        = ['BestMatching', 'All', 'AllComplete'];
+  const consolidationNames = ['Auto', 'None', 'Monotonic', 'Latest'];
+  const targetName        = targetNames[target]        ?? 'BestMatching';
+  const consolidationName = consolidationNames[consolidation] ?? 'Auto';
+
+  // Clear previous results.
+  const list = document.getElementById('get-list');
+  list.innerHTML = '';
+
+  const full = selector + (params ? '?' + params : '');
+  log('send', `[get] → ${full}  target=${targetName}  consolidation=${consolidationName}`);
+
+  let count = 0;
+  try {
+    await session.get(
+      selector,
+      params,
+      payloadTx ? toBytes(payloadTx) : null,
+      (jsReply) => {
+        count++;
+        if (jsReply.is_ok) {
+          const text = fromBytes(jsReply.sample.payload);
+          const el = document.createElement('div');
+          el.className = 'item entry ok';
+          el.textContent = `[${ts()}] ← (ok) ${jsReply.sample.key_expr}: "${text}"`;
+          list.appendChild(el);
+          log('recv', `[get] ← (ok) ${jsReply.sample.key_expr}: "${text}"`);
+        } else {
+          const text = fromBytes(jsReply.sample.payload);
+          const el = document.createElement('div');
+          el.className = 'item entry err';
+          el.textContent = `[${ts()}] ← (err) ${text}`;
+          list.appendChild(el);
+          log('error', `[get] ← (err) ${text}`);
+        }
+      },
+      timeout,
+      target,
+      consolidation,
+    );
+    if (count === 0) {
+      list.innerHTML = '<div class="empty-hint">No replies received.</div>';
+    }
+    log('info', `[get] done — ${count} repl${count !== 1 ? 'ies' : 'y'}`);
+  } catch (e) {
+    log('error', `get failed: ${e}`);
+    list.innerHTML = `<div class="empty-hint" style="color:var(--red)">Error: ${e}</div>`;
+  }
+});
+
+// ─── Bootstrap ──────────────────────────────────────────────────────
+setConnected(false);
+await init();
+log('info', 'WASM loaded. Enter a router locator and click Connect.');
+</script>
+</body>
+</html>

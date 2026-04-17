@@ -95,9 +95,12 @@ pub use web_sys::console;
 #[cfg(feature = "web_console")]
 #[macro_export]
 macro_rules! trace {
-    ($s:literal $(, $arg:expr)* $(,)?) => {
-        $crate::logging::console::trace_1(&format!($s $(, $arg)*).into())
-    };
+    // console.trace() prints a full JS stack dump on every call — far too noisy
+    // for trace-level messages (keepalives, codec bytes, …).  Suppress entirely;
+    // use `debug!` if you need web-console visibility at this verbosity level.
+    ($s:literal $(, $arg:expr)* $(,)?) => {{
+        let _ = format_args!($s $(, $arg)*);
+    }};
 }
 
 #[cfg(feature = "web_console")]

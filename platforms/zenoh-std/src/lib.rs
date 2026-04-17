@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use async_net::{TcpListener, TcpStream, UdpSocket};
 use wtx::{
     misc::Uri,
-    web_socket::{WebSocketConnector, WebSocketPartsOwned},
+    web_socket::{WebSocketAcceptor, WebSocketConnector, WebSocketPartsOwned},
 };
 use zenoh_nostd::platform::*;
 
@@ -19,21 +19,26 @@ pub struct StdLinkManager;
 pub enum StdLink {
     Tcp(tcp::StdTcpLink),
     Udp(udp::StdUdpLink),
-    Ws(ws::StdWsLink),
+    /// Client-side WebSocket (outgoing connect).
+    Ws(ws::StdWsLink<true>),
+    /// Server-side WebSocket (incoming accept).
+    WsServer(ws::StdWsLink<false>),
 }
 
 #[derive(ZLinkInfo, ZLinkTx)]
 pub enum StdLinkTx<'link> {
     Tcp(tcp::StdTcpLinkTx),
     Udp(udp::StdUdpLinkTx),
-    Ws(ws::StdWsLinkTx<'link>),
+    Ws(ws::StdWsLinkTx<'link, true>),
+    WsServer(ws::StdWsLinkTx<'link, false>),
 }
 
 #[derive(ZLinkInfo, ZLinkRx)]
 pub enum StdLinkRx<'link> {
     Tcp(tcp::StdTcpLinkRx),
     Udp(udp::StdUdpLinkRx),
-    Ws(ws::StdWsLinkRx<'link>),
+    Ws(ws::StdWsLinkRx<'link, true>),
+    WsServer(ws::StdWsLinkRx<'link, false>),
 }
 
 impl ZLinkManager for StdLinkManager {
@@ -225,6 +230,56 @@ impl ZLinkManager for StdLinkManager {
                     .map_err(|_| LinkError::CouldNotConnect)?;
 
                 Ok(Self::Link::Udp(udp::StdUdpLink::new(socket, 8192)))
+            }
+            "ws" => {
+                // Accept an incoming WebSocket connection (server side).
+                let src_addr = SocketAddr::try_from(address)?;
+                let listener = TcpListener::bind(src_addr)
+                    .await
+                    .map_err(|_| LinkError::CouldNotConnect)?;
+
+                let (socket, _) = listener
+                    .accept()
+                    .await
+                    .map_err(|_| LinkError::CouldNotConnect)?;
+
+                socket
+                    .set_nodelay(true)
+                    .map_err(|_| LinkError::CouldNotConnect)?;
+
+                let header = match socket
+                    .local_addr()
+                    .map_err(|_| LinkError::CouldNotGetAddrInfo)?
+                    .ip()
+                {
+                    core::net::IpAddr::V4(_) => 40,
+                    core::net::IpAddr::V6(_) => 60,
+                };
+
+                #[allow(unused_mut)]
+                let mut mtu = u16::MAX - header;
+
+                #[cfg(target_family = "unix")]
+                {
+                    let socket = socket2::SockRef::from(&socket);
+                    let mss = socket.tcp_mss().unwrap_or(mtu as u32) / 2;
+                    let mut tgt = mss;
+                    while (tgt + mss) < mtu as u32 {
+                        tgt += mss;
+                    }
+                    mtu = (mtu as u32).min(tgt) as u16;
+                }
+
+                let stream = WebSocketAcceptor::default()
+                    .accept(socket)
+                    .await
+                    .map_err(|_| LinkError::CouldNotConnect)?;
+
+                let WebSocketPartsOwned { reader, writer, .. } = stream
+                    .into_parts(|s| (s.clone(), s))
+                    .map_err(|_| LinkError::CouldNotConnect)?;
+
+                Ok(Self::Link::WsServer(ws::StdWsLink::new(reader, writer, mtu)))
             }
             _ => zenoh::zbail!(LinkError::CouldNotParseProtocol),
         }

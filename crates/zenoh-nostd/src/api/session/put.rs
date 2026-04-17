@@ -1,6 +1,14 @@
 use zenoh_proto::{exts::*, fields::*, msgs::*, *};
 
-use crate::{api::session::Session, config::ZSessionConfig, io::transport::ZTransportLinkTx};
+use crate::{
+    api::{
+        callbacks::{ZCallbacks as _, ZDynCallback as _},
+        sample::Sample,
+        session::Session,
+    },
+    config::ZSessionConfig,
+    io::transport::ZTransportLinkTx,
+};
 
 pub struct PutBuilder<'a, 'res, Config>
 where
@@ -56,10 +64,13 @@ where
     }
 
     pub async fn finish(self) -> core::result::Result<(), SessionError> {
+        let ke = self.ke;
+        let payload = self.payload;
+
         let msg = Push {
-            wire_expr: WireExpr::from(self.ke),
+            wire_expr: WireExpr::from(ke),
             payload: PushBody::Put(Put {
-                payload: self.payload,
+                payload,
                 encoding: self.encoding,
                 timestamp: self.timestamp,
                 attachment: self.attachment,
@@ -69,8 +80,7 @@ where
             ..Default::default()
         };
 
-        Ok(self
-            .session
+        self.session
             .driver
             .tx()
             .await
@@ -79,7 +89,18 @@ where
                 qos: QoS::default(),
                 body: NetworkBody::Push(msg),
             }))
-            .await?)
+            .await?;
+
+        // Local delivery: call own subscriber callbacks for matching key expressions.
+        // The broker does not route publications back to the sender, so the session
+        // must deliver locally to any subscriber declared on this same session.
+        let sample = Sample::new(ke, payload);
+        let mut state = self.session.state().await;
+        for cb in state.sub_callbacks.intersects(ke) {
+            cb.call_try_sync(&sample).await;
+        }
+
+        Ok(())
     }
 }
 

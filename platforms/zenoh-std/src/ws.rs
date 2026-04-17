@@ -10,18 +10,19 @@ use {
     zenoh_nostd::platform::*,
 };
 
-pub struct StdWsLink {
-    stream: WebSocketReaderOwned<(), Xorshift64, TcpStream, true>,
-    sink: WebSocketWriterOwned<(), Xorshift64, TcpStream, true>,
+/// WebSocket link — `IS_CLIENT = true` for client connections, `false` for server.
+pub struct StdWsLink<const IS_CLIENT: bool> {
+    stream: WebSocketReaderOwned<(), Xorshift64, TcpStream, IS_CLIENT>,
+    sink: WebSocketWriterOwned<(), Xorshift64, TcpStream, IS_CLIENT>,
     read_buffer: Vector<u8>,
     write_buffer: Vector<u8>,
     mtu: u16,
 }
 
-impl StdWsLink {
+impl<const IS_CLIENT: bool> StdWsLink<IS_CLIENT> {
     pub fn new(
-        stream: WebSocketReaderOwned<(), Xorshift64, TcpStream, true>,
-        sink: WebSocketWriterOwned<(), Xorshift64, TcpStream, true>,
+        stream: WebSocketReaderOwned<(), Xorshift64, TcpStream, IS_CLIENT>,
+        sink: WebSocketWriterOwned<(), Xorshift64, TcpStream, IS_CLIENT>,
         mtu: u16,
     ) -> Self {
         Self {
@@ -34,19 +35,19 @@ impl StdWsLink {
     }
 }
 
-pub struct StdWsLinkTx<'a> {
-    sink: &'a mut WebSocketWriterOwned<(), Xorshift64, TcpStream, true>,
+pub struct StdWsLinkTx<'a, const IS_CLIENT: bool> {
+    sink: &'a mut WebSocketWriterOwned<(), Xorshift64, TcpStream, IS_CLIENT>,
     write_buffer: &'a mut Vector<u8>,
     mtu: u16,
 }
 
-pub struct StdWsLinkRx<'a> {
-    stream: &'a mut WebSocketReaderOwned<(), Xorshift64, TcpStream, true>,
+pub struct StdWsLinkRx<'a, const IS_CLIENT: bool> {
+    stream: &'a mut WebSocketReaderOwned<(), Xorshift64, TcpStream, IS_CLIENT>,
     read_buffer: &'a mut Vector<u8>,
     mtu: u16,
 }
 
-impl ZLinkInfo for StdWsLink {
+impl<const IS_CLIENT: bool> ZLinkInfo for StdWsLink<IS_CLIENT> {
     fn mtu(&self) -> u16 {
         self.mtu
     }
@@ -56,7 +57,7 @@ impl ZLinkInfo for StdWsLink {
     }
 }
 
-impl ZLinkInfo for StdWsLinkTx<'_> {
+impl<const IS_CLIENT: bool> ZLinkInfo for StdWsLinkTx<'_, IS_CLIENT> {
     fn mtu(&self) -> u16 {
         self.mtu
     }
@@ -66,7 +67,7 @@ impl ZLinkInfo for StdWsLinkTx<'_> {
     }
 }
 
-impl ZLinkInfo for StdWsLinkRx<'_> {
+impl<const IS_CLIENT: bool> ZLinkInfo for StdWsLinkRx<'_, IS_CLIENT> {
     fn mtu(&self) -> u16 {
         self.mtu
     }
@@ -76,7 +77,7 @@ impl ZLinkInfo for StdWsLinkRx<'_> {
     }
 }
 
-impl ZLinkTx for StdWsLink {
+impl<const IS_CLIENT: bool> ZLinkTx for StdWsLink<IS_CLIENT> {
     async fn write_all(&mut self, buffer: &[u8]) -> core::result::Result<(), LinkError> {
         self.write_buffer.clear();
         self.write_buffer
@@ -98,7 +99,7 @@ impl ZLinkTx for StdWsLink {
     }
 }
 
-impl ZLinkTx for StdWsLinkTx<'_> {
+impl<const IS_CLIENT: bool> ZLinkTx for StdWsLinkTx<'_, IS_CLIENT> {
     async fn write_all(&mut self, buffer: &[u8]) -> core::result::Result<(), LinkError> {
         self.write_buffer.clear();
         self.write_buffer
@@ -120,7 +121,7 @@ impl ZLinkTx for StdWsLinkTx<'_> {
     }
 }
 
-impl ZLinkRx for StdWsLink {
+impl<const IS_CLIENT: bool> ZLinkRx for StdWsLink<IS_CLIENT> {
     async fn read(&mut self, buffer: &mut [u8]) -> core::result::Result<usize, LinkError> {
         self.read_buffer.clear();
 
@@ -154,7 +155,7 @@ impl ZLinkRx for StdWsLink {
     }
 }
 
-impl ZLinkRx for StdWsLinkRx<'_> {
+impl<const IS_CLIENT: bool> ZLinkRx for StdWsLinkRx<'_, IS_CLIENT> {
     async fn read(&mut self, buffer: &mut [u8]) -> core::result::Result<usize, LinkError> {
         self.read_buffer.clear();
 
@@ -188,14 +189,14 @@ impl ZLinkRx for StdWsLinkRx<'_> {
     }
 }
 
-impl ZLink for StdWsLink {
+impl<const IS_CLIENT: bool> ZLink for StdWsLink<IS_CLIENT> {
     type Tx<'link>
-        = StdWsLinkTx<'link>
+        = StdWsLinkTx<'link, IS_CLIENT>
     where
         Self: 'link;
 
     type Rx<'link>
-        = StdWsLinkRx<'link>
+        = StdWsLinkRx<'link, IS_CLIENT>
     where
         Self: 'link;
 

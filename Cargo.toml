@@ -6,7 +6,7 @@ members = [
 
     "crates/zenoh-nostd"
 ]
-exclude = ["platforms/zenoh-std", "platforms/zenoh-embassy", "platforms/zenoh-wasm"]
+exclude = ["platforms/zenoh-std", "platforms/zenoh-embassy", "platforms/zenoh-wasm", "platforms/zenoh-ts"]
 resolver = "3"
 
 [workspace.package]
@@ -167,6 +167,13 @@ strip = false
 incremental = false
 debug = false
 overflow-checks = false
+
+# wtx 0.39/0.40 exact-pins sha1 = "=0.11.0-rc.2", which was written against
+# digest 0.11.0-rc.9. digest 0.11.2 (stable) broke that RC API, so we lock
+# digest v0.11 to the RC that sha1-0.11.0-rc.2 was built against.
+# To restore: cargo update -p digest@0.11.2 --precise 0.11.0-rc.9
+# Unblock: update wtx to a version that depends on stable sha1 (>= 0.43 needs
+# rustc 1.95, above our MSRV of 1.91); revisit when MSRV is raised.
 
 [patch.crates-io.yawc]
 git = "https://github.com/infinitefield/yawc"

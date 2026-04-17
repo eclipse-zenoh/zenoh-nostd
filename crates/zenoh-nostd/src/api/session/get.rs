@@ -6,11 +6,13 @@ use embassy_sync::channel::{DynamicReceiver, DynamicSender};
 use embassy_time::{Instant, Timer};
 use zenoh_proto::{
     SessionError,
-    exts::{QoS, Value},
+    exts::{QoS, QueryTarget, Value},
     fields::{ConsolidationMode, Reliability, WireExpr},
     keyexpr,
     msgs::{NetworkBody, NetworkMessage, Query, Request, RequestBody},
 };
+
+use crate::api::{callbacks::ZDynCallback, query::QueryableQuery};
 
 #[cfg(feature = "alloc")]
 use crate::api::callbacks::AllocCallbacks;
@@ -91,6 +93,8 @@ pub struct GetBuilder<
     pub(crate) parameters: Option<&'a str>,
     pub(crate) payload: Option<&'a [u8]>,
     pub(crate) timeout: Option<Duration>,
+    pub(crate) target: QueryTarget,
+    pub(crate) consolidation: ConsolidationMode,
     pub(crate) callback: Option<
         DynCallback<
             'res,
@@ -113,6 +117,8 @@ where
             parameters: None,
             payload: None,
             timeout: None,
+            target: QueryTarget::default(),
+            consolidation: ConsolidationMode::default(),
             callback: None,
             receiver: None,
         }
@@ -128,6 +134,8 @@ where
             parameters: self.parameters,
             payload: self.payload,
             timeout: self.timeout,
+            target: self.target,
+            consolidation: self.consolidation,
             callback: Some(DynObject::new(AsyncCallback::new(callback))),
             receiver: None,
         }
@@ -143,6 +151,8 @@ where
             parameters: self.parameters,
             payload: self.payload,
             timeout: self.timeout,
+            target: self.target,
+            consolidation: self.consolidation,
             callback: Some(DynObject::new(SyncCallback::new(callback))),
             receiver: None,
         }
@@ -162,6 +172,8 @@ where
             parameters: self.parameters,
             payload: self.payload,
             timeout: self.timeout,
+            target: self.target,
+            consolidation: self.consolidation,
             callback: Some(DynObject::new(AsyncCallback::new(
                 async move |resp: &'_ GetResponse<'_>| {
                     if let Ok(resp) = OwnedResponse::try_from(resp) {
@@ -203,6 +215,16 @@ where
         self.timeout = Some(timeout);
         self
     }
+
+    pub fn target(mut self, target: QueryTarget) -> Self {
+        self.target = target;
+        self
+    }
+
+    pub fn consolidation(mut self, consolidation: ConsolidationMode) -> Self {
+        self.consolidation = consolidation;
+        self
+    }
 }
 
 impl<'a, 'res, Config, OwnedResponse, const CHANNEL: bool>
@@ -220,21 +242,28 @@ where
                 .try_into()
                 .unwrap();
 
-        let mut state = self.session.state().await;
-        let rid = state.next();
+        // Scope the state guard so it is dropped before the network send and
+        // the local-dispatch block — holding it across an await on the same
+        // mutex causes a deadlock with NoopRawMutex's cooperative lock bit.
+        let rid = {
+            let mut state = self.session.state().await;
+            let rid = state.next();
 
-        if let Some(callback) = self.callback {
-            state.get_callbacks.drop_timedout();
-            state
-                .get_callbacks
-                .insert(rid, self.ke, Some(timedout), callback)?;
-        }
+            if let Some(callback) = self.callback {
+                state.get_callbacks.drop_timedout();
+                state
+                    .get_callbacks
+                    .insert(rid, self.ke, Some(timedout), callback)?;
+            }
+            rid
+        };
 
         let msg = Request {
             id: rid,
             wire_expr: WireExpr::from(self.ke),
+            target: self.target,
             payload: RequestBody::Query(Query {
-                consolidation: ConsolidationMode::None,
+                consolidation: self.consolidation,
                 parameters: self.parameters.unwrap_or_default(),
                 body: self.payload.map(|p| Value {
                     payload: p,
@@ -255,6 +284,33 @@ where
                 body: NetworkBody::Request(msg),
             }))
             .await?;
+
+        // Local loopback: the router never routes a Request back to the session
+        // that issued it.  Mirror what put.rs does for subscribers: dispatch
+        // directly to any queryable on this session whose key expression
+        // intersects the get key expression.
+        {
+            let query = QueryableQuery::new(
+                self.session,
+                rid,
+                self.ke,
+                self.parameters,
+                self.payload,
+            );
+            let mut state = self.session.state().await;
+            let local_count = state.queryable_callbacks.intersects(self.ke).count();
+            if local_count > 0 {
+                // Flag this get callback so that finalize() (called by the local
+                // queryable) does NOT remove it early — remote replies from the
+                // network can still arrive and must be delivered.  ResponseFinal
+                // from the router will perform the final cleanup.
+                state.get_callbacks.set_counter(rid, 1)?;
+                state.queryable_callbacks.set_counter(rid, local_count)?;
+                for cb in state.queryable_callbacks.intersects(self.ke) {
+                    cb.call(&query).await;
+                }
+            }
+        }
 
         Ok(GetResponses {
             ke: self.ke,

@@ -5,6 +5,8 @@ use zenoh_proto::{CollectionError, keyexpr};
 pub enum GetResponse<'a> {
     Ok(Sample<'a>),
     Err(Sample<'a>),
+    /// Sent once after ResponseFinal is received: signals that no more replies will arrive.
+    Done,
 }
 
 impl<'a> GetResponse<'a> {
@@ -43,6 +45,7 @@ impl<const MAX_KEYEXPR: usize, const MAX_PAYLOAD: usize> TryFrom<&GetResponse<'_
         match value {
             GetResponse::Ok(sample) => Ok(Self::Ok(sample.try_into()?)),
             GetResponse::Err(sample) => Ok(Self::Err(sample.try_into()?)),
+            GetResponse::Done => Err(CollectionError::CollectionIsEmpty),
         }
     }
 }
@@ -72,6 +75,7 @@ impl TryFrom<&GetResponse<'_>> for AllocGetResponse {
         match value {
             GetResponse::Ok(sample) => Ok(Self::Ok(sample.try_into()?)),
             GetResponse::Err(sample) => Ok(Self::Err(sample.try_into()?)),
+            GetResponse::Done => Err(CollectionError::CollectionIsEmpty),
         }
     }
 }

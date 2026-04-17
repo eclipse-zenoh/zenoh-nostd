@@ -68,6 +68,10 @@ where
         todo!("Also stop the channel if any")
     }
 
+    pub fn id(&self) -> u32 {
+        self.id
+    }
+
     pub fn keyexpr(&self) -> &keyexpr {
         self.ke
     }

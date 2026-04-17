@@ -1,5 +1,6 @@
 use core::time::Duration;
 
+#[cfg(not(target_arch = "wasm32"))]
 use embassy_time::with_timeout;
 use zenoh_proto::{
     Endpoint, TransportLinkError,
@@ -45,6 +46,10 @@ impl<Link, Buff> TransportLink<Link, Buff> {
             TransportLinkTx::new(link_tx, transport_tx),
             TransportLinkRx::new(link_rx, transport_rx),
         )
+    }
+
+    pub fn link(&self) -> &Link {
+        &self.link
     }
 
     pub fn transport(&self) -> &Transport<Buff> {
@@ -145,9 +150,15 @@ impl<LinkManager> TransportLinkManager<LinkManager> {
                 .await
         };
 
+        #[cfg(not(target_arch = "wasm32"))]
         let transport = with_timeout(self.open_timeout.try_into().unwrap(), connect())
             .await
             .map_err(|_| TransportLinkError::OpenTimeout)?
+            .map_err(|e| e.flatten_map::<TransportLinkError>())?;
+
+        #[cfg(target_arch = "wasm32")]
+        let transport = connect()
+            .await
             .map_err(|e| e.flatten_map::<TransportLinkError>())?;
 
         Ok(TransportLink::new(link, transport))
@@ -184,9 +195,15 @@ impl<LinkManager> TransportLinkManager<LinkManager> {
                 .await
         };
 
+        #[cfg(not(target_arch = "wasm32"))]
         let transport = with_timeout(self.open_timeout.try_into().unwrap(), connect())
             .await
             .map_err(|_| TransportLinkError::OpenTimeout)?
+            .map_err(|e| e.flatten_map::<TransportLinkError>())?;
+
+        #[cfg(target_arch = "wasm32")]
+        let transport = connect()
+            .await
             .map_err(|e| e.flatten_map::<TransportLinkError>())?;
 
         Ok(TransportLink::new(link, transport))
@@ -225,9 +242,15 @@ impl<LinkManager> TransportLinkManager<LinkManager> {
                 .await
         };
 
+        #[cfg(not(target_arch = "wasm32"))]
         let transport = with_timeout(self.open_timeout.try_into().unwrap(), connect())
             .await
             .map_err(|_| TransportLinkError::OpenTimeout)?
+            .map_err(|e| e.flatten_map::<TransportLinkError>())?;
+
+        #[cfg(target_arch = "wasm32")]
+        let transport = connect()
+            .await
             .map_err(|e| e.flatten_map::<TransportLinkError>())?;
 
         Ok(TransportLink::new(link, transport))
@@ -265,9 +288,15 @@ impl<LinkManager> TransportLinkManager<LinkManager> {
                 .await
         };
 
+        #[cfg(not(target_arch = "wasm32"))]
         let transport = with_timeout(self.open_timeout.try_into().unwrap(), listen())
             .await
             .map_err(|_| TransportLinkError::OpenTimeout)?
+            .map_err(|e| e.flatten_map::<TransportLinkError>())?;
+
+        #[cfg(target_arch = "wasm32")]
+        let transport = listen()
+            .await
             .map_err(|e| e.flatten_map::<TransportLinkError>())?;
 
         Ok(TransportLink::new(link, transport))

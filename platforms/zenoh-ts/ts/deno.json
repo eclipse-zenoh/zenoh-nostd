@@ -1,0 +1,24 @@
+{
+  "name": "@eclipse-zenoh/zenoh-ts",
+  "version": "0.1.0-nostd",
+  "exports": "./src/index.ts",
+  "imports": {
+    "@eclipse-zenoh/zenoh-ts": "./src/index.ts"
+  },
+  "tasks": {
+    "z_pub":         "deno run --allow-net examples/deno/src/z_pub.ts",
+    "z_sub":         "deno run --allow-net examples/deno/src/z_sub.ts",
+    "z_put":         "deno run --allow-net examples/deno/src/z_put.ts",
+    "z_get":         "deno run --allow-net examples/deno/src/z_get.ts",
+    "z_queryable":   "deno run --allow-net examples/deno/src/z_queryable.ts",
+    "z_querier":     "deno run --allow-net examples/deno/src/z_querier.ts",
+    "z_delete":      "deno run --allow-net examples/deno/src/z_delete.ts",
+    "z_ping":        "deno run --allow-net examples/deno/src/z_ping.ts",
+    "z_pong":        "deno run --allow-net examples/deno/src/z_pong.ts",
+    "test":          "deno test --allow-net tests/src/"
+  },
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "deno.ns"],
+    "strict": true
+  }
+}

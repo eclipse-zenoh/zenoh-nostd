@@ -25,6 +25,7 @@ fn response_callback_sync(resp: &GetResponse<'_>) {
                 core::str::from_utf8(reply.payload()).unwrap()
             );
         }
+        GetResponse::Done => {}
     }
 }
 

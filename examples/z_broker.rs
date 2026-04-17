@@ -5,7 +5,8 @@
 use zenoh_examples::*;
 use zenoh_nostd::broker::*;
 
-#[embassy_executor::task(pool_size = 2)]
+/// Pool of 3: tcp/7444, tcp/7445, ws/7447
+#[embassy_executor::task(pool_size = 3)]
 async fn south(broker: &'static Broker<ExampleConfig>, endpoint: Endpoint<'static>) {
     // `broker.accept` creates a listening `Endpoint`: a client can connect to the broker, one at a time
     if let Err(e) = broker.accept(endpoint.clone()).await {
@@ -22,14 +23,15 @@ async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
     let config = init_broker_example(&spawner).await;
     let broker = zenoh::broker!(ExampleConfig: config);
 
+    // TCP south connections (for standard Rust clients)
     spawner.must_spawn(south(broker, Endpoint::try_from("tcp/127.0.0.1:7444")?));
     spawner.must_spawn(south(broker, Endpoint::try_from("tcp/127.0.0.1:7445")?));
+    // WebSocket south connection (for WASM / browser clients)
+    spawner.must_spawn(south(broker, Endpoint::try_from("ws/127.0.0.1:7447")?));
 
-    // `broker.open` defines the gateway of this broker, it will fail if there is nobody listening at that `Endpoint`
-
-    Ok(broker
-        .open(Endpoint::try_from("tcp/127.0.0.1:7447")?)
-        .await?)
+    // Run forever — no upstream gateway needed for standalone use.
+    core::future::pending::<()>().await;
+    Ok(())
 }
 
 #[cfg_attr(feature = "std", embassy_executor::main)]

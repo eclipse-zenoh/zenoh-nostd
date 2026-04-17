@@ -1,5 +1,5 @@
 use core::time::Duration;
-use zenoh_proto::{SessionError, keyexpr};
+use zenoh_proto::{SessionError, exts::QueryTarget, fields::ConsolidationMode, keyexpr};
 
 use crate::{api::session::Session, config::ZSessionConfig, session::GetBuilder};
 
@@ -25,6 +25,8 @@ where
             parameters: self.parameters,
             payload: self.payload,
             timeout: self.timeout,
+            target: QueryTarget::default(),
+            consolidation: ConsolidationMode::default(),
             callback: None,
             receiver: None,
         }

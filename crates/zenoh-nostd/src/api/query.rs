@@ -37,6 +37,10 @@ where
         }
     }
 
+    pub fn rid(&self) -> u32 {
+        self.rid
+    }
+
     pub fn keyexpr(&self) -> &keyexpr {
         self.ke
     }
