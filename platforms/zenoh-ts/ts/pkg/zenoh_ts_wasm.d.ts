@@ -131,9 +131,12 @@ export class JsSession {
      */
     close(): void;
     /**
-     * Declare a publisher. Synchronous — returns `JsPublisher` immediately.
+     * Declare a publisher. Returns `Promise<JsPublisher>`.
+     *
+     * Sends an `Interest(mode=CurrentFuture, options=SUBSCRIBERS, ke=...)` message
+     * to the router so it can set up routing for this publisher's key expression.
      */
-    declare_publisher(key_expr: string): JsPublisher;
+    declare_publisher(key_expr: string): Promise<JsPublisher>;
     /**
      * Declare a querier for `key_expr` with default `timeout_ms`.
      * Returns `JsQuerier` synchronously.
@@ -241,14 +244,13 @@ export interface InitOutput {
     readonly jspublisher_put: (a: number, b: number, c: number, d: number, e: number, f: number) => any;
     readonly jspublisher_undeclare: (a: number) => void;
     readonly jsquerier_get: (a: number, b: any, c: number, d: number, e: number, f: number, g: number) => any;
-    readonly jsquerier_undeclare: (a: number) => void;
     readonly jsquery_finalize: (a: number) => any;
     readonly jsquery_reply: (a: number, b: number, c: number, d: number, e: number) => any;
     readonly jsquery_reply_err: (a: number, b: number, c: number) => any;
     readonly jsqueryable_id: (a: number) => number;
     readonly jsqueryable_undeclare: (a: number) => any;
     readonly jssession_close: (a: number) => void;
-    readonly jssession_declare_publisher: (a: number, b: number, c: number) => [number, number, number];
+    readonly jssession_declare_publisher: (a: number, b: number, c: number) => any;
     readonly jssession_declare_querier: (a: number, b: number, c: number, d: number) => [number, number, number];
     readonly jssession_declare_queryable: (a: number, b: number, c: number, d: any) => any;
     readonly jssession_declare_subscriber: (a: number, b: number, c: number, d: any) => any;
@@ -260,13 +262,15 @@ export interface InitOutput {
     readonly ke_includes: (a: number, b: number, c: number, d: number) => number;
     readonly ke_intersects: (a: number, b: number, c: number, d: number) => number;
     readonly __wbg_get_jssample_key_expr: (a: number) => [number, number];
+    readonly jsquerier_undeclare: (a: number) => void;
     readonly jssubscriber_id: (a: number) => number;
     readonly __wbg_set_jssample_key_expr: (a: number, b: number, c: number) => void;
     readonly _embassy_time_schedule_wake: (a: bigint, b: number) => void;
     readonly wasm_bindgen__convert__closures_____invoke__h3a025749c5eccc02: (a: number, b: number, c: any) => [number, number];
     readonly wasm_bindgen__convert__closures_____invoke__h6488d5db925c6877: (a: number, b: number, c: any, d: any) => void;
+    readonly wasm_bindgen__convert__closures_____invoke__h96308b8e6da1fb31: (a: number, b: number, c: any) => void;
     readonly wasm_bindgen__convert__closures_____invoke__h59e376138512cd76: (a: number, b: number, c: any) => void;
-    readonly wasm_bindgen__convert__closures_____invoke__h59e376138512cd76_2: (a: number, b: number, c: any) => void;
+    readonly wasm_bindgen__convert__closures_____invoke__h59e376138512cd76_3: (a: number, b: number, c: any) => void;
     readonly wasm_bindgen__convert__closures_____invoke__h5b046f0c45fb325d: (a: number, b: number) => void;
     readonly __wbindgen_exn_store: (a: number) => void;
     readonly __externref_table_alloc: () => number;

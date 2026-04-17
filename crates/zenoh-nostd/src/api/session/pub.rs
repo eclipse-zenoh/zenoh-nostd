@@ -1,19 +1,22 @@
 use zenoh_proto::{
     SessionError,
-    exts::Attachment,
-    fields::{Encoding, Timestamp},
+    exts::{Attachment, QoS},
+    fields::*,
     keyexpr,
+    msgs::*,
 };
 
 use crate::{
     api::session::{Session, put::PutBuilder},
     config::ZSessionConfig,
+    io::transport::ZTransportLinkTx,
 };
 
 pub struct Publisher<'a, 'res, Config>
 where
     Config: ZSessionConfig,
 {
+    id: u32,
     session: &'a Session<'res, Config>,
 
     ke: &'a keyexpr,
@@ -27,6 +30,10 @@ impl<'a, 'res, Config> Publisher<'a, 'res, Config>
 where
     Config: ZSessionConfig,
 {
+    pub fn id(&self) -> u32 {
+        self.id
+    }
+
     pub fn put(&self, payload: &'a [u8]) -> PutBuilder<'a, 'res, Config> {
         PutBuilder {
             session: self.session,
@@ -38,9 +45,21 @@ where
         }
     }
 
-    #[allow(dead_code)]
-    async fn undeclare(self) -> core::result::Result<(), SessionError> {
-        todo!("send undeclare interest")
+    pub async fn undeclare(self) -> core::result::Result<(), SessionError> {
+        self.session
+            .driver
+            .tx()
+            .await
+            .send(core::iter::once(NetworkMessage {
+                reliability: Reliability::default(),
+                qos: QoS::default(),
+                body: NetworkBody::InterestFinal(InterestFinal {
+                    id: self.id,
+                    ..Default::default()
+                }),
+            }))
+            .await?;
+        Ok(())
     }
 
     pub fn keyexpr(&self) -> &keyexpr {
@@ -95,8 +114,35 @@ where
     }
 
     pub async fn finish(self) -> core::result::Result<Publisher<'a, 'res, Config>, SessionError> {
-        // TODO: send interest msg
+        // Allocate ID under the state lock, then release before the async send.
+        let id = {
+            let mut state = self.session.state().await;
+            state.next()
+        };
+
+        // Declare publisher interest: ask the router to route matching subscriber
+        // declarations to us (current and future subscribers).
+        self.session
+            .driver
+            .tx()
+            .await
+            .send(core::iter::once(NetworkMessage {
+                reliability: Reliability::default(),
+                qos: QoS::default(),
+                body: NetworkBody::Interest(Interest {
+                    id,
+                    mode: InterestMode::CurrentFuture,
+                    inner: InterestInner {
+                        options: InterestOptions::SUBSCRIBERS.options,
+                        wire_expr: Some(WireExpr::from(self.ke)),
+                    },
+                    ..Default::default()
+                }),
+            }))
+            .await?;
+
         Ok(Publisher {
+            id,
             session: self.session,
             ke: self.ke,
             encoding: self.encoding,

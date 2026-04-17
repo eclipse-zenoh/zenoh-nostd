@@ -164,8 +164,7 @@ export class Session {
 
     /** Declare a publisher on `keyExpr`. */
     async declarePublisher(keyExpr: IntoKeyExpr, opts?: PublisherOptions): Promise<Publisher> {
-        const handle = this._wasm.declare_publisher(keyExpr.toString());
-        if (handle instanceof Error) throw handle;
+        const handle = await this._wasm.declare_publisher(keyExpr.toString());
         return new Publisher(handle, opts);
     }
 

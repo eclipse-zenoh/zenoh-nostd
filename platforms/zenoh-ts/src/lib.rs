@@ -172,6 +172,9 @@ pub struct JsSession {
 pub struct JsPublisher {
     slot: usize,
     ke: String,
+    /// Kept for future `undeclare()` support (sends InterestFinal with this ID).
+    #[allow(dead_code)]
+    id: u32,
 }
 
 /// Handle returned by declareSubscriber.
@@ -336,10 +339,22 @@ impl JsSession {
 
     // ── Publisher ─────────────────────────────────────────────────────────────
 
-    /// Declare a publisher. Synchronous — returns `JsPublisher` immediately.
-    pub fn declare_publisher(&self, key_expr: String) -> Result<JsPublisher, JsValue> {
-        let _ = parse_keyexpr(&key_expr)?;
-        Ok(JsPublisher { slot: self.slot, ke: key_expr })
+    /// Declare a publisher. Returns `Promise<JsPublisher>`.
+    ///
+    /// Sends an `Interest(mode=CurrentFuture, options=SUBSCRIBERS, ke=...)` message
+    /// to the router so it can set up routing for this publisher's key expression.
+    pub async fn declare_publisher(&self, key_expr: String) -> Result<JsPublisher, JsValue> {
+        let session = require_session(self.slot)?;
+        let ke = intern_keyexpr(&key_expr)?;
+
+        let pub_handle = session
+            .declare_publisher(ke)
+            .finish()
+            .await
+            .map_err(|e| js_err(e))?;
+
+        let id = pub_handle.id();
+        Ok(JsPublisher { slot: self.slot, ke: key_expr, id })
     }
 
     // ── Subscriber ────────────────────────────────────────────────────────────

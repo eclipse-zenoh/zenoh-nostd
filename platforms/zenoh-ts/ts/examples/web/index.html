@@ -547,7 +547,7 @@ document.getElementById('btn-pub').addEventListener('click', async () => {
   if (!ke) return;
 
   try {
-    const handle = session.declare_publisher(ke);
+    const handle = await session.declare_publisher(ke);
     const id = nextId++;
 
     // Build card

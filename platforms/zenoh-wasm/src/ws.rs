@@ -82,8 +82,8 @@ impl WasmWsLink {
         install_onmessage(&ws, tx.clone());
         install_onclose(&ws, tx);
 
-        // Wait for the `onopen` event before proceeding.
-        wait_for_open(&ws).await;
+        // Wait for the `onopen` event before proceeding (returns error on failure).
+        wait_for_open(&ws).await?;
 
         // Clone ws for the close handle (web_sys types are JsCast wrappers — cheap clone).
         let raw_ws = ws.clone();
@@ -136,14 +136,28 @@ fn install_onclose(ws: &web_sys::WebSocket, tx: UnboundedSender<Result<Vec<u8>, 
     onclose.forget();
 }
 
-async fn wait_for_open(ws: &web_sys::WebSocket) {
-    let (mut open_tx, mut open_rx) = futures_channel::mpsc::channel::<()>(1);
+async fn wait_for_open(ws: &web_sys::WebSocket) -> core::result::Result<(), LinkError> {
+    // Channel capacity 1: first event (onopen=Ok, onerror=Err) wins.
+    let (ok_tx, mut rx) = futures_channel::mpsc::channel::<core::result::Result<(), ()>>(1);
+    let err_tx = ok_tx.clone();
+
+    let mut open_sender = ok_tx;
     let onopen: Closure<dyn FnMut()> = Closure::new(move || {
-        let _ = open_tx.try_send(());
+        let _ = open_sender.try_send(Ok(()));
     });
     ws.set_onopen(Some(onopen.as_ref().unchecked_ref()));
     onopen.forget();
-    open_rx.next().await;
+
+    let mut error_sender = err_tx;
+    let onerror: Closure<dyn FnMut(JsValue)> = Closure::new(move |_: JsValue| {
+        let _ = error_sender.try_send(Err(()));
+    });
+    ws.set_onerror(Some(onerror.as_ref().unchecked_ref()));
+    onerror.forget();
+
+    rx.next().await
+        .unwrap_or(Err(()))
+        .map_err(|()| LinkError::CouldNotConnect)
 }
 
 // ── Split halves ─────────────────────────────────────────────────────────────
