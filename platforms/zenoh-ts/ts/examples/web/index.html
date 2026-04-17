@@ -293,7 +293,7 @@
   <div class="session-bar">
     <div class="field">
       <label for="locator">Router locator</label>
-      <input id="locator" type="text" placeholder="ws/host:port">
+      <input id="locator" type="text" value="ws/127.0.0.1:7447" placeholder="ws/host:port">
     </div>
     <button id="btn-connect">Connect</button>
     <div class="status-indicator">
@@ -760,19 +760,6 @@ document.getElementById('btn-get').addEventListener('click', async () => {
 
 // ─── Bootstrap ──────────────────────────────────────────────────────
 setConnected(false);
-
-// Auto-fill the router locator based on the serving hostname so that
-// the demo works out-of-the-box whether opened locally or at a public
-// address (e.g. zenoh.corsaro.me).  The Zenoh router must be listening
-// on ws/<hostname>:7447.
-{
-  const h = window.location.hostname;
-  const defaultLocator = (h === 'localhost' || h === '127.0.0.1' || h === '')
-    ? 'ws/127.0.0.1:7447'
-    : `ws/${h}:7447`;
-  document.getElementById('locator').value = defaultLocator;
-}
-
 await init();
 log('info', 'WASM loaded. Enter a router locator and click Connect.');
 </script>
