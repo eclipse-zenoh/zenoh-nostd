@@ -4,8 +4,6 @@
 // library instead of failing on the missing web_sys dependency.
 #![cfg(target_arch = "wasm32")]
 
-use std::net::SocketAddr;
-
 use zenoh_nostd::platform::*;
 
 pub mod ws;
@@ -58,8 +56,7 @@ impl ZLinkManager for WasmLinkManager {
 
         match protocol.as_str() {
             "ws" => {
-                let dst_addr = SocketAddr::try_from(address)?;
-                let url = format!("ws://{}", dst_addr);
+                let url = format!("ws://{}", address);
                 let link = ws::WasmWsLink::connect(&url).await?;
                 Ok(Self::Link::Ws(link))
             }
