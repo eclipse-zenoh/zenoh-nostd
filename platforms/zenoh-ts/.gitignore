@@ -1,4 +1,6 @@
 ts/node_modules/
 target/
-# Un-ignore all source .ts files suppressed by the root *.ts rule
+# Un-ignore source files suppressed by the root *.ts / *.js / *.wasm rules
 !**/*.ts
+!ts/pkg/*.js
+!ts/pkg/*.wasm
