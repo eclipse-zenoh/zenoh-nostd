@@ -2,6 +2,10 @@ use crate::{Transport, ZTransportRx, ZTransportTx, transport::establishment::Sta
 use core::{cell::RefCell, time::Duration};
 use zenoh_proto::{exts::*, fields::*, keyexpr, msgs::*};
 
+fn zid(val: u128) -> ZenohIdProto {
+    ZenohIdProto::try_from(&val.to_le_bytes()[..]).unwrap()
+}
+
 #[test]
 fn transport_state_handshake() {
     let a_zid = ZenohIdProto::default();
@@ -137,10 +141,10 @@ fn transport_peer_simultaneous_connect_lower_wins() {
 
     let a = Transport::builder([0u8; 512])
         .with_whatami(WhatAmI::Peer)
-        .with_zid(ZenohIdProto::try_from(&2u128.to_le_bytes()[..]).unwrap());
+        .with_zid(zid(2));
     let b = Transport::builder([0u8; 512])
         .with_whatami(WhatAmI::Peer)
-        .with_zid(ZenohIdProto::try_from(&1u128.to_le_bytes()[..]).unwrap());
+        .with_zid(zid(1));
 
     let read = |socket: &mut &RefCell<([u8; 512], usize, usize)>,
                 bytes: &mut [u8]|
@@ -395,8 +399,8 @@ fn transport_peer_simultaneous_connect_equal_zid_errors() {
 
 #[test]
 fn transport_peer_simultaneous_connect_lower_zid_wins() {
-    let higher_zid = ZenohIdProto::try_from(&2u128.to_le_bytes()[..]).unwrap();
-    let lower_zid = ZenohIdProto::try_from(&1u128.to_le_bytes()[..]).unwrap();
+    let higher_zid = zid(2);
+    let lower_zid = zid(1);
 
     let mut a = State::WaitingInitAck {
         mine_zid: lower_zid,
@@ -428,8 +432,8 @@ fn transport_peer_simultaneous_connect_lower_zid_wins() {
 
 #[test]
 fn transport_peer_simultaneous_connect_higher_zid_yields() {
-    let higher_zid = ZenohIdProto::try_from(&2u128.to_le_bytes()[..]).unwrap();
-    let lower_zid = ZenohIdProto::try_from(&1u128.to_le_bytes()[..]).unwrap();
+    let higher_zid = zid(2);
+    let lower_zid = zid(1);
 
     let mut a = State::WaitingInitAck {
         mine_zid: higher_zid,
