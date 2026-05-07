@@ -80,7 +80,12 @@ fn transport_peer_handshake() {
      -> core::result::Result<usize, i32> {
         let mut borrow_mut = socket.borrow_mut();
 
-        let to_read = bytes.len().min(borrow_mut.2);
+        let remaining = borrow_mut.2 - borrow_mut.1;
+        if remaining == 0 {
+            return Ok(0);
+        }
+
+        let to_read = bytes.len().min(remaining);
 
         let slice = &borrow_mut.0[borrow_mut.1..(to_read + borrow_mut.1)];
         bytes[..slice.len()].copy_from_slice(slice);
@@ -141,7 +146,11 @@ fn transport_peer_simultaneous_connect_lower_wins() {
                 bytes: &mut [u8]|
      -> core::result::Result<usize, i32> {
         let mut borrow_mut = socket.borrow_mut();
-        let to_read = bytes.len().min(borrow_mut.2);
+        let remaining = borrow_mut.2 - borrow_mut.1;
+        if remaining == 0 {
+            return Ok(0);
+        }
+        let to_read = bytes.len().min(remaining);
         let slice = &borrow_mut.0[borrow_mut.1..(to_read + borrow_mut.1)];
         bytes[..slice.len()].copy_from_slice(slice);
         borrow_mut.1 += to_read;

@@ -117,10 +117,10 @@ impl State {
 
                     (
                         Some(TransportMessage::InitAck(InitAck {
-                    identifier: InitIdentifier {
-                        zid: mine_zid,
-                        whatami: mine_whatami,
-                    },
+                            identifier: InitIdentifier {
+                                zid: mine_zid,
+                                whatami: mine_whatami,
+                            },
                             resolution: InitResolution {
                                 resolution: mine_resolution,
                                 batch_size: BatchSize(mine_batch_size),
@@ -169,7 +169,6 @@ impl State {
                             None,
                         )
                     } else if mine_zid < syn.identifier.zid {
-                        let _ = mine_whatami;
                         zenoh_proto::debug!(
                             "Simultaneous open: {:?} wins over {:?} (lower ZID)",
                             mine_zid,
