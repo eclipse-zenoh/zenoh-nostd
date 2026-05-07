@@ -76,7 +76,14 @@ const BUFF_SIZE: u16 = u16::MAX;
 const BUFF_SIZE: u16 = u16::MAX / 2;
 
 pub struct ExampleConfig {
-    pub transports: TransportLinkManager<LinkManager>,
+    transports: TransportLinkManager<LinkManager>,
+}
+
+impl ExampleConfig {
+    pub fn with_transports(mut self, transports: TransportLinkManager<LinkManager>) -> Self {
+        self.transports = transports;
+        self
+    }
 }
 
 #[cfg(feature = "alloc")]
