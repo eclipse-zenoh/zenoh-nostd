@@ -392,3 +392,69 @@ fn transport_peer_simultaneous_connect_equal_zid_errors() {
     assert!(response.is_none(), "expected no response for equal ZIDs");
     assert!(desc.is_none(), "expected no description for equal ZIDs");
 }
+
+#[test]
+fn transport_peer_simultaneous_connect_lower_zid_wins() {
+    let higher_zid = ZenohIdProto::try_from(&2u128.to_le_bytes()[..]).unwrap();
+    let lower_zid = ZenohIdProto::try_from(&1u128.to_le_bytes()[..]).unwrap();
+
+    let mut a = State::WaitingInitAck {
+        mine_zid: lower_zid,
+        mine_whatami: WhatAmI::Peer,
+        mine_batch_size: 512,
+        mine_resolution: Resolution::default(),
+        mine_lease: Duration::from_secs(30),
+    };
+
+    let init = InitSyn {
+        identifier: InitIdentifier {
+            zid: higher_zid,
+            whatami: WhatAmI::Peer,
+        },
+        ..Default::default()
+    };
+
+    let mut buff = [0u8; 128];
+    let mut writer = &mut buff[..];
+    <InitSyn as zenoh_proto::ZEncode>::z_encode(&init, &mut writer).unwrap();
+    let len = 128 - writer.len();
+    let encoded = &buff[..len];
+
+    let (response, desc) = a.poll((TransportMessage::InitSyn(init), encoded));
+
+    assert!(response.is_none(), "lower ZID should not yield, expected no response");
+    assert!(desc.is_none(), "expected no description while waiting for InitAck");
+}
+
+#[test]
+fn transport_peer_simultaneous_connect_higher_zid_yields() {
+    let higher_zid = ZenohIdProto::try_from(&2u128.to_le_bytes()[..]).unwrap();
+    let lower_zid = ZenohIdProto::try_from(&1u128.to_le_bytes()[..]).unwrap();
+
+    let mut a = State::WaitingInitAck {
+        mine_zid: higher_zid,
+        mine_whatami: WhatAmI::Peer,
+        mine_batch_size: 512,
+        mine_resolution: Resolution::default(),
+        mine_lease: Duration::from_secs(30),
+    };
+
+    let init = InitSyn {
+        identifier: InitIdentifier {
+            zid: lower_zid,
+            whatami: WhatAmI::Peer,
+        },
+        ..Default::default()
+    };
+
+    let mut buff = [0u8; 128];
+    let mut writer = &mut buff[..];
+    <InitSyn as zenoh_proto::ZEncode>::z_encode(&init, &mut writer).unwrap();
+    let len = 128 - writer.len();
+    let encoded = &buff[..len];
+
+    let (response, desc) = a.poll((TransportMessage::InitSyn(init), encoded));
+
+    assert!(response.is_some(), "higher ZID should yield with InitAck");
+    assert!(desc.is_none(), "description only set after OpenSyn/OpenAck");
+}
