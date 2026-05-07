@@ -360,3 +360,35 @@ fn transport_builder_peer_initsyn_has_peer_whatami() {
 
     assert_eq!(whatami, WhatAmI::Peer);
 }
+
+#[test]
+fn transport_peer_simultaneous_connect_equal_zid_errors() {
+    let zid = ZenohIdProto::default();
+
+    let mut a = State::WaitingInitAck {
+        mine_zid: zid,
+        mine_whatami: WhatAmI::Peer,
+        mine_batch_size: 512,
+        mine_resolution: Resolution::default(),
+        mine_lease: Duration::from_secs(30),
+    };
+
+    let init = InitSyn {
+        identifier: InitIdentifier {
+            zid,
+            whatami: WhatAmI::Peer,
+        },
+        ..Default::default()
+    };
+
+    let mut buff = [0u8; 128];
+    let mut writer = &mut buff[..];
+    <InitSyn as zenoh_proto::ZEncode>::z_encode(&init, &mut writer).unwrap();
+    let len = 128 - writer.len();
+    let encoded = &buff[..len];
+
+    let (response, desc) = a.poll((TransportMessage::InitSyn(init), encoded));
+
+    assert!(response.is_none(), "expected no response for equal ZIDs");
+    assert!(desc.is_none(), "expected no description for equal ZIDs");
+}
