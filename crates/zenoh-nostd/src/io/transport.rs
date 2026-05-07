@@ -3,7 +3,7 @@ use core::time::Duration;
 use embassy_time::with_timeout;
 use zenoh_proto::{
     Endpoint, TransportLinkError,
-    fields::{Resolution, ZenohIdProto},
+    fields::{Resolution, WhatAmI, ZenohIdProto},
 };
 use zenoh_sansio::{Transport, ZTransportRx, ZTransportTx};
 
@@ -81,6 +81,7 @@ pub struct TransportLinkManager<LinkManager> {
 
     open_timeout: Duration,
     zid: ZenohIdProto,
+    whatami: WhatAmI,
     lease: Duration,
     resolution: Resolution,
 }
@@ -91,6 +92,7 @@ impl<LinkManager> From<LinkManager> for TransportLinkManager<LinkManager> {
             value,
             Duration::from_secs(10),
             ZenohIdProto::default(),
+            WhatAmI::default(),
             Duration::from_secs(10),
             Resolution::default(),
         )
@@ -102,6 +104,7 @@ impl<LinkManager> TransportLinkManager<LinkManager> {
         link_manager: LinkManager,
         open_timeout: Duration,
         zid: ZenohIdProto,
+        whatami: WhatAmI,
         lease: Duration,
         resolution: Resolution,
     ) -> Self {
@@ -109,9 +112,15 @@ impl<LinkManager> TransportLinkManager<LinkManager> {
             link_manager,
             open_timeout,
             zid,
+            whatami,
             lease,
             resolution,
         }
+    }
+
+    pub fn with_whatami(mut self, whatami: WhatAmI) -> Self {
+        self.whatami = whatami;
+        self
     }
 
     pub async fn bridge_connect<Tx: embedded_io_async::Write, Rx: embedded_io_async::Read, Buff>(
@@ -127,6 +136,7 @@ impl<LinkManager> TransportLinkManager<LinkManager> {
             let streamed = link.is_streamed();
             Transport::builder(buff)
                 .with_zid(self.zid)
+                .with_whatami(self.whatami)
                 .with_lease(self.lease)
                 .with_resolution(self.resolution)
                 .connect_async(
@@ -166,6 +176,7 @@ impl<LinkManager> TransportLinkManager<LinkManager> {
             let streamed = link.is_streamed();
             Transport::builder(buff)
                 .with_zid(self.zid)
+                .with_whatami(self.whatami)
                 .with_lease(self.lease)
                 .with_resolution(self.resolution)
                 .listen_async(
@@ -207,6 +218,7 @@ impl<LinkManager> TransportLinkManager<LinkManager> {
             let streamed = link.is_streamed();
             Transport::builder(buff)
                 .with_zid(self.zid)
+                .with_whatami(self.whatami)
                 .with_lease(self.lease)
                 .with_resolution(self.resolution)
                 .connect_async(
@@ -247,6 +259,7 @@ impl<LinkManager> TransportLinkManager<LinkManager> {
             let streamed = link.is_streamed();
             Transport::builder(buff)
                 .with_zid(self.zid)
+                .with_whatami(self.whatami)
                 .with_lease(self.lease)
                 .with_resolution(self.resolution)
                 .listen_async(

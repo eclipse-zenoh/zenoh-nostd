@@ -148,6 +148,10 @@ path = "examples/z_broker.rs"
 name = "z_broker"
 required-features = ["alloc"]
 
+[[example]]
+path = "examples/z_peer.rs"
+name = "z_peer"
+
 [profile.dev]
 opt-level = "s"
 lto = false

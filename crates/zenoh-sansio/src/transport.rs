@@ -20,6 +20,7 @@ use crate::transport::establishment::State;
 
 pub struct TransportBuilder<Buff> {
     zid: ZenohIdProto,
+    whatami: WhatAmI,
     batch_size: u16,
     lease: Duration,
     resolution: Resolution,
@@ -34,6 +35,7 @@ impl<Buff> TransportBuilder<Buff> {
     {
         TransportBuilder {
             zid: ZenohIdProto::default(),
+            whatami: WhatAmI::default(),
             batch_size: buff.as_ref().len() as u16,
             lease: Duration::from_secs(10),
             resolution: Resolution::default(),
@@ -42,6 +44,11 @@ impl<Buff> TransportBuilder<Buff> {
     }
     pub fn with_zid(mut self, zid: ZenohIdProto) -> Self {
         self.zid = zid;
+        self
+    }
+
+    pub fn with_whatami(mut self, whatami: WhatAmI) -> Self {
+        self.whatami = whatami;
         self
     }
 
@@ -63,6 +70,7 @@ impl<Buff> TransportBuilder<Buff> {
     pub fn with_buff<NewBuff>(self, buff: NewBuff) -> TransportBuilder<NewBuff> {
         TransportBuilder {
             zid: self.zid,
+            whatami: self.whatami,
             batch_size: self.batch_size,
             lease: self.lease,
             resolution: self.resolution,
@@ -108,6 +116,7 @@ impl<Buff> TransportBuilder<Buff> {
     {
         let state = State::WaitingInitSyn {
             mine_zid: self.zid,
+            mine_whatami: self.whatami,
             mine_batch_size: self.batch_size,
             mine_resolution: self.resolution,
             mine_lease: self.lease,
@@ -154,6 +163,7 @@ impl<Buff> TransportBuilder<Buff> {
     {
         let state = State::WaitingInitSyn {
             mine_zid: self.zid,
+            mine_whatami: self.whatami,
             mine_batch_size: self.batch_size,
             mine_resolution: self.resolution,
             mine_lease: self.lease,
@@ -200,6 +210,7 @@ impl<Buff> TransportBuilder<Buff> {
     {
         let state = State::WaitingInitAck {
             mine_zid: self.zid,
+            mine_whatami: self.whatami,
             mine_batch_size: self.batch_size,
             mine_resolution: self.resolution,
             mine_lease: self.lease,
@@ -226,7 +237,7 @@ impl<Buff> TransportBuilder<Buff> {
             init: InitSyn {
                 identifier: InitIdentifier {
                     zid: self.zid,
-                    ..Default::default()
+                    whatami: self.whatami,
                 },
                 resolution: InitResolution {
                     resolution: self.resolution,
@@ -257,6 +268,7 @@ impl<Buff> TransportBuilder<Buff> {
     {
         let state = State::WaitingInitAck {
             mine_zid: self.zid,
+            mine_whatami: self.whatami,
             mine_batch_size: self.batch_size,
             mine_resolution: self.resolution,
             mine_lease: self.lease,
@@ -283,7 +295,7 @@ impl<Buff> TransportBuilder<Buff> {
             init: InitSyn {
                 identifier: InitIdentifier {
                     zid: self.zid,
-                    ..Default::default()
+                    whatami: self.whatami,
                 },
                 resolution: InitResolution {
                     resolution: self.resolution,

@@ -7,6 +7,7 @@ fn transport_state_handshake() {
     let a_zid = ZenohIdProto::default();
     let mut a = State::WaitingInitSyn {
         mine_zid: a_zid,
+        mine_whatami: WhatAmI::Client,
         mine_batch_size: 512,
         mine_resolution: Resolution::default(),
         mine_lease: Duration::from_secs(30),
@@ -15,6 +16,7 @@ fn transport_state_handshake() {
     let b_zid = ZenohIdProto::default();
     let mut b = State::WaitingInitAck {
         mine_zid: b_zid,
+        mine_whatami: WhatAmI::Client,
         mine_batch_size: 1025,
         mine_resolution: Resolution::default(),
         mine_lease: Duration::from_secs(37),
@@ -63,6 +65,124 @@ fn transport_state_handshake() {
     assert!(a.description().is_some() && b.description().is_some());
     assert_eq!(desc.unwrap().batch_size, 512);
     assert_eq!(desc.unwrap().resolution, Resolution::default());
+}
+
+#[test]
+fn transport_peer_handshake() {
+    let socket = ([0u8; 512], 0usize, 0usize);
+    let socket_ref = RefCell::new(socket);
+
+    let a = Transport::builder([0u8; 512]).with_whatami(WhatAmI::Peer);
+    let b = Transport::builder([0u8; 512]).with_whatami(WhatAmI::Peer);
+
+    let read = |socket: &mut &RefCell<([u8; 512], usize, usize)>,
+                bytes: &mut [u8]|
+     -> core::result::Result<usize, i32> {
+        let mut borrow_mut = socket.borrow_mut();
+
+        let to_read = bytes.len().min(borrow_mut.2);
+
+        let slice = &borrow_mut.0[borrow_mut.1..(to_read + borrow_mut.1)];
+        bytes[..slice.len()].copy_from_slice(slice);
+        borrow_mut.1 += to_read;
+
+        Ok(to_read)
+    };
+
+    let write = |socket: &mut &RefCell<([u8; 512], usize, usize)>,
+                 bytes: &[u8]|
+     -> core::result::Result<(), i32> {
+        let mut borrow_mut = socket.borrow_mut();
+        borrow_mut.0[..bytes.len()].copy_from_slice(bytes);
+        borrow_mut.1 = 0;
+        borrow_mut.2 = bytes.len();
+        Ok(())
+    };
+
+    let mut ha = a.listen(&socket_ref, &read, &write);
+    let mut hb = b.connect(&socket_ref, &read, &write);
+
+    hb.poll().unwrap();
+
+    for _ in 0..2 {
+        ha.poll().unwrap();
+        hb.poll().unwrap();
+    }
+
+    let ta = ha
+        .poll()
+        .expect("Unexpected Error")
+        .expect("Transport A is not opened yet")
+        .open();
+
+    let tb = hb
+        .poll()
+        .expect("Unexpected Error")
+        .expect("Transport B is not opened yet")
+        .open();
+
+    assert_eq!(ta.mine_zid, tb.other_zid);
+    assert_eq!(ta.other_zid, tb.mine_zid);
+}
+
+#[test]
+fn transport_peer_simultaneous_connect_lower_wins() {
+    let socket = ([0u8; 512], 0usize, 0usize);
+    let socket_ref = RefCell::new(socket);
+
+    let a = Transport::builder([0u8; 512])
+        .with_whatami(WhatAmI::Peer)
+        .with_zid(ZenohIdProto::try_from(&2u128.to_le_bytes()[..]).unwrap());
+    let b = Transport::builder([0u8; 512])
+        .with_whatami(WhatAmI::Peer)
+        .with_zid(ZenohIdProto::try_from(&1u128.to_le_bytes()[..]).unwrap());
+
+    let read = |socket: &mut &RefCell<([u8; 512], usize, usize)>,
+                bytes: &mut [u8]|
+     -> core::result::Result<usize, i32> {
+        let mut borrow_mut = socket.borrow_mut();
+        let to_read = bytes.len().min(borrow_mut.2);
+        let slice = &borrow_mut.0[borrow_mut.1..(to_read + borrow_mut.1)];
+        bytes[..slice.len()].copy_from_slice(slice);
+        borrow_mut.1 += to_read;
+        Ok(to_read)
+    };
+
+    let write = |socket: &mut &RefCell<([u8; 512], usize, usize)>,
+                 bytes: &[u8]|
+     -> core::result::Result<(), i32> {
+        let mut borrow_mut = socket.borrow_mut();
+        borrow_mut.0[..bytes.len()].copy_from_slice(bytes);
+        borrow_mut.1 = 0;
+        borrow_mut.2 = bytes.len();
+        Ok(())
+    };
+
+    let mut ha = a.connect(&socket_ref, &read, &write);
+    let mut hb = b.connect(&socket_ref, &read, &write);
+
+    ha.poll().unwrap();
+    hb.poll().unwrap();
+
+    for _ in 0..5 {
+        ha.poll().unwrap();
+        hb.poll().unwrap();
+    }
+
+    let ta = ha
+        .poll()
+        .expect("Unexpected Error")
+        .expect("Transport A is not opened yet")
+        .open();
+
+    let tb = hb
+        .poll()
+        .expect("Unexpected Error")
+        .expect("Transport B is not opened yet")
+        .open();
+
+    assert_eq!(ta.mine_zid, tb.other_zid);
+    assert_eq!(ta.other_zid, tb.mine_zid);
 }
 
 #[test]
@@ -199,4 +319,35 @@ fn transport_streamed_codec() {
 
     assert_eq!(flush.count(), 0);
     assert_eq!(m, msg);
+}
+
+#[test]
+fn transport_builder_peer_initsyn_has_peer_whatami() {
+    let socket = ([0u8; 512], 0usize, 0usize);
+    let socket_ref = RefCell::new(socket);
+
+    let a = Transport::builder([0u8; 512]).with_whatami(WhatAmI::Peer);
+
+    let write = |socket: &mut &RefCell<([u8; 512], usize, usize)>,
+                 bytes: &[u8]|
+     -> core::result::Result<(), i32> {
+        let mut borrow_mut = socket.borrow_mut();
+        borrow_mut.0[..bytes.len()].copy_from_slice(bytes);
+        borrow_mut.1 = 0;
+        borrow_mut.2 = bytes.len();
+        Ok(())
+    };
+
+    let mut h = a.connect(&socket_ref, |_, _| Ok(0usize), write);
+    h.poll().unwrap();
+
+    let whatami = {
+        let borrow = socket_ref.borrow();
+        <InitSyn as zenoh_proto::ZDecode>::z_decode(&mut &borrow.0[..borrow.2])
+            .unwrap()
+            .identifier
+            .whatami
+    };
+
+    assert_eq!(whatami, WhatAmI::Peer);
 }

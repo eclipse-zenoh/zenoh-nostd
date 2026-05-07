@@ -14,6 +14,7 @@ pub mod session {
     pub use super::io::transport::TransportLinkManager;
     pub use super::resources::Resources;
     pub use zenoh_proto::{Endpoint, Error};
+    pub use zenoh_proto::fields::WhatAmI;
 
     pub use super::api::{
         query::*,
