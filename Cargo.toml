@@ -152,6 +152,11 @@ required-features = ["alloc"]
 path = "examples/z_peer.rs"
 name = "z_peer"
 
+[[example]]
+path = "examples/z_mesh.rs"
+name = "z_mesh"
+required-features = ["alloc"]
+
 [profile.dev]
 opt-level = "s"
 lto = false
