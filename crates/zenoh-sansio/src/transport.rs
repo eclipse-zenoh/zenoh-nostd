@@ -49,6 +49,9 @@ impl<Buff> TransportBuilder<Buff> {
         self
     }
 
+    /// Set the node's role for this transport.
+    /// Defaults to `WhatAmI::Client`. Use `WhatAmI::Peer` for direct
+    /// peer-to-peer sessions without a router.
     pub fn with_whatami(mut self, whatami: WhatAmI) -> Self {
         self.whatami = whatami;
         self

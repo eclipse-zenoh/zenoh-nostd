@@ -462,3 +462,80 @@ fn transport_peer_simultaneous_connect_higher_zid_yields() {
     assert!(response.is_some(), "higher ZID should yield with InitAck");
     assert!(desc.is_none(), "description only set after OpenSyn/OpenAck");
 }
+
+#[cfg(feature = "std")]
+#[cfg(test)]
+mod proptests {
+    use core::time::Duration;
+    use proptest::prelude::*;
+    use zenoh_proto::{fields::*, msgs::*};
+
+    use crate::transport::establishment::State;
+
+    /// Property: ZID comparison for simultaneous-open is deterministic and
+    /// consistent. For any two ZIDs, one must win and the other must yield
+    /// (or equal ZIDs produce no response from either side).
+    proptest! {
+        #[test]
+        fn zid_comparison_deterministic(a: u128, b: u128) {
+            let zid_a = ZenohIdProto::try_from(&a.to_le_bytes()[..]).unwrap();
+            let zid_b = ZenohIdProto::try_from(&b.to_le_bytes()[..]).unwrap();
+
+            // Poll with A as mine, B as theirs
+            let mut state_a = State::WaitingInitAck {
+                mine_zid: zid_a,
+                mine_whatami: WhatAmI::Peer,
+                mine_batch_size: 512,
+                mine_resolution: Resolution::default(),
+                mine_lease: Duration::from_secs(30),
+            };
+            let init_b = InitSyn {
+                identifier: InitIdentifier { zid: zid_b, whatami: WhatAmI::Peer },
+                resolution: InitResolution { resolution: Resolution::default(), batch_size: BatchSize(512) },
+                ..Default::default()
+            };
+            let (resp_a, _) = state_a.poll((TransportMessage::InitSyn(init_b), &[] as &[u8]));
+
+            // Poll with B as mine, A as theirs
+            let mut state_b = State::WaitingInitAck {
+                mine_zid: zid_b,
+                mine_whatami: WhatAmI::Peer,
+                mine_batch_size: 512,
+                mine_resolution: Resolution::default(),
+                mine_lease: Duration::from_secs(30),
+            };
+            let init_a = InitSyn {
+                identifier: InitIdentifier { zid: zid_a, whatami: WhatAmI::Peer },
+                resolution: InitResolution { resolution: Resolution::default(), batch_size: BatchSize(512) },
+                ..Default::default()
+            };
+            let (resp_b, _) = state_b.poll((TransportMessage::InitSyn(init_a), &[] as &[u8]));
+
+            // One must yield (Some), the other must win (None), or both None for equal ZIDs
+            if zid_a == zid_b {
+                prop_assert!(resp_a.is_none() && resp_b.is_none(), "equal ZIDs: both should produce None");
+            } else {
+                prop_assert!(resp_a.is_some() || resp_b.is_some(), "one side must yield");
+                prop_assert!(resp_a.is_none() || resp_b.is_none(), "one side must win");
+                // Verify consistency: same side wins every time
+                if resp_a.is_some() {
+                    // A yielded → A's ZID was higher than B's
+                    let mut state_a2 = State::WaitingInitAck {
+                        mine_zid: zid_a,
+                        mine_whatami: WhatAmI::Peer,
+                        mine_batch_size: 512,
+                        mine_resolution: Resolution::default(),
+                        mine_lease: Duration::from_secs(30),
+                    };
+                    let init_b2 = InitSyn {
+                        identifier: InitIdentifier { zid: zid_b, whatami: WhatAmI::Peer },
+                        resolution: InitResolution { resolution: Resolution::default(), batch_size: BatchSize(512) },
+                        ..Default::default()
+                    };
+                    let (resp_a2, _) = state_a2.poll((TransportMessage::InitSyn(init_b2), &[] as &[u8]));
+                    prop_assert_eq!(resp_a.is_some(), resp_a2.is_some(), "comparison must be deterministic");
+                }
+            }
+        }
+    }
+}
