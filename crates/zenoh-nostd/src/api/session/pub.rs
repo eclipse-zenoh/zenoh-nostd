@@ -23,6 +23,7 @@ where
     timestamp: Option<Timestamp>,
     attachment: Option<Attachment<'a>>,
     reliability: Reliability,
+    has_matching: bool,
 }
 
 impl<'a, 'res, Config> Publisher<'a, 'res, Config>
@@ -57,6 +58,10 @@ where
     pub fn keyexpr(&self) -> &keyexpr {
         self.ke
     }
+
+    pub async fn matching_status(&self) -> bool {
+        self.has_matching
+    }
 }
 
 pub struct PublisherBuilder<'a, 'res, Config>
@@ -70,6 +75,7 @@ where
     timestamp: Option<Timestamp>,
     attachment: Option<Attachment<'a>>,
     reliability: Reliability,
+    matching: bool,
 }
 
 impl<'a, 'res, Config> PublisherBuilder<'a, 'res, Config>
@@ -84,7 +90,13 @@ where
             timestamp: None,
             attachment: None,
             reliability: Reliability::default(),
+            matching: false,
         }
+    }
+
+    pub fn matching_listener(mut self) -> Self {
+        self.matching = true;
+        self
     }
 
     pub fn keyexpr(mut self, ke: &'a keyexpr) -> Self {
@@ -113,7 +125,7 @@ where
     }
 
     pub async fn finish(self) -> core::result::Result<Publisher<'a, 'res, Config>, SessionError> {
-        // TODO: send interest msg
+        let has_matching = self.matching;
         Ok(Publisher {
             session: self.session,
             ke: self.ke,
@@ -121,6 +133,7 @@ where
             timestamp: self.timestamp,
             attachment: self.attachment,
             reliability: self.reliability,
+            has_matching,
         })
     }
 }

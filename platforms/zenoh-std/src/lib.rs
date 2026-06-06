@@ -7,6 +7,7 @@ use wtx::{
 };
 use zenoh_nostd::platform::*;
 
+mod bt;
 mod serial;
 mod tcp;
 mod tls;
@@ -19,6 +20,7 @@ pub struct StdLinkManager;
 #[derive(ZLinkInfo, ZLinkTx, ZLinkRx, ZLink)]
 #[zenoh(ZLink = (StdLinkTx<'link>, StdLinkRx<'link>))]
 pub enum StdLink {
+    Bt(bt::BtStream),
     Serial(serial::StdSerialLink),
     Tcp(tcp::StdTcpLink),
     Tls(tls::StdTlsLink),
@@ -28,6 +30,7 @@ pub enum StdLink {
 
 #[derive(ZLinkInfo, ZLinkTx)]
 pub enum StdLinkTx<'link> {
+    Bt(bt::BtStream),
     Serial(serial::SerialTx),
     Tcp(tcp::StdTcpLinkTx),
     Tls(tls::StdTlsLinkTx),
@@ -37,6 +40,7 @@ pub enum StdLinkTx<'link> {
 
 #[derive(ZLinkInfo, ZLinkRx)]
 pub enum StdLinkRx<'link> {
+    Bt(bt::BtStream),
     Serial(serial::SerialRx),
     Tcp(tcp::StdTcpLinkRx),
     Tls(tls::StdTlsLinkRx),

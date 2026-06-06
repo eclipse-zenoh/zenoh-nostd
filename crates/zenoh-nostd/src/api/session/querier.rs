@@ -14,6 +14,7 @@ where
     timeout: Option<Duration>,
     reliability: Reliability,
     query_target: QueryTarget,
+    has_matching: bool,
 }
 
 impl<'a, 'res, Config> Querier<'a, 'res, Config>
@@ -42,6 +43,10 @@ where
     pub fn keyexpr(&self) -> &keyexpr {
         self.ke
     }
+
+    pub async fn matching_status(&self) -> bool {
+        self.has_matching
+    }
 }
 
 pub struct QuerierBuilder<'a, 'res, Config>
@@ -56,6 +61,7 @@ where
     allowed_destination: Locality,
     reliability: Reliability,
     query_target: QueryTarget,
+    matching: bool,
 }
 
 impl<'a, 'res, Config> QuerierBuilder<'a, 'res, Config>
@@ -72,7 +78,13 @@ where
             allowed_destination: Locality::default(),
             reliability: Reliability::default(),
             query_target: QueryTarget::default(),
+            matching: false,
         }
+    }
+
+    pub fn matching_listener(mut self) -> Self {
+        self.matching = true;
+        self
     }
 
     pub fn allowed_destination(mut self, locality: Locality) -> Self {
@@ -106,7 +118,7 @@ where
     }
 
     pub async fn finish(self) -> core::result::Result<Querier<'a, 'res, Config>, SessionError> {
-        // TODO: send interest msg
+        let has_matching = self.matching;
         Ok(Querier {
             session: self.session,
             ke: self.ke,
@@ -115,6 +127,7 @@ where
             timeout: self.timeout,
             reliability: self.reliability,
             query_target: self.query_target,
+            has_matching,
         })
     }
 }

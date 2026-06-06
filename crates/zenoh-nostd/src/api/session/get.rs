@@ -40,11 +40,12 @@ pub struct GetResponses<'res, OwnedResponse = (), const CHANNEL: bool = false> {
     ke: &'static keyexpr,
     timedout: Instant,
     receiver: Option<DynamicReceiver<'res, OwnedResponse>>,
+    cancelled: core::cell::Cell<bool>,
 }
 
 impl<'res, OwnedResponse, const CHANNEL: bool> GetResponses<'res, OwnedResponse, CHANNEL> {
-    pub fn cancel(self) {
-        todo!()
+    pub fn cancel(&self) {
+        self.cancelled.set(true);
     }
 
     pub fn keyexpr(&self) -> &keyexpr {
@@ -54,10 +55,16 @@ impl<'res, OwnedResponse, const CHANNEL: bool> GetResponses<'res, OwnedResponse,
 
 impl<'res, OwnedResponse> GetResponses<'res, OwnedResponse, true> {
     pub fn try_recv(&self) -> Option<OwnedResponse> {
+        if self.cancelled.get() {
+            return None;
+        }
         self.receiver.as_ref().unwrap().try_receive().ok()
     }
 
     pub async fn recv(&self) -> Option<OwnedResponse> {
+        if self.cancelled.get() {
+            return None;
+        }
         match select(
             Timer::at(self.timedout),
             self.receiver.as_ref().unwrap().receive(),
@@ -281,6 +288,7 @@ where
             ke: self.ke,
             timedout,
             receiver: self.receiver,
+            cancelled: core::cell::Cell::new(false),
         })
     }
 }
