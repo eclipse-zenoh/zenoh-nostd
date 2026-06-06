@@ -23,6 +23,7 @@ pub struct TransportRx<Buff> {
     batch_size: usize,
 
     sn: u32,
+    #[allow(dead_code)]
     resolution: Resolution,
     lease: Duration,
 
@@ -41,7 +42,8 @@ impl<Buff> TransportRx<Buff> {
 
         batch_size: usize,
         sn: u32,
-        resolution: Resolution,
+#[allow(dead_code)]
+    resolution: Resolution,
         lease: Duration,
     ) -> Self {
         Self {
@@ -160,11 +162,10 @@ impl<Buff> TransportRx<Buff> {
         let mut reader = &self.buff.as_ref()[..size_after];
         let mut last_frame = None;
         let sn = &mut self.sn;
-        let resolution = self.resolution;
         let ignore = self.ignore_invalid_sn;
 
         core::iter::from_fn(move || {
-            Self::decode(&mut reader, &mut last_frame, sn, resolution, ignore)
+            Self::decode(&mut reader, &mut last_frame, sn, ignore)
         })
         .filter_map(|m| match m.0 {
             Message::Transport(msg) => Some((msg, m.1)),
@@ -211,11 +212,10 @@ impl<Buff> TransportRx<Buff> {
         matches!(self.state, State::Closed)
     }
 
-    pub(crate) fn decode<'a>(
+    fn decode<'a>(
         reader: &mut &'a [u8],
         last_frame: &mut Option<FrameHeader>,
         sn: &mut u32,
-        resolution: Resolution,
         ignore: bool,
     ) -> Option<(Message<'a>, &'a [u8])>
     where
@@ -283,27 +283,32 @@ impl<Buff> TransportRx<Buff> {
             FrameHeader::ID => {
                 let header = decode!(FrameHeader);
 
+                let old_expected = *sn;
                 *sn = sn.wrapping_add(1);
 
                 if !ignore {
-                    // Check for missed messages regarding resolution
-                    let _ = resolution;
-
-                    if header.sn < *sn - 1 {
-                        zenoh_proto::error!(
-                            "Inconsistent `SN` value {}, expected higher than {}",
-                            header.sn,
-                            *sn - 1
-                        );
-                        return None;
-                    } else if header.sn != *sn - 1 {
-                        zenoh_proto::debug!("Transport missed {} messages", header.sn - *sn + 1);
+                    // Wrapping-aware SN comparison using signed difference.
+                    // diff = 0: exact match (no missed messages)
+                    // diff in 1..2^31: received SN is ahead → missed `diff` messages
+                    // diff in 2^31..2^32-1: received SN is behind → inconsistent
+                    let diff = header.sn.wrapping_sub(old_expected);
+                    if diff != 0 {
+                        if diff < (1u32 << 31) {
+                            zenoh_proto::debug!("Transport missed {} messages", diff);
+                        } else {
+                            zenoh_proto::error!(
+                                "Inconsistent `SN` value {}, expected {}",
+                                header.sn,
+                                old_expected
+                            );
+                            return None;
+                        }
                     }
                 }
 
                 last_frame.replace(header);
 
-                return Self::decode(reader, last_frame, sn, resolution, ignore);
+                return Self::decode(reader, last_frame, sn, ignore);
             }
             InitAck::ID if ack => decode!(@Transport InitAck),
             InitSyn::ID => decode!(@Transport InitSyn),
@@ -550,11 +555,10 @@ where
         let mut reader = &self.buff.as_ref()[..size_after];
         let mut last_frame = None;
         let sn = &mut self.sn;
-        let resolution = self.resolution;
         let ignore = self.ignore_invalid_sn;
 
         core::iter::from_fn(move || {
-            Self::decode(&mut reader, &mut last_frame, sn, resolution, ignore)
+            Self::decode(&mut reader, &mut last_frame, sn, ignore)
         })
         .filter_map(|m| match m.0 {
             Message::Network(msg) => Some((msg, m.1)),
