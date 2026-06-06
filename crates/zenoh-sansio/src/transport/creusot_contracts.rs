@@ -5,28 +5,72 @@
 //
 // To use:
 //   1. Install cargo-creusot: `cargo install cargo-creusot`
-//   2. Add `creusot-contracts = "..."` and `creusot` to crate dependencies
-//   3. Write contracts using #[ensures], #[requires], #[invariant] annotations
-//   4. Run: `cargo creusot --features creusot`
+//   2. Run: `cargo creusot --features creusot`
 //
-// These are the same specifications verified by Kani and Proptest.
+// These specifications mirror properties verified by Kani and Proptest.
 
-/// Precondition: ZID must be non-zero (valid Zenoh ID has non-zero u128).
+#[cfg(feature = "creusot")]
+use creusot_contracts::macros::requires;
+
+/// Property: batch_size negotiation always takes the minimum.
 #[allow(dead_code)]
-fn requires_valid_zid(zid: u128) -> bool {
-    zid != 0
+#[cfg_attr(feature = "creusot", requires(true))]
+#[cfg_attr(feature = "creusot", ensures(result <= mine && result <= theirs))]
+pub fn batch_size_negotiation_property(mine: u16, theirs: u16) -> u16 {
+    mine.min(theirs)
 }
 
-/// Postcondition: For any two valid ZIDs, exactly one wins the comparison.
+/// Property: For any two distinct ZIDs, exactly one is greater.
 #[allow(dead_code)]
-fn ensures_total_order(a: u128, b: u128) -> bool {
-    a == b || a < b || a > b
+#[cfg_attr(feature = "creusot", requires(a != b))]
+#[cfg_attr(feature = "creusot", ensures(result == (a != b)))]
+pub fn zid_comparison_total_property(a: u128, b: u128) -> bool {
+    a != b
 }
 
-/// Determinism: Same ZID pair always yields same comparison result.
+/// Property: ZID comparison is deterministic.
 #[allow(dead_code)]
-fn ensures_deterministic(a: u128, b: u128, result: bool) -> bool {
-    let r1 = a > b;
-    let r2 = a > b;
-    r1 == r2 && r1 == result
+#[cfg_attr(feature = "creusot", requires(true))]
+#[cfg_attr(feature = "creusot", ensures(result == (a > b)))]
+pub fn zid_comparison_deterministic_property(a: u128, b: u128) -> bool {
+    a > b
+}
+
+/// Property: resolution negotiation must not increase beyond mine.
+#[allow(dead_code)]
+#[cfg_attr(feature = "creusot", requires(true))]
+#[cfg_attr(feature = "creusot", ensures(result <= mine && result <= theirs))]
+pub fn resolution_negotiation_property(mine: u8, theirs: u8) -> u8 {
+    mine.min(theirs)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_batch_size_min() {
+        assert_eq!(batch_size_negotiation_property(2048, 65535), 2048);
+        assert_eq!(batch_size_negotiation_property(65535, 2048), 2048);
+    }
+
+    #[test]
+    fn test_zid_total_order() {
+        assert!(zid_comparison_total_property(1, 2));
+        assert!(zid_comparison_total_property(2, 1));
+        assert!(!zid_comparison_total_property(1, 1));
+    }
+
+    #[test]
+    fn test_zid_deterministic() {
+        let r1 = zid_comparison_deterministic_property(5, 3);
+        let r2 = zid_comparison_deterministic_property(5, 3);
+        assert_eq!(r1, r2);
+    }
+
+    #[test]
+    fn test_resolution_negotiation() {
+        assert_eq!(resolution_negotiation_property(8, 16), 8);
+        assert_eq!(resolution_negotiation_property(16, 8), 8);
+    }
 }

@@ -9,6 +9,9 @@ pub(crate) mod establishment;
 #[cfg(kani)]
 mod kani_proofs;
 
+#[cfg(feature = "creusot")]
+mod creusot_contracts;
+
 mod handshake;
 mod rx;
 mod traits;

@@ -22,12 +22,13 @@ defmt = ["zenoh-proto/defmt"]
 
 kani = []
 proptest = []
-creusot = []
+creusot = ["dep:creusot-contracts"]
 verus = []
 
 [dependencies]
 zenoh-proto.workspace = true
 sha3.workspace = true
+creusot-contracts = { version = "0.8", optional = true }
 
 [dev-dependencies]
 proptest = "1.6"
