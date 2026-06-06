@@ -583,7 +583,7 @@ impl Encoding<'_> {
         }
     }
 
-    pub fn from_str(s: &str) -> Encoding<'_> {
+    pub fn parse_str(s: &str) -> Encoding<'_> {
         for (i, name) in ENCODING_NAMES.iter().enumerate() {
             if *name == s {
                 return Encoding {
@@ -609,7 +609,7 @@ impl Encoding<'_> {
     }
 }
 
-static ENCODING_NAMES: [&'static str; 53] = [
+static ENCODING_NAMES: [&str; 53] = [
     "zenoh/bytes",
     "zenoh/string",
     "zenoh/serialized",
@@ -828,19 +828,19 @@ mod encoding_tests {
 
     #[test]
     fn encoding_from_str_to_string_roundtrip() {
-        let e = Encoding::from_str("text/plain");
+        let e = Encoding::parse_str("text/plain");
         assert_eq!(e.to_string(), "text/plain");
     }
 
     #[test]
     fn encoding_from_str_to_string_roundtrip_custom() {
-        let e = Encoding::from_str("custom/format");
+        let e = Encoding::parse_str("custom/format");
         assert_eq!(e.to_string(), "custom/format");
     }
 
     #[test]
     fn encoding_id_lookup() {
-        let e = Encoding::from_str("zenoh/string");
+        let e = Encoding::parse_str("zenoh/string");
         assert_eq!(e.id, 1);
         assert!(e.schema.is_none());
     }

@@ -6,20 +6,11 @@ use crate::{
     config::ZSessionConfig,
 };
 
+#[derive(Default)]
 pub struct AdvancedSubscriberOptions {
     pub max_samples: usize,
     pub max_age_ms: u64,
     pub detect_late_publishers: bool,
-}
-
-impl Default for AdvancedSubscriberOptions {
-    fn default() -> Self {
-        Self {
-            max_samples: 0,
-            max_age_ms: 0,
-            detect_late_publishers: false,
-        }
-    }
 }
 
 pub struct AdvancedSubscriber<

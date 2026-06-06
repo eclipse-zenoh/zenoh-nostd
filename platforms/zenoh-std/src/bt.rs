@@ -6,8 +6,6 @@
 // 3. Add "bt" protocol to StdLinkManager::connect/listen
 //
 // Usage: connect("bt/xx:xx:xx:xx:xx:xx")
-use core::future::Future;
-
 use zenoh_nostd::platform::*;
 
 pub struct BtStream;
@@ -18,17 +16,17 @@ impl ZLinkInfo for BtStream {
 }
 
 impl ZLinkTx for BtStream {
-    fn write_all(&mut self, _buffer: &[u8]) -> impl Future<Output = Result<(), LinkError>> {
-        async { Err(LinkError::LinkTxFailed) }
+    async fn write_all(&mut self, _buffer: &[u8]) -> Result<(), LinkError> {
+        Err(LinkError::LinkTxFailed)
     }
 }
 
 impl ZLinkRx for BtStream {
-    fn read(&mut self, _buffer: &mut [u8]) -> impl Future<Output = Result<usize, LinkError>> {
-        async { Err(LinkError::LinkRxFailed) }
+    async fn read(&mut self, _buffer: &mut [u8]) -> Result<usize, LinkError> {
+        Err(LinkError::LinkRxFailed)
     }
-    fn read_exact(&mut self, _buffer: &mut [u8]) -> impl Future<Output = Result<(), LinkError>> {
-        async { Err(LinkError::LinkRxFailed) }
+    async fn read_exact(&mut self, _buffer: &mut [u8]) -> Result<(), LinkError> {
+        Err(LinkError::LinkRxFailed)
     }
 }
 

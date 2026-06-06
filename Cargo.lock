@@ -432,6 +432,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "creusot-contracts"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11db9331abd9b2aee1c42e5739a669f9cce791e1704f24c9decc7f563fb3f4b4"
+dependencies = [
+ "creusot-contracts-proc",
+ "num-rational",
+]
+
+[[package]]
+name = "creusot-contracts-proc"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d547dbd8c3f26857d966cd487462afae75c890e46072a255268411191e107a9b"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.114",
+]
+
+[[package]]
 name = "criterion"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2264,6 +2285,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "num-bigint"
+version = "0.4.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a5e44f723f1133c9deac646763579fdb3ac745e418f2a7af9cd0c431da1f20b9"
+dependencies = [
+ "num-integer",
+ "num-traits",
+]
+
+[[package]]
 name = "num-derive"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2272,6 +2303,26 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.114",
+]
+
+[[package]]
+name = "num-integer"
+version = "0.1.46"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7969661fd2958a5cb096e56c8e1ad0444ac2bbcd0061bd28660485a44879858f"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
+name = "num-rational"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f83d14da390562dca69fc84082e73e548e1ad308d24accdedd2720017cb37824"
+dependencies = [
+ "num-bigint",
+ "num-integer",
+ "num-traits",
 ]
 
 [[package]]
@@ -4213,6 +4264,7 @@ dependencies = [
 name = "zenoh-sansio"
 version = "0.1.0"
 dependencies = [
+ "creusot-contracts",
  "proptest",
  "sha3",
  "zenoh-proto",
@@ -4228,6 +4280,7 @@ dependencies = [
  "futures-util",
  "serialport",
  "socket2",
+ "tokio",
  "wtx",
  "zenoh-nostd",
 ]

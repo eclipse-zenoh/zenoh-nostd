@@ -26,6 +26,7 @@ pub struct Sample<'a> {
 }
 
 impl<'a> Sample<'a> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         ke: &'a keyexpr,
         payload: &'a [u8],
@@ -130,7 +131,7 @@ impl<const MAX_KEYEXPR: usize, const MAX_PAYLOAD: usize, const MAX_ATTACHMENT: u
     }
 
     pub fn attachment(&self) -> Option<&[u8]> {
-        self.attachment.as_ref().map(|v| v.as_slice())
+        self.attachment.as_deref()
     }
 
     pub fn qos(&self) -> QoS {
@@ -180,11 +181,11 @@ impl<const MAX_KEYEXPR: usize, const MAX_PAYLOAD: usize, const MAX_ATTACHMENT: u
                 }
             }),
             timestamp: value.timestamp,
-            attachment: value.attachment.map(|a| {
+            attachment: value.attachment.and_then(|a| {
                 let mut v = heapless::Vec::new();
                 v.extend_from_slice(a).ok()?;
                 Some(v)
-            }).flatten(),
+            }),
             qos: value.qos,
             reliability: value.reliability,
         })
@@ -237,7 +238,7 @@ impl AllocSample {
     }
 
     pub fn attachment(&self) -> Option<&[u8]> {
-        self.attachment.as_ref().map(|v| v.as_slice())
+        self.attachment.as_deref()
     }
 
     pub fn qos(&self) -> QoS {
@@ -282,7 +283,7 @@ impl TryFrom<&Sample<'_>> for AllocSample {
             timestamp: value.timestamp,
             attachment: value
                 .attachment
-                .map(|a| alloc::vec::Vec::from(a)),
+                .map(alloc::vec::Vec::from),
             qos: value.qos,
             reliability: value.reliability,
         })
