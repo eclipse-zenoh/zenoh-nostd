@@ -4,7 +4,7 @@ use crate::{
     api::{
         callbacks::{ZCallbacks, ZDynCallback},
         query::QueryableQuery,
-        session::Session,
+        session::{KeMapping, Session},
     },
     config::ZSessionConfig,
     session::{GetResponse, Sample, SampleKind},
@@ -25,8 +25,12 @@ where
                         qos,
                         ..
                     }) => {
-                        let ke = wire_expr.suffix;
-                        let ke = keyexpr::new(ke)?;
+                        let ke_buf = state.resolve_keyexpr(&wire_expr).ok_or(SessionError::TransportClosed)?;
+                        let ke_str = ke_buf.as_str();
+                        let ke = match keyexpr::new(ke_str) {
+                            Ok(k) => k,
+                            Err(_) => return Ok(()),
+                        };
                         let (kind, payload_bytes, encoding, attachment) = match &payload {
                             PushBody::Put(Put {
                                 payload,
@@ -50,8 +54,11 @@ where
                         qos,
                         ..
                     }) => {
-                        let ke = wire_expr.suffix;
-                        let ke = keyexpr::new(ke)?;
+                        let ke_buf = state.resolve_keyexpr(&wire_expr).ok_or(SessionError::TransportClosed)?;
+                        let ke = match keyexpr::new(ke_buf.as_str()) {
+                            Ok(k) => k,
+                            Err(_) => return Ok(()),
+                        };
                         let response = match payload {
                             ResponseBody::Reply(Reply {
                                 payload:
@@ -102,8 +109,11 @@ where
                         qos,
                         ..
                     }) => {
-                        let ke = wire_expr.suffix;
-                        let ke = keyexpr::new(ke)?;
+                        let ke_buf = state.resolve_keyexpr(&wire_expr).ok_or(SessionError::TransportClosed)?;
+                        let ke = match keyexpr::new(ke_buf.as_str()) {
+                            Ok(k) => k,
+                            Err(_) => return Ok(()),
+                        };
                         let query = QueryableQuery::new(
                             self,
                             id,
@@ -125,6 +135,16 @@ where
                         state.queryable_callbacks.set_counter(id, count)?;
                         for cb in state.queryable_callbacks.intersects(ke) {
                             cb.call(&query).await;
+                        }
+                    }
+                    NetworkBody::Declare(Declare { body, .. }) => {
+                        if let DeclareBody::DeclareKeyExpr(ke) = body {
+                            let suffix = ke.wire_expr.suffix;
+                            if !suffix.is_empty() {
+                                let mut s = heapless::String::<64>::new();
+                                let _ = s.push_str(suffix);
+                                let _ = state.ke_mappings.push(KeMapping { scope: ke.id, keyexpr: s });
+                            }
                         }
                     }
                     _ => {}

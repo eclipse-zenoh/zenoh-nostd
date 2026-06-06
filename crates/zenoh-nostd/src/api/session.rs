@@ -7,7 +7,7 @@ use embassy_sync::{
 use zenoh_proto::{
     Endpoint, SessionError, TransportLinkError,
     exts::QoS,
-    fields::{Reliability, ZenohIdProto},
+    fields::{Reliability, WireExpr, ZenohIdProto},
     msgs::{Declare, DeclareBody, NetworkBody, NetworkMessage, UndeclareQueryable},
 };
 use zenoh_sansio::ZTransportTx;
@@ -42,6 +42,12 @@ where
     queryable_callbacks: Config::QueryableCallbacks<'res>,
     liveliness_callbacks: Config::LivelinessCallbacks<'res>,
     admin_space: Option<u32>,
+    pub(crate) ke_mappings: heapless::Vec<KeMapping, 16>,
+}
+
+pub(crate) struct KeMapping {
+    pub scope: u16,
+    pub keyexpr: heapless::String<64>,
 }
 
 impl<'res, Config> SessionState<'res, Config>
@@ -56,8 +62,27 @@ where
             queryable_callbacks: Config::QueryableCallbacks::empty(),
             liveliness_callbacks: Config::LivelinessCallbacks::empty(),
             admin_space: None,
+            ke_mappings: heapless::Vec::new(),
         }
     }
+
+pub(crate) fn resolve_keyexpr<'a>(&self, wire_expr: &WireExpr<'a>) -> Option<heapless::String<64>> {
+    if !wire_expr.suffix.is_empty() {
+        let mut s = heapless::String::new();
+        s.push_str(wire_expr.suffix).ok()?;
+        return Some(s);
+    }
+    // Mapped keyexpr: look up scope ID
+    let scope = wire_expr.scope;
+    for m in &self.ke_mappings {
+        if m.scope == scope {
+            let mut s = heapless::String::new();
+            s.push_str(&m.keyexpr).ok()?;
+            return Some(s);
+        }
+    }
+    None
+}
 
     pub(crate) fn next(&mut self) -> u32 {
         let next = self.next;

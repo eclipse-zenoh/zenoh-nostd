@@ -107,11 +107,15 @@ impl State {
                         syn.identifier.zid
                     );
 
+                    // Negotiate: use the smaller (more restrictive) of the two batch sizes
+                    let batch_size = mine_batch_size.min(syn.resolution.batch_size.0);
+                    let resolution = mine_resolution;
+
                     *self = Self::WaitingOpenSyn {
                         mine_zid,
                         mine_whatami,
-                        mine_batch_size,
-                        mine_resolution,
+                        mine_batch_size: batch_size,
+                        mine_resolution: resolution,
                         mine_lease,
                     };
 
@@ -122,8 +126,8 @@ impl State {
                                 whatami: mine_whatami,
                             },
                             resolution: InitResolution {
-                                resolution: mine_resolution,
-                                batch_size: BatchSize(mine_batch_size),
+                                resolution,
+                                batch_size: BatchSize(batch_size),
                             },
                             cookie: buff, // TODO: cypher ChaCha20
                             version: zenoh_proto::VERSION,
@@ -155,11 +159,14 @@ impl State {
                             syn.identifier.zid
                         );
 
+                        let batch_size = mine_batch_size.min(syn.resolution.batch_size.0);
+                        let resolution = mine_resolution;
+
                         *self = Self::WaitingOpenSyn {
                             mine_zid,
                             mine_whatami,
-                            mine_batch_size,
-                            mine_resolution,
+                            mine_batch_size: batch_size,
+                            mine_resolution: resolution,
                             mine_lease,
                         };
 
@@ -170,8 +177,8 @@ impl State {
                                     whatami: mine_whatami,
                                 },
                                 resolution: InitResolution {
-                                    resolution: mine_resolution,
-                                    batch_size: BatchSize(mine_batch_size),
+                                    resolution,
+                                    batch_size: BatchSize(batch_size),
                                 },
                                 cookie: buff, // TODO: cypher ChaCha20
                                 version: zenoh_proto::VERSION,
