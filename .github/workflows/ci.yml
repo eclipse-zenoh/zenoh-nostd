@@ -6,22 +6,114 @@ on:
   pull_request:
     branches: ["**"]
 
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-    name: Build
-    runs-on: ubuntu-runner-set
+  test:
+    name: Test
+    runs-on: ubuntu-latest
     steps:
-      - name: Clone this repository
+      - name: Clone repository
         uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
 
       - name: Setup rust-cache
         uses: Swatinem/rust-cache@v2
-        with:
-          cache-bin: false
 
-      - name: Check zenoh-notstd builds
-        run: cargo check
+      - name: Run tests
+        run: cargo test -p zenoh-proto -p zenoh-sansio --features proptest
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v4
+
+      - name: Install nightly Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: nightly
+          override: true
+          components: clippy
+
+      - name: Setup rust-cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run clippy
+        run: cargo clippy -p zenoh-proto -p zenoh-sansio -p zenoh-nostd --features alloc,proptest,verus,creusot -- -D warnings
+
+  kani:
+    name: Kani
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v4
+
+      - name: Install nightly Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: nightly
+          override: true
+
+      - name: Setup rust-cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run Kani
+        uses: model-checking/kani-github-action@v1
+        with:
+          args: cargo kani -p zenoh-sansio
+
+  cross-thumbv7m:
+    name: Cross-compile thumbv7m
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+          target: thumbv7m-none-eabi
+
+      - name: Setup rust-cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check thumbv7m release build
+        run: cargo check --manifest-path platforms/zenoh-stm32/Cargo.toml --release
+
+  fmt:
+    name: Formatting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+          components: rustfmt
+
+      - name: Setup rust-cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --all --check
 
   # NOTE: In GitHub repository settings, the "Require status checks to pass
   # before merging" branch protection rule ensures that commits are only merged
@@ -30,8 +122,8 @@ jobs:
   # job to signal whether all CI checks have passed.
   ci:
     name: CI status checks
-    runs-on: ubuntu-runner-set
-    needs: [build]
+    runs-on: ubuntu-latest
+    needs: [test, clippy, kani, cross-thumbv7m, fmt]
     if: always()
     steps:
       - name: Check whether all jobs pass
