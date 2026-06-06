@@ -5,6 +5,9 @@ extern crate kani;
 
 mod transport;
 
+#[cfg(feature = "verus")]
+mod verus_proofs;
+
 pub use transport::*;
 
 #[cfg(test)]

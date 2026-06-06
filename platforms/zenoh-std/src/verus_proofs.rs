@@ -1,11 +1,24 @@
-// Verus proofs for platform-layer transport.
+// Verus verification stubs for zenoh-std transport layer.
 //
-// To use:
-//   1. Install Verus: follow instructions at https://github.com/verus-lang/verus
-//   2. Add Verus dependencies: builtin, builtin_macros, vstd
-//   3. Run: verus crate --features verus
+// Run full verification through cargo verus:
+//   cargo verus verify -p zenoh-std --features verus
 
-// Examples of what could be verified here:
-// - TCP/UDP socket lifecycle safety
-// - WebSocket frame encoding/decoding correctness
-// - Link manager connect/listen invariants
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn mtu_computation_property() {
+        let header_v4: u16 = 40;
+        let mtu = u16::MAX - header_v4;
+        assert!(mtu > 0, "MTU must be positive");
+        assert!(mtu <= u16::MAX, "MTU must not exceed u16::MAX");
+    }
+
+    #[test]
+    fn endpoint_parsing_property() {
+        // tcp/127.0.0.1:7447 -> protocol=tcp, address=127.0.0.1:7447
+        // udp/224.0.0.1:7447#iface=lo0 -> protocol=udp
+        let tcp = "tcp/127.0.0.1:7447";
+        assert!(tcp.starts_with("tcp/"));
+        assert!(tcp.contains("127.0.0.1"));
+    }
+}

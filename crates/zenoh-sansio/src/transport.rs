@@ -6,6 +6,9 @@ use zenoh_proto::{fields::*, msgs::*};
 
 pub(crate) mod establishment;
 
+#[cfg(kani)]
+mod kani_proofs;
+
 mod handshake;
 mod rx;
 mod traits;

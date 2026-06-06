@@ -157,6 +157,14 @@ path = "examples/z_mesh.rs"
 name = "z_mesh"
 required-features = ["alloc"]
 
+[[example]]
+path = "examples/z_delete.rs"
+name = "z_delete"
+
+[[example]]
+path = "examples/z_liveliness.rs"
+name = "z_liveliness"
+
 [profile.dev]
 opt-level = "s"
 lto = false

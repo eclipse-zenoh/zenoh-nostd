@@ -1,76 +1,104 @@
-#[cfg(kani)]
-#[kani::proof]
-#[kani::unwind(4)]
-fn simultaneous_open_proof() {
-    use core::time::Duration;
-    use zenoh_proto::{
-        fields::*,
-        msgs::*,
-    };
+use core::time::Duration;
+use zenoh_proto::{exts::Patch, fields::*, msgs::*};
 
-    use crate::transport::establishment::State;
+use crate::transport::establishment::State;
 
-    // Use concrete ZIDs: 16-byte fixed arrays always succeed
-    if let (Ok(zid), Ok(lower_zid), Ok(higher_zid)) = (
-        ZenohIdProto::try_from(&[0u8; 16][..]),
-        ZenohIdProto::try_from(&[1u8; 16][..]),
-        ZenohIdProto::try_from(&[2u8; 16][..]),
-    ) {
+fn any_zid() -> ZenohIdProto {
+    let bytes: [u8; 16] = kani::any();
+    kani::assume(bytes != [0u8; 16]);
+    ZenohIdProto::try_from(&bytes[..]).unwrap()
+}
 
-    // Scenario 1: lower ZID receives InitSyn from higher ZID → wins, returns (None, None)
-    let mut state_lower = State::WaitingInitAck {
-        mine_zid: lower_zid,
-        mine_whatami: WhatAmI::Peer,
-        mine_batch_size: 512,
-        mine_resolution: Resolution::default(),
-        mine_lease: Duration::from_secs(30),
-    };
-
-    let init_higher = InitSyn {
+fn make_peer_init_syn(zid: ZenohIdProto) -> InitSyn<'static> {
+    InitSyn {
+        version: zenoh_proto::VERSION,
         identifier: InitIdentifier {
-            zid: higher_zid,
+            zid,
             whatami: WhatAmI::Peer,
         },
         resolution: InitResolution {
             resolution: Resolution::default(),
             batch_size: BatchSize(512),
         },
-        ..Default::default()
-    };
-
-    let (resp_lower_wins, _) = state_lower.poll((
-        TransportMessage::InitSyn(init_higher),
-        &[] as &[u8],
-    ));
-    // Lower ZID wins → returns None (no InitAck)
-    assert!(resp_lower_wins.is_none());
-
-    // Scenario 2: higher ZID receives InitSyn from lower ZID → yields InitAck
-    let mut state_higher = State::WaitingInitAck {
-        mine_zid: higher_zid,
-        mine_whatami: WhatAmI::Peer,
-        mine_batch_size: 512,
-        mine_resolution: Resolution::default(),
-        mine_lease: Duration::from_secs(30),
-    };
-
-    let init_lower = InitSyn {
-        identifier: InitIdentifier {
-            zid: lower_zid,
-            whatami: WhatAmI::Peer,
-        },
-        resolution: InitResolution {
-            resolution: Resolution::default(),
-            batch_size: BatchSize(512),
-        },
-        ..Default::default()
-    };
-
-    let (resp_higher_yields, _) = state_higher.poll((
-        TransportMessage::InitSyn(init_lower),
-        &[] as &[u8],
-    ));
-    // Higher ZID yields → returns Some(InitAck)
-    assert!(resp_higher_yields.is_some());
+        qos: None,
+        qos_link: None,
+        auth: None,
+        mlink: None,
+        lowlatency: None,
+        compression: None,
+        patch: Patch::none(),
     }
+}
+
+fn make_waiting_init_ack_state(zid: ZenohIdProto) -> State {
+    State::WaitingInitAck {
+        mine_zid: zid,
+        mine_whatami: WhatAmI::Peer,
+        mine_batch_size: 512,
+        mine_resolution: Resolution::default(),
+        mine_lease: Duration::from_secs(30),
+    }
+}
+
+fn make_waiting_init_syn_state(zid: ZenohIdProto) -> State {
+    State::WaitingInitSyn {
+        mine_zid: zid,
+        mine_whatami: WhatAmI::Peer,
+        mine_batch_size: 512,
+        mine_resolution: Resolution::default(),
+        mine_lease: Duration::from_secs(30),
+    }
+}
+
+/// Proof: WaitingInitSyn always responds with Some(InitAck) and transitions to WaitingOpenSyn
+#[kani::proof]
+#[kani::unwind(32)]
+fn init_syn_to_init_ack_proof() {
+    let mine = any_zid();
+    let other = any_zid();
+
+    let mut state = make_waiting_init_syn_state(mine);
+    let init_syn = make_peer_init_syn(other);
+
+    let (response, _) = state.poll((TransportMessage::InitSyn(init_syn), &[] as &[u8]));
+    assert!(response.is_some());
+    assert!(matches!(state, State::WaitingOpenSyn { .. }));
+}
+
+/// Proof: State transitions are deterministic — same input → same output
+#[kani::proof]
+#[kani::unwind(32)]
+fn state_transition_determinism_proof() {
+    let mine = any_zid();
+    let other = any_zid();
+
+    let mut state_a = make_waiting_init_ack_state(mine);
+    let mut state_b = make_waiting_init_ack_state(mine);
+
+    let init_a = make_peer_init_syn(other);
+    let init_b = make_peer_init_syn(other);
+
+    let (resp_a, _) = state_a.poll((TransportMessage::InitSyn(init_a), &[] as &[u8]));
+    let (resp_b, _) = state_b.poll((TransportMessage::InitSyn(init_b), &[] as &[u8]));
+
+    assert_eq!(resp_a, resp_b);
+    assert_eq!(state_a, state_b);
+}
+
+/// Proof: For ANY two distinct peer ZIDs, exactly one wins and one yields
+#[kani::proof]
+#[kani::unwind(32)]
+fn zid_comparison_exhaustive_proof() {
+    let mine = any_zid();
+    let other = any_zid();
+    kani::assume(mine != other);
+
+    let mut state = make_waiting_init_ack_state(mine);
+    let init_syn = make_peer_init_syn(other);
+
+    let (response, _) = state.poll((TransportMessage::InitSyn(init_syn), &[] as &[u8]));
+
+    assert!(
+        (mine > other && response.is_some()) || (mine < other && response.is_none()),
+    );
 }

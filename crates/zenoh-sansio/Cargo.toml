@@ -42,5 +42,8 @@ name = "z_drain"
 path = "examples/z_drain.rs"
 required-features = ["std"]
 
+[package.metadata.verus]
+verify = true
+
 [lints.rust]
 unexpected_cfgs = { level = "allow", check-cfg = ['cfg(kani)'] }

@@ -1,5 +1,5 @@
-use crate::{Transport, ZTransportRx, ZTransportTx, transport::{TransportRx, TransportTx, establishment::State}};
 use core::{cell::RefCell, time::Duration};
+use crate::{Transport, ZTransportRx, ZTransportTx, transport::{TransportTx, establishment::State}};
 use zenoh_proto::{exts::*, fields::*, keyexpr, msgs::*};
 
 fn zid(val: u128) -> ZenohIdProto {
@@ -658,11 +658,22 @@ fn transport_qos() {
 #[cfg(feature = "proptest")]
 #[cfg(test)]
 mod proptests {
+    extern crate std;
+    use std::vec::Vec;
     use core::time::Duration;
     use proptest::prelude::*;
-    use zenoh_proto::{fields::*, msgs::*};
+    use zenoh_proto::{
+        ZDecode, ZEncode,
+        exts::*,
+        fields::*,
+        keyexpr,
+        msgs::*,
+    };
 
-    use crate::transport::establishment::State;
+    use crate::{
+        Transport, ZTransportRx, ZTransportTx,
+        transport::establishment::State,
+    };
 
     /// Property: ZID comparison for simultaneous-open is deterministic and
     /// consistent. For any two ZIDs, one must win and the other must yield
@@ -728,6 +739,274 @@ mod proptests {
                     prop_assert_eq!(resp_a.is_some(), resp_a2.is_some(), "comparison must be deterministic");
                 }
             }
+        }
+    }
+
+    /// Property: any payload can be encoded as a Push/Put or Push/Del,
+    /// decoded, and the payload is preserved identically.
+    proptest! {
+        #[test]
+        fn roundtrip_pushbody(payload: Vec<u8>) {
+            let ke = keyexpr::from_str_unchecked("test/ke");
+            let mut transport = Transport::builder([0u8; 1024]).codec();
+
+            // Put variant
+            let put = Put { payload: &payload, ..Default::default() };
+            let push = Push {
+                wire_expr: WireExpr::from(ke),
+                payload: PushBody::Put(put),
+                ..Default::default()
+            };
+            let msg = NetworkMessage {
+                reliability: Reliability::Reliable,
+                qos: QoS::default(),
+                body: NetworkBody::Push(push),
+            };
+
+            transport.tx.encode_ref(core::iter::once(msg.as_ref()));
+            transport.rx.decode_prefixed(transport.tx.flush_prefixed().unwrap()).unwrap();
+
+            let mut flush = transport.rx.flush();
+            let decoded = flush.next().unwrap().0;
+            prop_assert_eq!(flush.count(), 0);
+
+            match decoded.body {
+                NetworkBody::Push(Push { payload: PushBody::Put(Put { payload: p, .. }), .. }) => {
+                    prop_assert_eq!(p, &payload[..]);
+                }
+                _ => panic!("expected PushBody::Put"),
+            }
+
+            // Del variant (no payload)
+            let mut transport2 = Transport::builder([0u8; 256]).codec();
+            let del_push = Push {
+                wire_expr: WireExpr::from(ke),
+                payload: PushBody::Del(Del::default()),
+                ..Default::default()
+            };
+            let msg2 = NetworkMessage {
+                reliability: Reliability::Reliable,
+                qos: QoS::default(),
+                body: NetworkBody::Push(del_push),
+            };
+
+            transport2.tx.encode_ref(core::iter::once(msg2.as_ref()));
+            transport2.rx.decode_prefixed(transport2.tx.flush_prefixed().unwrap()).unwrap();
+
+            let mut flush2 = transport2.rx.flush();
+            let decoded2 = flush2.next().unwrap().0;
+            prop_assert_eq!(flush2.count(), 0);
+
+            match decoded2.body {
+                NetworkBody::Push(Push { payload: PushBody::Del(_), .. }) => {}
+                _ => panic!("expected PushBody::Del"),
+            }
+        }
+    }
+
+    /// Property: all NetworkMessage variants (Push, Request, Response,
+    /// ResponseFinal, Declare) survive encode/decode roundtrips.
+    proptest! {
+        #[test]
+        fn roundtrip_all_messages(payload in prop::collection::vec(any::<u8>(), 0..64)) {
+            let ke = keyexpr::from_str_unchecked("a/b");
+            let mut transport = Transport::builder([0u8; 2048]).codec();
+
+            let put = Put { payload: &payload, ..Default::default() };
+            let push_msg = NetworkMessage {
+                reliability: Reliability::Reliable,
+                qos: QoS::default(),
+                body: NetworkBody::Push(Push {
+                    wire_expr: WireExpr::from(ke),
+                    payload: PushBody::Put(put),
+                    ..Default::default()
+                }),
+            };
+
+            let req_msg = NetworkMessage {
+                reliability: Reliability::Reliable,
+                qos: QoS::default(),
+                body: NetworkBody::Request(Request {
+                    id: 1,
+                    wire_expr: WireExpr::from(ke),
+                    payload: RequestBody::Query(Query::default()),
+                    ..Default::default()
+                }),
+            };
+
+            let reply = Reply {
+                payload: PushBody::Put(Put { payload: &payload, ..Default::default() }),
+                ..Default::default()
+            };
+            let resp_msg = NetworkMessage {
+                reliability: Reliability::Reliable,
+                qos: QoS::default(),
+                body: NetworkBody::Response(Response {
+                    rid: 2,
+                    wire_expr: WireExpr::from(ke),
+                    payload: ResponseBody::Reply(reply),
+                    ..Default::default()
+                }),
+            };
+
+            let decl_msg = NetworkMessage {
+                reliability: Reliability::Reliable,
+                qos: QoS::default(),
+                body: NetworkBody::Declare(Declare {
+                    body: DeclareBody::DeclareFinal(DeclareFinal {}),
+                    ..Default::default()
+                }),
+            };
+
+            let resp_final_msg = NetworkMessage {
+                reliability: Reliability::Reliable,
+                qos: QoS::default(),
+                body: NetworkBody::ResponseFinal(ResponseFinal {
+                    rid: 3,
+                    ..Default::default()
+                }),
+            };
+
+            transport.tx.encode_ref(
+                core::iter::once(push_msg.as_ref())
+                    .chain(core::iter::once(req_msg.as_ref()))
+                    .chain(core::iter::once(resp_msg.as_ref()))
+                    .chain(core::iter::once(decl_msg.as_ref()))
+                    .chain(core::iter::once(resp_final_msg.as_ref()))
+            );
+            transport.rx.decode_prefixed(transport.tx.flush_prefixed().unwrap()).unwrap();
+
+            let mut flush = transport.rx.flush();
+
+            let m1 = flush.next().unwrap().0;
+            match m1.body {
+                NetworkBody::Push(Push { payload: PushBody::Put(Put { payload: p, .. }), .. }) => {
+                    prop_assert_eq!(p, &payload[..]);
+                }
+                _ => panic!("expected Push"),
+            }
+
+            let m2 = flush.next().unwrap().0;
+            match m2.body {
+                NetworkBody::Request(Request { id: 1, .. }) => {}
+                _ => panic!("expected Request"),
+            }
+
+            let m3 = flush.next().unwrap().0;
+            match m3.body {
+                NetworkBody::Response(Response {
+                    rid: 2,
+                    payload: ResponseBody::Reply(Reply {
+                        payload: PushBody::Put(Put { payload: p, .. }),
+                        ..
+                    }),
+                    ..
+                }) => {
+                    prop_assert_eq!(p, &payload[..]);
+                }
+                _ => panic!("expected Response"),
+            }
+
+            let m4 = flush.next().unwrap().0;
+            match m4.body {
+                NetworkBody::Declare(Declare { body: DeclareBody::DeclareFinal(_), .. }) => {}
+                _ => panic!("expected Declare"),
+            }
+
+            let m5 = flush.next().unwrap().0;
+            match m5.body {
+                NetworkBody::ResponseFinal(ResponseFinal { rid: 3, .. }) => {}
+                _ => panic!("expected ResponseFinal"),
+            }
+
+            prop_assert_eq!(flush.count(), 0);
+        }
+    }
+
+    /// Property: FrameHeader with arbitrary SN and QoS encodes and decodes
+    /// to an identical struct.
+    proptest! {
+        #[test]
+        fn frameheader_roundtrip(sn: u32, qos_inner: u8) {
+            let header = FrameHeader {
+                reliability: Reliability::Reliable,
+                sn,
+                qos: QoS { inner: qos_inner },
+            };
+
+            let mut buf = [0u8; 64];
+            let mut writer = &mut buf[..];
+            header.z_encode(&mut writer).unwrap();
+            let len = 64 - writer.len();
+
+            let mut reader = &buf[..len];
+            let decoded = <FrameHeader as ZDecode>::z_decode(&mut reader).unwrap();
+
+            prop_assert_eq!(header, decoded);
+        }
+    }
+
+    /// Property: multiple messages can be batched (encoded one after another)
+    /// and each survives encode/decode roundtrip independently.
+    proptest! {
+        #[test]
+        fn batching_multiple_messages(
+            payloads in prop::collection::vec(
+                prop::collection::vec(any::<u8>(), 0..32), 0..6)
+        ) {
+            let ke = keyexpr::from_str_unchecked("a/b");
+
+            let msgs: Vec<_> = payloads.iter().map(|payload| {
+                NetworkMessage {
+                    reliability: Reliability::Reliable,
+                    qos: QoS::default(),
+                    body: NetworkBody::Push(Push {
+                        wire_expr: WireExpr::from(ke),
+                        payload: PushBody::Put(Put {
+                            payload,
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    }),
+                }
+            }).collect();
+
+            if msgs.is_empty() {
+                return Ok(());
+            }
+
+            let mut transport = Transport::builder([0u8; 4096]).codec();
+            for msg in &msgs {
+                transport.tx.encode_ref(core::iter::once(msg.as_ref()));
+            }
+
+            transport.rx.decode_prefixed(transport.tx.flush_prefixed().unwrap()).unwrap();
+
+            for (i, (decoded, _)) in transport.rx.flush().enumerate() {
+                match decoded.body {
+                    NetworkBody::Push(Push {
+                        payload: PushBody::Put(Put { payload: p, .. }),
+                        ..
+                    }) => {
+                        prop_assert_eq!(p, &payloads[i][..],
+                            "payload mismatch at index {}", i);
+                    }
+                    _ => panic!("expected Push at index {}", i),
+                }
+            }
+        }
+    }
+
+    /// Property: any valid keyexpr must intersect itself.
+    proptest! {
+        #[test]
+        fn keyexpr_intersect_self(
+            a in prop::collection::vec("[a-zA-Z0-9][a-zA-Z0-9]*", 1..5)
+                .prop_map(|v| v.join("/"))
+                .prop_filter("valid keyexpr", |s| keyexpr::new(s).is_ok())
+        ) {
+            let ke = keyexpr::new(&a).unwrap();
+            prop_assert!(ke.intersects(ke), "keyexpr '{a}' must intersect itself");
         }
     }
 }

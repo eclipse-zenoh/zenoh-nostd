@@ -5,7 +5,7 @@ use sha3::{
     digest::{ExtendableOutput, Update, XofReader},
 };
 
-use zenoh_proto::{TransportError, ZDecode, fields::*, msgs::*};
+use zenoh_proto::{TransportError, ZDecode, exts::Patch, fields::*, msgs::*};
 
 /// Everything that describes an Opened Transport between two peers
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -126,7 +126,14 @@ impl State {
                                 batch_size: BatchSize(mine_batch_size),
                             },
                             cookie: buff, // TODO: cypher ChaCha20
-                            ..Default::default()
+                            version: 0u8,
+                            qos: None,
+                            qos_link: None,
+                            auth: None,
+                            mlink: None,
+                            lowlatency: None,
+                            compression: None,
+                            patch: Patch::none(),
                         })),
                         None,
                     )
@@ -167,7 +174,14 @@ impl State {
                                     batch_size: BatchSize(mine_batch_size),
                                 },
                                 cookie: buff, // TODO: cypher ChaCha20
-                                ..Default::default()
+                                version: 0u8,
+                                qos: None,
+                                qos_link: None,
+                                auth: None,
+                                mlink: None,
+                                lowlatency: None,
+                                compression: None,
+                                patch: Patch::none(),
                             })),
                             None,
                         )
@@ -250,7 +264,12 @@ impl State {
                             lease: mine_lease,
                             sn,
                             cookie: ack.cookie,
-                            ..Default::default()
+                            qos: None,
+                            auth: None,
+                            mlink_syn: None,
+                            mlink_ack: None,
+                            lowlatency: None,
+                            compression: None,
                         })),
                         None,
                     )
@@ -330,7 +349,12 @@ impl State {
                         Some(TransportMessage::OpenAck(OpenAck {
                             lease: mine_lease,
                             sn,
-                            ..Default::default()
+                            qos: None,
+                            auth: None,
+                            mlink_syn: None,
+                            mlink_ack: None,
+                            lowlatency: None,
+                            compression: None,
                         })),
                         Some(description),
                     )
