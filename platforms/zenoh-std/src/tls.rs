@@ -1,12 +1,14 @@
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 use async_native_tls::{TlsConnector, TlsStream};
 use async_net::TcpStream;
 use futures_lite::{AsyncReadExt, AsyncWriteExt};
+use tokio::sync::Mutex;
 use zenoh_nostd::platform::*;
 
 pub struct StdTlsLink {
-    pub(crate) stream: TlsStream<TcpStream>,
+    pub(crate) stream: Arc<Mutex<TlsStream<TcpStream>>>,
     pub(crate) mtu: u16,
 }
 
@@ -23,16 +25,21 @@ impl StdTlsLink {
             .await
             .map_err(|_| LinkError::CouldNotConnect)?;
         Ok(Self {
-            stream,
+            stream: Arc::new(Mutex::new(stream)),
             mtu: u16::MAX - 60,
         })
     }
 }
 
-// TLS streams aren't cloneable, so split isn't supported.
-// StdTlsLink itself handles both Tx and Rx; Tx/Rx halves are stubs.
-pub struct StdTlsLinkTx;
-pub struct StdTlsLinkRx;
+pub struct StdTlsLinkTx {
+    pub(crate) stream: Arc<Mutex<TlsStream<TcpStream>>>,
+    pub(crate) mtu: u16,
+}
+
+pub struct StdTlsLinkRx {
+    pub(crate) stream: Arc<Mutex<TlsStream<TcpStream>>>,
+    pub(crate) mtu: u16,
+}
 
 impl ZLinkInfo for StdTlsLink {
     fn mtu(&self) -> u16 {
@@ -46,7 +53,7 @@ impl ZLinkInfo for StdTlsLink {
 
 impl ZLinkInfo for StdTlsLinkTx {
     fn mtu(&self) -> u16 {
-        u16::MAX
+        self.mtu
     }
 
     fn is_streamed(&self) -> bool {
@@ -56,7 +63,7 @@ impl ZLinkInfo for StdTlsLinkTx {
 
 impl ZLinkInfo for StdTlsLinkRx {
     fn mtu(&self) -> u16 {
-        u16::MAX
+        self.mtu
     }
 
     fn is_streamed(&self) -> bool {
@@ -66,7 +73,8 @@ impl ZLinkInfo for StdTlsLinkRx {
 
 impl ZLinkTx for StdTlsLink {
     async fn write_all(&mut self, buffer: &[u8]) -> core::result::Result<(), LinkError> {
-        self.stream
+        let mut stream = self.stream.lock().await;
+        stream
             .write_all(buffer)
             .await
             .map_err(|_| LinkError::LinkTxFailed)
@@ -74,21 +82,27 @@ impl ZLinkTx for StdTlsLink {
 }
 
 impl ZLinkTx for StdTlsLinkTx {
-    async fn write_all(&mut self, _buffer: &[u8]) -> core::result::Result<(), LinkError> {
-        Err(LinkError::LinkTxFailed)
+    async fn write_all(&mut self, buffer: &[u8]) -> core::result::Result<(), LinkError> {
+        let mut stream = self.stream.lock().await;
+        stream
+            .write_all(buffer)
+            .await
+            .map_err(|_| LinkError::LinkTxFailed)
     }
 }
 
 impl ZLinkRx for StdTlsLink {
     async fn read(&mut self, buffer: &mut [u8]) -> core::result::Result<usize, LinkError> {
-        self.stream
+        let mut stream = self.stream.lock().await;
+        stream
             .read(buffer)
             .await
             .map_err(|_| LinkError::LinkRxFailed)
     }
 
     async fn read_exact(&mut self, buffer: &mut [u8]) -> core::result::Result<(), LinkError> {
-        self.stream
+        let mut stream = self.stream.lock().await;
+        stream
             .read_exact(buffer)
             .await
             .map_err(|_| LinkError::LinkRxFailed)
@@ -96,12 +110,20 @@ impl ZLinkRx for StdTlsLink {
 }
 
 impl ZLinkRx for StdTlsLinkRx {
-    async fn read(&mut self, _buffer: &mut [u8]) -> core::result::Result<usize, LinkError> {
-        Err(LinkError::LinkRxFailed)
+    async fn read(&mut self, buffer: &mut [u8]) -> core::result::Result<usize, LinkError> {
+        let mut stream = self.stream.lock().await;
+        stream
+            .read(buffer)
+            .await
+            .map_err(|_| LinkError::LinkRxFailed)
     }
 
-    async fn read_exact(&mut self, _buffer: &mut [u8]) -> core::result::Result<(), LinkError> {
-        Err(LinkError::LinkRxFailed)
+    async fn read_exact(&mut self, buffer: &mut [u8]) -> core::result::Result<(), LinkError> {
+        let mut stream = self.stream.lock().await;
+        stream
+            .read_exact(buffer)
+            .await
+            .map_err(|_| LinkError::LinkRxFailed)
     }
 }
 
@@ -110,6 +132,14 @@ impl ZLink for StdTlsLink {
     type Rx<'a> = StdTlsLinkRx;
 
     fn split(&mut self) -> (Self::Tx<'_>, Self::Rx<'_>) {
-        unimplemented!("TLS link does not support split")
+        let tx = StdTlsLinkTx {
+            stream: self.stream.clone(),
+            mtu: self.mtu,
+        };
+        let rx = StdTlsLinkRx {
+            stream: self.stream.clone(),
+            mtu: self.mtu,
+        };
+        (tx, rx)
     }
 }
