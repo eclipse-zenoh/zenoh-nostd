@@ -1,0 +1,19 @@
+[target.thumbv7m-none-eabi]
+# QEMU runner for LM3S6965 (Cortex-M3)
+runner = "qemu-system-arm -machine lm3s6965evb -semihosting -nographic -kernel"
+
+[build]
+target = "thumbv7m-none-eabi"
+rustflags = ["-C", "link-arg=-Tlink.x"]
+
+[unstable]
+build-std = ["core", "alloc"]
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+
+[env]
+DEFMT_LOG = "info"

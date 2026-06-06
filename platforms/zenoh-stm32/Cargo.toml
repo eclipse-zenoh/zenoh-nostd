@@ -1,0 +1,23 @@
+[package]
+name = "zenoh-stm32"
+authors = []
+categories = ["embedded", "network-programming"]
+description = "Zenoh nostd STM32 platform for QEMU verification"
+edition = "2021"
+homepage = "http://zenoh.io"
+license = "EPL-2.0 OR Apache-2.0"
+repository = "https://github.com/ZettaScaleLabs/zenoh-nostd"
+rust-version = "1.91.0"
+version = "0.1.0"
+
+[dependencies]
+zenoh-nostd = { version = "0.1.0", path = "../../crates/zenoh-nostd" }
+zenoh-sansio = { version = "0.1.0", path = "../../crates/zenoh-sansio" }
+zenoh-proto = { version = "0.1.0", path = "../../crates/zenoh-proto" }
+cortex-m = "0.7"
+cortex-m-rt = "0.7"
+cortex-m-semihosting = "0.5"
+panic-halt = "0.2"
+alloc-cortex-m = "0.4"
+embedded-alloc = "0.6"
+getrandom = { version = "0.2", features = ["custom"] }
