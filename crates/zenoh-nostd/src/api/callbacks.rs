@@ -12,7 +12,6 @@ use crate::api::arg::ZArg;
 pub trait ZCallback {
     type Arg: ZArg;
 
-    #[dyn_trait(try_sync)]
     fn call(&mut self, arg: <Self::Arg as ZArg>::Of<'_>) -> impl Future<Output = ()>;
 }
 
@@ -55,6 +54,8 @@ where
     ) -> impl Iterator<Item = &'r mut DynCallback<'a, Self::Callback, Self::Future, Arg>>
     where
         DynCallback<'a, Self::Callback, Self::Future, Arg>: 'r;
+
+    fn for_each_keyexpr(&self, f: impl FnMut(u32, &'static keyexpr));
 }
 
 pub struct FixedCapacityCallbacks<
@@ -192,6 +193,12 @@ impl<'a, Arg: ZArg + 'a, const CAPACITY: usize, Callback: Storage, Future: Stora
                 }
             })
     }
+
+    fn for_each_keyexpr(&self, mut f: impl FnMut(u32, &'static keyexpr)) {
+        for (id, ke) in self.keyexprs.iter() {
+            f(*id, ke)
+        }
+    }
 }
 
 #[cfg(feature = "alloc")]
@@ -320,6 +327,12 @@ impl<'a, Arg: ZArg + 'a, Callback: Storage, Future: Storage> ZCallbacks<'a, Arg>
                 }
             })
     }
+
+    fn for_each_keyexpr(&self, mut f: impl FnMut(u32, &'static keyexpr)) {
+        for (id, ke) in self.keyexprs.iter() {
+            f(*id, ke)
+        }
+    }
 }
 
 pub mod storage {
@@ -343,7 +356,6 @@ where
 {
     type Arg = Arg;
 
-    #[dyn_utils::sync]
     async fn call(&mut self, arg: <Self::Arg as ZArg>::Of<'_>) {
         (self.0)(arg)
     }
