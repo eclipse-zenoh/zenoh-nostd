@@ -97,7 +97,7 @@ impl<Buff> TransportRx<Buff> {
 
             let mut frame_reader = &buff[read_pos..];
             if let Ok(header) = <FrameHeader as ZDecode>::z_decode(&mut frame_reader) {
-                let frame_header_len = buff[read_pos..].len() - frame_reader.len();
+                let frame_header_len = buff[read_pos..].len().saturating_sub(frame_reader.len());
 
                 match fragment_sn {
                     None => {
@@ -225,7 +225,8 @@ impl<Buff> TransportRx<Buff> {
             return None;
         }
 
-        let (data, start) = (reader.as_ptr(), reader.len());
+        let start = reader.len();
+        let original = *reader;
 
         let header = reader
             .read_u8()
@@ -253,13 +254,24 @@ impl<Buff> TransportRx<Buff> {
                 Message::Transport(TransportMessage:: $ty (decode!($ty)))
             }};
 
-            (@Network $ty:ident) => {
+            (@Network $ty:ident) => {{
+                let frame = match last_frame.as_ref() {
+                    Some(f) => f,
+                    None => {
+                        zenoh_proto::error!(
+                            "Network message {:?} received without frame header. Skipping - {}",
+                            stringify!($ty),
+                            zenoh_proto::zctx!()
+                        );
+                        return None;
+                    }
+                };
                 Message::Network(NetworkMessage {
-                    reliability: last_frame.as_ref().expect("Should be in frame").reliability,
-                    qos: last_frame.as_ref().expect("Should be in frame").qos,
+                    reliability: frame.reliability,
+                    qos: frame.qos,
                     body: NetworkBody:: $ty (decode!($ty))
                 })
-            };
+            }};
         }
 
         let ack = header & 0b0010_0000 != 0;
@@ -317,7 +329,7 @@ impl<Buff> TransportRx<Buff> {
         };
 
         let len = start - reader.len();
-        Some((body, unsafe { core::slice::from_raw_parts(data, len) }))
+        Some((body, &original[..len]))
     }
 }
 

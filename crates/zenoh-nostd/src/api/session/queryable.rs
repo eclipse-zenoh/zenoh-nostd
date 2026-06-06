@@ -79,7 +79,8 @@ where
             }))
             .await?;
 
-        todo!("Also stop the channel if any")
+        // FIXME: drop/close the receiver channel
+        Ok(())
     }
 }
 

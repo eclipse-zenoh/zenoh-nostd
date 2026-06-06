@@ -253,7 +253,7 @@ impl State {
                                 Bits::U8 => u8::MAX as u32 >> 1,
                                 Bits::U16 => u16::MAX as u32 >> 2,
                                 Bits::U32 => u32::MAX >> 4,
-                                Bits::U64 => u64::MAX as u32 >> 1,
+                                Bits::U64 => u32::MAX,
                             }
                     };
 
@@ -335,7 +335,7 @@ impl State {
                                 Bits::U8 => u8::MAX as u32 >> 1,
                                 Bits::U16 => u16::MAX as u32 >> 2,
                                 Bits::U32 => u32::MAX >> 4,
-                                Bits::U64 => u64::MAX as u32 >> 1,
+                                Bits::U64 => u32::MAX,
                             }
                     };
 

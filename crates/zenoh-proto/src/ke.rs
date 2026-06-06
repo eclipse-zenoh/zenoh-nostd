@@ -386,6 +386,9 @@ fn has_verbatim(x: &[u8]) -> bool {
 }
 
 unsafe fn has_direct_verbatim_non_empty(x: &[u8]) -> bool {
+    if x.is_empty() {
+        return false;
+    }
     unsafe { *x.get_unchecked(0) == b'@' }
 }
 

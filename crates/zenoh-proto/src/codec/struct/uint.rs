@@ -29,7 +29,7 @@ impl<'a> ZBodyDecode<'a> for u8 {
 
 crate::derive_zstruct_with_body!(u8);
 
-const VLE_LEN_MAX: usize = vle_len(u64::MAX);
+const VLE_LEN_MAX: usize = 10;
 
 const fn vle_len(x: u64) -> usize {
     const B1: u64 = u64::MAX << 7;
@@ -40,6 +40,7 @@ const fn vle_len(x: u64) -> usize {
     const B6: u64 = u64::MAX << (7 * 6);
     const B7: u64 = u64::MAX << (7 * 7);
     const B8: u64 = u64::MAX << (7 * 8);
+    const B9: u64 = u64::MAX << (7 * 9);
 
     if (x & B1) == 0 {
         1
@@ -57,8 +58,10 @@ const fn vle_len(x: u64) -> usize {
         7
     } else if (x & B8) == 0 {
         8
-    } else {
+    } else if (x & B9) == 0 {
         9
+    } else {
+        10
     }
 }
 
@@ -112,11 +115,16 @@ impl<'a> ZBodyDecode<'a> for u64 {
 
         let mut v = 0;
         let mut i = 0;
+        let mut count = 1;
 
-        while (b & 0x80_u8) != 0 && i != 7 * (VLE_LEN_MAX - 1) {
+        while (b & 0x80_u8) != 0 {
+            if count >= VLE_LEN_MAX {
+                return Err(crate::CodecError::CouldNotParseField);
+            }
             v |= ((b & 0x7f_u8) as u64) << i;
             b = r.read_u8()?;
             i += 7;
+            count += 1;
         }
 
         v |= (b as u64) << i;
