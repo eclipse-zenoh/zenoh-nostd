@@ -16,7 +16,7 @@ where
 {
     pub async fn run(&self) -> core::result::Result<(), SessionError> {
         self.driver
-            .run(&self.state, async |_, state, msg, _| {
+            .run(&self.state, &self.connectivity, async |_, state, msg, _| {
                 match msg.body {
                     NetworkBody::Push(Push {
                         wire_expr,
@@ -43,7 +43,7 @@ where
                         let sample = Sample::new(ke, payload_bytes, kind, encoding, timestamp, attachment, qos, msg.reliability);
 
                         for cb in state.sub_callbacks.intersects(ke) {
-                            cb.call_try_sync(&sample).await;
+                            cb.call(&sample).await;
                         }
                     }
                     NetworkBody::Response(Response {
@@ -91,7 +91,7 @@ where
                         };
 
                         if let Some(cb) = state.get_callbacks.get(rid) {
-                            cb.call_try_sync(&response).await;
+                            cb.call(&response).await;
                         }
                     }
                     NetworkBody::ResponseFinal(ResponseFinal { rid, .. }) => {
@@ -137,14 +137,12 @@ where
                             cb.call(&query).await;
                         }
                     }
-                    NetworkBody::Declare(Declare { body, .. }) => {
-                        if let DeclareBody::DeclareKeyExpr(ke) = body {
-                            let suffix = ke.wire_expr.suffix;
-                            if !suffix.is_empty() {
-                                let mut s = heapless::String::<64>::new();
-                                let _ = s.push_str(suffix);
-                                let _ = state.ke_mappings.push(KeMapping { scope: ke.id, keyexpr: s });
-                            }
+                    NetworkBody::Declare(Declare { body: DeclareBody::DeclareKeyExpr(ke), .. }) => {
+                        let suffix = ke.wire_expr.suffix;
+                        if !suffix.is_empty() {
+                            let mut s = heapless::String::<64>::new();
+                            let _ = s.push_str(suffix);
+                            let _ = state.ke_mappings.push(KeMapping { scope: ke.id, keyexpr: s });
                         }
                     }
                     _ => {}

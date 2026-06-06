@@ -17,7 +17,7 @@ pub mod session {
     pub use zenoh_proto::{Endpoint, Error};
 
     pub use super::api::{
-        connectivity::*,
+        connectivity::{ConnectivityState, TransportEvent},
         advanced_publisher::*,
         advanced_subscriber::*,
         auto_reconnect::*,

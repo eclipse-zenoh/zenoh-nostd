@@ -6,8 +6,7 @@ pub enum TransportEvent {
     Disconnected,
 }
 
-#[allow(dead_code)]
-pub(crate) struct ConnectivityState<'ch> {
+pub struct ConnectivityState<'ch> {
     pub transport_senders: heapless::Vec<DynamicSender<'ch, TransportEvent>, 4>,
 }
 
@@ -16,8 +15,15 @@ impl<'ch> ConnectivityState<'ch> {
     pub fn new() -> Self {
         Self { transport_senders: heapless::Vec::new() }
     }
+}
 
-    #[allow(dead_code)]
+impl<'ch> Default for ConnectivityState<'ch> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<'ch> ConnectivityState<'ch> {
     pub fn emit(&self, event: TransportEvent) {
         for sender in &self.transport_senders {
             let _ = sender.try_send(event);

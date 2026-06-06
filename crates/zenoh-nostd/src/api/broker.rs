@@ -9,6 +9,7 @@ use zenoh_proto::BrokerError;
 use zenoh_proto::msgs::NetworkMessage;
 use zenoh_proto::{Endpoint, fields::ZenohIdProto};
 
+use crate::api::connectivity::ConnectivityState;
 use crate::io::transport::{TransportLink, ZTransportLinkTx};
 use crate::{config::ZBrokerConfig, io::driver::Driver, platform::ZLinkManager};
 
@@ -139,9 +140,10 @@ where
 
             self.state().await.north = Some((driver.driver.zid(), driver.clone()));
 
+            let connectivity = ConnectivityState::new();
             if let Err(e) = driver
                 .driver
-                .run(&self.state, Self::update_north)
+                .run(&self.state, &connectivity, Self::update_north)
                 .await
                 .map_err(|e| e.flatten_map::<BrokerError>())
             {
@@ -171,9 +173,10 @@ where
                 .south
                 .insert(driver.driver.zid(), driver.clone());
 
+            let connectivity = ConnectivityState::new();
             if let Err(e) = driver
                 .driver
-                .run(&self.state, Self::update_south)
+                .run(&self.state, &connectivity, Self::update_south)
                 .await
                 .map_err(|e| e.flatten_map::<BrokerError>())
             {

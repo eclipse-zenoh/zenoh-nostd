@@ -2,10 +2,11 @@ use core::ops::DerefMut;
 
 use embassy_sync::{
     blocking_mutex::raw::NoopRawMutex,
+    channel::DynamicSender,
     mutex::{Mutex, MutexGuard},
 };
 use zenoh_proto::{
-    Endpoint, SessionError, TransportLinkError,
+    Endpoint, SessionError, TransportLinkError, keyexpr,
     exts::QoS,
     fields::{Reliability, WireExpr, ZenohIdProto},
     msgs::{Declare, DeclareBody, NetworkBody, NetworkMessage, UndeclareQueryable},
@@ -14,6 +15,7 @@ use zenoh_sansio::ZTransportTx;
 
 use crate::{
     api::callbacks::ZCallbacks,
+    api::connectivity::{ConnectivityState, TransportEvent},
     config::ZSessionConfig,
     io::{driver::Driver, transport::{TransportLink, ZTransportLinkTx}},
     platform::ZLinkManager,
@@ -66,6 +68,26 @@ where
         }
     }
 
+    #[allow(dead_code)]
+    pub fn ke_mappings(&self) -> &[KeMapping] {
+        &self.ke_mappings
+    }
+
+    #[allow(dead_code)]
+    pub fn for_each_subscription(&self, f: impl FnMut(u32, &'static keyexpr)) {
+        self.sub_callbacks.for_each_keyexpr(f);
+    }
+
+    #[allow(dead_code)]
+    pub fn for_each_queryable(&self, f: impl FnMut(u32, &'static keyexpr)) {
+        self.queryable_callbacks.for_each_keyexpr(f);
+    }
+
+    #[allow(dead_code)]
+    pub fn for_each_liveliness(&self, f: impl FnMut(u32, &'static keyexpr)) {
+        self.liveliness_callbacks.for_each_keyexpr(f);
+    }
+
 pub(crate) fn resolve_keyexpr<'a>(&self, wire_expr: &WireExpr<'a>) -> Option<heapless::String<64>> {
     if !wire_expr.suffix.is_empty() {
         let mut s = heapless::String::new();
@@ -105,6 +127,7 @@ where
 {
     driver: Driver<'res, <Config::LinkManager as ZLinkManager>::Link<'res>, Config::Buff>,
     state: Mutex<NoopRawMutex, SessionState<'res, Config>>,
+    connectivity: ConnectivityState<'static>,
 }
 
 impl<'res, Config> Session<'res, Config>
@@ -120,6 +143,7 @@ where
         Self {
             driver: Driver::new(transport),
             state: Mutex::new(SessionState::new()),
+            connectivity: ConnectivityState::new(),
         }
     }
 
@@ -177,6 +201,14 @@ where
             .await?;
 
         Ok(())
+    }
+
+    pub fn on_connect(&mut self, sender: DynamicSender<'static, TransportEvent>) {
+        let _ = self.connectivity.transport_senders.push(sender);
+    }
+
+    pub fn on_disconnect(&mut self, sender: DynamicSender<'static, TransportEvent>) {
+        let _ = self.connectivity.transport_senders.push(sender);
     }
 }
 

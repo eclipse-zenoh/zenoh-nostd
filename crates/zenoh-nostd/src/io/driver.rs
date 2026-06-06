@@ -8,6 +8,7 @@ use embassy_time::{Duration, Instant, Timer};
 use zenoh_proto::{EitherError, TransportLinkError, fields::ZenohIdProto, msgs::NetworkMessage};
 
 use crate::{
+    api::connectivity::{ConnectivityState, TransportEvent},
     io::transport::{
         TransportLink, TransportLinkRx, TransportLinkTx, ZTransportLinkRx, ZTransportLinkTx,
     },
@@ -55,6 +56,7 @@ where
     pub async fn run<State, E, Update>(
         &self,
         state: &Mutex<NoopRawMutex, State>,
+        connectivity: &ConnectivityState<'_>,
         mut update: Update,
     ) -> core::result::Result<(), EitherError<TransportLinkError, E>>
     where
@@ -70,9 +72,12 @@ where
 
         let start = Instant::now();
 
+        connectivity.emit(TransportEvent::Connected);
+
         loop {
             let (write_lease, read_lease) = self.sync(start, start.elapsed(), &mut rx).await;
             if rx.transport().closed() {
+                connectivity.emit(TransportEvent::Disconnected);
                 return Err(EitherError::A(TransportLinkError::TransportClosed));
             }
 
@@ -83,6 +88,7 @@ where
 
                     if tx.transport().should_close(start.elapsed().into()) {
                         tx.close().await.map_err(EitherError::A)?;
+                        connectivity.emit(TransportEvent::Disconnected);
                         break Err(EitherError::A(TransportLinkError::TransportClosed));
                     }
 
@@ -110,6 +116,7 @@ where
             if rx.transport().should_close(start.elapsed().into()) {
                 let mut tx_guard = self.tx.lock().await;
                 tx_guard.deref_mut().close().await.map_err(EitherError::A)?;
+                connectivity.emit(TransportEvent::Disconnected);
                 break Err(EitherError::A(TransportLinkError::TransportClosed));
             }
         }
