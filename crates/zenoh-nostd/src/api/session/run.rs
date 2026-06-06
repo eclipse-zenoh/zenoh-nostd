@@ -141,8 +141,11 @@ where
                         let suffix = ke.wire_expr.suffix;
                         if !suffix.is_empty() {
                             let mut s = heapless::String::<64>::new();
-                            let _ = s.push_str(suffix);
-                            let _ = state.ke_mappings.push(KeMapping { scope: ke.id, keyexpr: s });
+                            if s.push_str(suffix).is_err() {
+                                zenoh_proto::error!("Keyexpr suffix too long, dropping: {}", suffix);
+                            } else if state.ke_mappings.push(KeMapping { scope: ke.id, keyexpr: s }).is_err() {
+                                zenoh_proto::error!("Keyexpr mapping table full, dropping scope={}", ke.id);
+                            }
                         }
                     }
                     _ => {}

@@ -154,7 +154,10 @@ impl<Buff> TransportTx<Buff> {
                         qos: q,
                     };
 
-                    header.z_encode(&mut buff).ok()?;
+if header.z_encode(&mut buff).is_err() {
+                    zenoh_proto::error!("Failed to encode frame header - dropping message");
+                    return None;
+                }
 
                     let _ = self.resolution;
                     self.sn = self.sn.wrapping_add(1);
@@ -166,9 +169,11 @@ impl<Buff> TransportTx<Buff> {
 
                 let write_body = |buff: &mut &mut [u8]| {
                     if let Some(bytes) = bytes {
-                        buff.write_exact(bytes).ok();
-                    } else {
-                        msg.body.z_encode(buff).ok();
+                        if buff.write_exact(bytes).is_err() {
+                            zenoh_proto::error!("Failed to write bytes to buffer");
+                        }
+                    } else if msg.body.z_encode(buff).is_err() {
+                        zenoh_proto::error!("Failed to encode message body");
                     }
                 };
 
