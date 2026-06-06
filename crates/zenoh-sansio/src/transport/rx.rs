@@ -2,7 +2,7 @@ use core::fmt::Display;
 use core::time::Duration;
 
 use zenoh_proto::{
-    EitherError, TransportError, ZBodyDecode, ZReadable, fields::Resolution, msgs::*,
+    EitherError, TransportError, ZBodyDecode, ZDecode, ZReadable, fields::Resolution, msgs::*,
 };
 
 use crate::{ZTransportRx, transport::TransportTx};
@@ -29,6 +29,10 @@ pub struct TransportRx<Buff> {
     state: State,
 
     ignore_invalid_sn: bool,
+
+    max_fragments: usize,
+    #[allow(dead_code)]
+    fragment_sn: Option<u32>,
 }
 
 impl<Buff> TransportRx<Buff> {
@@ -52,11 +56,90 @@ impl<Buff> TransportRx<Buff> {
 
             state: State::Opened,
             ignore_invalid_sn: false,
+
+            max_fragments: 1,
+            fragment_sn: None,
         }
     }
 
     pub(crate) fn into_inner(self) -> Buff {
         self.buff
+    }
+
+    pub fn with_max_fragments(mut self, max: usize) -> Self {
+        self.max_fragments = max;
+        self
+    }
+
+    fn reassemble_fragments(&mut self, size: usize)
+    where
+        Buff: AsMut<[u8]> + AsRef<[u8]>,
+    {
+        if self.max_fragments <= 1 {
+            return;
+        }
+
+        let buff = self.buff.as_mut();
+        let mut fragment_sn: Option<u32> = None;
+        let mut write_pos = 0;
+        let mut read_pos = 0;
+        let mut num_fragments = 0;
+
+        while read_pos < size {
+            if read_pos >= size {
+                break;
+            }
+            let id = buff[read_pos] & 0x1f;
+
+            if id != 0x05 {
+                break;
+            }
+
+            let mut frame_reader = &buff[read_pos..];
+            if let Ok(header) = <FrameHeader as ZDecode>::z_decode(&mut frame_reader) {
+                let frame_header_len = buff[read_pos..].len() - frame_reader.len();
+
+                match fragment_sn {
+                    None => {
+                        // First frame: stay in place. Track payload extent.
+                        // frame_reader.len() is unbounded — cap at size
+                        let max_payload = if read_pos + frame_header_len + frame_reader.len() > size
+                        {
+                            size - read_pos - frame_header_len
+                        } else {
+                            frame_reader.len()
+                        };
+                        fragment_sn = Some(header.sn);
+                        write_pos = read_pos + frame_header_len + max_payload;
+                        read_pos = write_pos;
+                        num_fragments = 1;
+                    }
+                    Some(sn) if sn == header.sn => {
+                        let payload_start = read_pos + frame_header_len;
+                        let max_payload = if payload_start + frame_reader.len() > size {
+                            size - payload_start
+                        } else {
+                            frame_reader.len()
+                        };
+                        buff.copy_within(payload_start..payload_start + max_payload, write_pos);
+                        write_pos += max_payload;
+                        read_pos += frame_header_len + max_payload;
+                        num_fragments += 1;
+                    }
+                    Some(_) => {
+                        break;
+                    }
+                }
+            } else {
+                break;
+            }
+        }
+
+        if num_fragments > 1 {
+            for b in buff[write_pos..size].iter_mut() {
+                *b = 0;
+            }
+        }
     }
 
     pub(crate) fn flush_transport(&mut self) -> impl Iterator<Item = (TransportMessage<'_>, &[u8])>
@@ -68,7 +151,13 @@ impl<Buff> TransportRx<Buff> {
             core::cmp::min(self.batch_size, self.cursor),
         );
         self.cursor = 0;
-        let mut reader = &self.buff.as_ref()[..size];
+
+        if self.max_fragments > 1 {
+            self.reassemble_fragments(size);
+        }
+
+        let size_after = core::cmp::min(self.buff.as_ref().len(), size);
+        let mut reader = &self.buff.as_ref()[..size_after];
         let mut last_frame = None;
         let sn = &mut self.sn;
         let resolution = self.resolution;
@@ -434,7 +523,13 @@ where
             core::cmp::min(self.batch_size, self.cursor),
         );
         self.clear();
-        let mut reader = &self.buff.as_ref()[..size];
+
+        if self.max_fragments > 1 {
+            self.reassemble_fragments(size);
+        }
+
+        let size_after = core::cmp::min(self.buff.as_ref().len(), size);
+        let mut reader = &self.buff.as_ref()[..size_after];
         let mut last_frame = None;
         let sn = &mut self.sn;
         let resolution = self.resolution;

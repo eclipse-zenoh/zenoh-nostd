@@ -138,7 +138,10 @@ impl State {
                     mine_resolution,
                     mine_lease,
                 } => {
-                    if mine_zid > syn.identifier.zid {
+                    if mine_whatami == WhatAmI::Peer
+                        && syn.identifier.whatami == WhatAmI::Peer
+                    {
+                        if mine_zid > syn.identifier.zid {
                         zenoh_proto::debug!(
                             "Simultaneous open: {:?} yields to {:?} (higher ZID)",
                             mine_zid,
@@ -178,6 +181,9 @@ impl State {
                         (None, None)
                     } else {
                         zenoh_proto::zbail!(@ret (None, None), TransportError::InvalidAttribute)
+                    }
+                    } else {
+                        zenoh_proto::zbail!(@ret (None, None), TransportError::InvalidState)
                     }
                 }
                 _ => zenoh_proto::zbail!(@ret (None, None), TransportError::InvalidState),

@@ -1,0 +1,58 @@
+use zenoh_proto::fields::Encoding;
+
+pub const ZENOH_BYTES: Encoding<'static> = Encoding::zenoh_bytes();
+pub const ZENOH_STRING: Encoding<'static> = Encoding::zenoh_string();
+pub const ZENOH_SERIALIZED: Encoding<'static> = Encoding::zenoh_serialized();
+pub const APPLICATION_OCTET_STREAM: Encoding<'static> = Encoding::application_octet_stream();
+pub const TEXT_PLAIN: Encoding<'static> = Encoding::text_plain();
+pub const APPLICATION_JSON: Encoding<'static> = Encoding::application_json();
+pub const TEXT_JSON: Encoding<'static> = Encoding::text_json();
+pub const APPLICATION_CDR: Encoding<'static> = Encoding::application_cdr();
+pub const APPLICATION_CBOR: Encoding<'static> = Encoding::application_cbor();
+pub const APPLICATION_YAML: Encoding<'static> = Encoding::application_yaml();
+pub const TEXT_YAML: Encoding<'static> = Encoding::text_yaml();
+pub const TEXT_JSON5: Encoding<'static> = Encoding::text_json5();
+pub const APPLICATION_PYTHON_SERIALIZED_OBJECT: Encoding<'static> =
+    Encoding::application_python_serialized_object();
+pub const APPLICATION_PROTOBUF: Encoding<'static> = Encoding::application_protobuf();
+pub const APPLICATION_JAVA_SERIALIZED_OBJECT: Encoding<'static> =
+    Encoding::application_java_serialized_object();
+pub const APPLICATION_OPENMETRICS_TEXT: Encoding<'static> = Encoding::application_openmetrics_text();
+pub const IMAGE_PNG: Encoding<'static> = Encoding::image_png();
+pub const IMAGE_JPEG: Encoding<'static> = Encoding::image_jpeg();
+pub const IMAGE_GIF: Encoding<'static> = Encoding::image_gif();
+pub const IMAGE_BMP: Encoding<'static> = Encoding::image_bmp();
+pub const IMAGE_WEBP: Encoding<'static> = Encoding::image_webp();
+pub const APPLICATION_XML: Encoding<'static> = Encoding::application_xml();
+pub const APPLICATION_X_WWW_FORM_URLENCODED: Encoding<'static> =
+    Encoding::application_x_www_form_urlencoded();
+pub const TEXT_HTML: Encoding<'static> = Encoding::text_html();
+pub const TEXT_XML: Encoding<'static> = Encoding::text_xml();
+pub const TEXT_CSS: Encoding<'static> = Encoding::text_css();
+pub const TEXT_JAVASCRIPT: Encoding<'static> = Encoding::text_javascript();
+pub const TEXT_MARKDOWN: Encoding<'static> = Encoding::text_markdown();
+pub const TEXT_CSV: Encoding<'static> = Encoding::text_csv();
+pub const APPLICATION_SQL: Encoding<'static> = Encoding::application_sql();
+pub const APPLICATION_COAP_PAYLOAD: Encoding<'static> = Encoding::application_coap_payload();
+pub const APPLICATION_JSON_PATCH_JSON: Encoding<'static> = Encoding::application_json_patch_json();
+pub const APPLICATION_JSON_SEQ: Encoding<'static> = Encoding::application_json_seq();
+pub const APPLICATION_JSONPATH: Encoding<'static> = Encoding::application_jsonpath();
+pub const APPLICATION_JWT: Encoding<'static> = Encoding::application_jwt();
+pub const APPLICATION_MP4: Encoding<'static> = Encoding::application_mp4();
+pub const APPLICATION_SOAP_XML: Encoding<'static> = Encoding::application_soap_xml();
+pub const APPLICATION_YANG: Encoding<'static> = Encoding::application_yang();
+pub const AUDIO_AAC: Encoding<'static> = Encoding::audio_aac();
+pub const AUDIO_FLAC: Encoding<'static> = Encoding::audio_flac();
+pub const AUDIO_MP4: Encoding<'static> = Encoding::audio_mp4();
+pub const AUDIO_OGG: Encoding<'static> = Encoding::audio_ogg();
+pub const AUDIO_VORBIS: Encoding<'static> = Encoding::audio_vorbis();
+pub const VIDEO_H261: Encoding<'static> = Encoding::video_h261();
+pub const VIDEO_H263: Encoding<'static> = Encoding::video_h263();
+pub const VIDEO_H264: Encoding<'static> = Encoding::video_h264();
+pub const VIDEO_H265: Encoding<'static> = Encoding::video_h265();
+pub const VIDEO_H266: Encoding<'static> = Encoding::video_h266();
+pub const VIDEO_MP4: Encoding<'static> = Encoding::video_mp4();
+pub const VIDEO_OGG: Encoding<'static> = Encoding::video_ogg();
+pub const VIDEO_RAW: Encoding<'static> = Encoding::video_raw();
+pub const VIDEO_VP8: Encoding<'static> = Encoding::video_vp8();
+pub const VIDEO_VP9: Encoding<'static> = Encoding::video_vp9();

@@ -3,7 +3,7 @@ use embassy_sync::channel::{DynamicReceiver, DynamicSender};
 use zenoh_proto::{
     SessionError,
     exts::QoS,
-    fields::{ConsolidationMode, Reliability, WireExpr},
+    fields::{ConsolidationMode, Locality, Reliability, WireExpr},
     keyexpr,
     msgs::*,
 };
@@ -48,6 +48,10 @@ impl<Config, OwnedQuery, const CHANNEL: bool> Queryable<Config, OwnedQuery, CHAN
 where
     Config: ZSessionConfig,
 {
+    pub(crate) fn id(&self) -> u32 {
+        self.id
+    }
+
     #[allow(dead_code)]
     async fn undeclare(self) -> core::result::Result<(), SessionError> {
         let msg = Declare {
@@ -125,6 +129,7 @@ pub struct QueryableBuilder<
         >,
     >,
     receiver: Option<DynamicReceiver<'static, OwnedQuery>>,
+    allowed_origin: Locality,
 }
 
 impl<Config> QueryableBuilder<Config, (), false, false>
@@ -137,7 +142,13 @@ where
             ke,
             callback: None,
             receiver: None,
+            allowed_origin: Locality::default(),
         }
+    }
+
+    pub fn allowed_origin(mut self, locality: Locality) -> Self {
+        self.allowed_origin = locality;
+        self
     }
 
     pub fn callback(
@@ -149,6 +160,7 @@ where
             ke: self.ke,
             callback: Some(DynObject::new(AsyncCallback::new(callback))),
             receiver: None,
+            allowed_origin: self.allowed_origin,
         }
     }
 
@@ -161,6 +173,7 @@ where
             ke: self.ke,
             callback: Some(DynObject::new(SyncCallback::new(callback))),
             receiver: None,
+            allowed_origin: self.allowed_origin,
         }
     }
 }
@@ -199,10 +212,10 @@ where
                 },
             ))),
             receiver: Some(receiver),
+            allowed_origin: self.allowed_origin,
         }
     }
 }
-
 impl<Config, OwnedQuery, const CHANNEL: bool> QueryableBuilder<Config, OwnedQuery, true, CHANNEL>
 where
     Config: ZSessionConfig,

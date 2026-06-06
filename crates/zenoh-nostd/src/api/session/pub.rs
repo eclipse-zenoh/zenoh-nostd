@@ -1,7 +1,8 @@
 use zenoh_proto::{
     SessionError,
     exts::Attachment,
-    fields::{Encoding, Timestamp},
+    exts::QoS,
+    fields::{Encoding, Locality, Reliability, Timestamp},
     keyexpr,
 };
 
@@ -21,6 +22,7 @@ where
     encoding: Encoding<'a>,
     timestamp: Option<Timestamp>,
     attachment: Option<Attachment<'a>>,
+    reliability: Reliability,
 }
 
 impl<'a, 'res, Config> Publisher<'a, 'res, Config>
@@ -35,12 +37,21 @@ where
             encoding: self.encoding.clone(),
             timestamp: self.timestamp,
             attachment: self.attachment.clone(),
+            allowed_destination: Locality::default(),
+            qos: QoS::default(),
+            reliability: self.reliability,
         }
     }
 
-    #[allow(dead_code)]
-    async fn undeclare(self) -> core::result::Result<(), SessionError> {
-        todo!("send undeclare interest")
+    pub async fn delete(&self, timestamp: Option<Timestamp>, attachment: Option<&'a [u8]>) -> core::result::Result<(), SessionError> {
+        let mut builder = self.session.delete(self.ke);
+        if let Some(ts) = timestamp {
+            builder = builder.timestamp(ts);
+        }
+        if let Some(att) = attachment {
+            builder = builder.attachment(att);
+        }
+        builder.finish().await
     }
 
     pub fn keyexpr(&self) -> &keyexpr {
@@ -58,6 +69,7 @@ where
     encoding: Encoding<'a>,
     timestamp: Option<Timestamp>,
     attachment: Option<Attachment<'a>>,
+    reliability: Reliability,
 }
 
 impl<'a, 'res, Config> PublisherBuilder<'a, 'res, Config>
@@ -71,6 +83,7 @@ where
             encoding: Encoding::default(),
             timestamp: None,
             attachment: None,
+            reliability: Reliability::default(),
         }
     }
 
@@ -94,6 +107,11 @@ where
         self
     }
 
+    pub fn reliability(mut self, reliability: Reliability) -> Self {
+        self.reliability = reliability;
+        self
+    }
+
     pub async fn finish(self) -> core::result::Result<Publisher<'a, 'res, Config>, SessionError> {
         // TODO: send interest msg
         Ok(Publisher {
@@ -102,6 +120,7 @@ where
             encoding: self.encoding,
             timestamp: self.timestamp,
             attachment: self.attachment,
+            reliability: self.reliability,
         })
     }
 }

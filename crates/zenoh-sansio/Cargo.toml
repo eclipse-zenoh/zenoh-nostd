@@ -20,6 +20,11 @@ log = ["std", "zenoh-proto/log"]
 web_console = ["std", "zenoh-proto/web_console"]
 defmt = ["zenoh-proto/defmt"]
 
+kani = []
+proptest = []
+creusot = []
+verus = []
+
 [dependencies]
 zenoh-proto.workspace = true
 sha3.workspace = true
@@ -36,3 +41,6 @@ required-features = ["std"]
 name = "z_drain"
 path = "examples/z_drain.rs"
 required-features = ["std"]
+
+[lints.rust]
+unexpected_cfgs = { level = "allow", check-cfg = ['cfg(kani)'] }

@@ -7,7 +7,9 @@ use wtx::{
 };
 use zenoh_nostd::platform::*;
 
+mod serial;
 mod tcp;
+mod tls;
 mod udp;
 mod ws;
 
@@ -17,21 +19,27 @@ pub struct StdLinkManager;
 #[derive(ZLinkInfo, ZLinkTx, ZLinkRx, ZLink)]
 #[zenoh(ZLink = (StdLinkTx<'link>, StdLinkRx<'link>))]
 pub enum StdLink {
+    Serial(serial::StdSerialLink),
     Tcp(tcp::StdTcpLink),
+    Tls(tls::StdTlsLink),
     Udp(udp::StdUdpLink),
     Ws(ws::StdWsLink),
 }
 
 #[derive(ZLinkInfo, ZLinkTx)]
 pub enum StdLinkTx<'link> {
+    Serial(serial::SerialTx),
     Tcp(tcp::StdTcpLinkTx),
+    Tls(tls::StdTlsLinkTx),
     Udp(udp::StdUdpLinkTx),
     Ws(ws::StdWsLinkTx<'link>),
 }
 
 #[derive(ZLinkInfo, ZLinkRx)]
 pub enum StdLinkRx<'link> {
+    Serial(serial::SerialRx),
     Tcp(tcp::StdTcpLinkRx),
+    Tls(tls::StdTlsLinkRx),
     Udp(udp::StdUdpLinkRx),
     Ws(ws::StdWsLinkRx<'link>),
 }
@@ -87,6 +95,16 @@ impl ZLinkManager for StdLinkManager {
                 }
 
                 Ok(Self::Link::Tcp(tcp::StdTcpLink::new(socket, mtu)))
+            }
+            "tls" => {
+                let dst_addr = SocketAddr::try_from(address)?;
+                let domain = address
+                    .as_str()
+                    .rsplitn(2, ':')
+                    .last()
+                    .unwrap_or(address.as_str());
+                let link = tls::StdTlsLink::connect(dst_addr, domain).await?;
+                Ok(Self::Link::Tls(link))
             }
             "udp" => {
                 let dst_addr = SocketAddr::try_from(address)?;
@@ -152,6 +170,12 @@ impl ZLinkManager for StdLinkManager {
                     .map_err(|_| LinkError::CouldNotConnect)?;
 
                 Ok(Self::Link::Ws(ws::StdWsLink::new(reader, writer, mtu)))
+            }
+            "serial" => {
+                let path = address.as_str();
+                let baud = 115200u32;
+                let link = serial::StdSerialLink::new(path, baud)?;
+                Ok(Self::Link::Serial(link))
             }
             _ => zenoh::zbail!(LinkError::CouldNotParseProtocol),
         }
@@ -225,6 +249,12 @@ impl ZLinkManager for StdLinkManager {
                     .map_err(|_| LinkError::CouldNotConnect)?;
 
                 Ok(Self::Link::Udp(udp::StdUdpLink::new(socket, 8192)))
+            }
+            "serial" => {
+                let path = address.as_str();
+                let baud = 115200u32;
+                let link = serial::StdSerialLink::new(path, baud)?;
+                Ok(Self::Link::Serial(link))
             }
             _ => zenoh::zbail!(LinkError::CouldNotParseProtocol),
         }

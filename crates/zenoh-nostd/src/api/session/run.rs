@@ -7,7 +7,7 @@ use crate::{
         session::Session,
     },
     config::ZSessionConfig,
-    session::{GetResponse, Sample},
+    session::{GetResponse, Sample, SampleKind},
 };
 
 impl<'res, Config> Session<'res, Config>
@@ -20,12 +20,23 @@ where
                 match msg.body {
                     NetworkBody::Push(Push {
                         wire_expr,
-                        payload: PushBody::Put(Put { payload, .. }),
+                        payload,
+                        timestamp,
+                        qos,
                         ..
                     }) => {
                         let ke = wire_expr.suffix;
                         let ke = keyexpr::new(ke)?;
-                        let sample = Sample::new(ke, payload);
+                        let (kind, payload_bytes, encoding, attachment) = match &payload {
+                            PushBody::Put(Put {
+                                payload,
+                                encoding,
+                                attachment,
+                                ..
+                            }) => (SampleKind::Put, *payload, Some(encoding.clone()), attachment.as_ref().map(|a| a.buffer)),
+                            PushBody::Del(_) => (SampleKind::Delete, &[] as &[u8], None, None),
+                        };
+                        let sample = Sample::new(ke, payload_bytes, kind, encoding, timestamp, attachment, qos, msg.reliability);
 
                         for cb in state.sub_callbacks.intersects(ke) {
                             cb.call_try_sync(&sample).await;
@@ -35,17 +46,40 @@ where
                         rid,
                         wire_expr,
                         payload,
+                        timestamp,
+                        qos,
                         ..
                     }) => {
                         let ke = wire_expr.suffix;
                         let ke = keyexpr::new(ke)?;
                         let response = match payload {
                             ResponseBody::Reply(Reply {
-                                payload: PushBody::Put(Put { payload, .. }),
+                                payload:
+                                    PushBody::Put(Put {
+                                        payload,
+                                        encoding,
+                                        attachment,
+                                        ..
+                                    }),
                                 ..
-                            }) => GetResponse::Ok(Sample::new(ke, payload)),
-                            ResponseBody::Err(Err { payload, .. }) => {
-                                GetResponse::Err(Sample::new(ke, payload))
+                            }) => {
+                                let sample = Sample::new(ke, payload, SampleKind::Put, Some(encoding.clone()), timestamp, attachment.as_ref().map(|a| a.buffer), qos, msg.reliability);
+                                GetResponse::Ok(sample)
+                            }
+                            ResponseBody::Reply(Reply {
+                                payload: PushBody::Del(del),
+                                ..
+                            }) => {
+                                let sample = Sample::new(ke, &[], SampleKind::Delete, None, timestamp, del.attachment.as_ref().map(|a| a.buffer), qos, msg.reliability);
+                                GetResponse::Ok(sample)
+                            }
+                            ResponseBody::Err(Err {
+                                payload,
+                                encoding,
+                                ..
+                            }) => {
+                                let sample = Sample::new(ke, payload, SampleKind::Delete, Some(encoding.clone()), timestamp, None, qos, msg.reliability);
+                                GetResponse::Err(sample)
                             }
                         };
 
@@ -62,8 +96,10 @@ where
                         wire_expr,
                         payload:
                             RequestBody::Query(Query {
-                                parameters, body, ..
+                                parameters, body, query_target, ..
                             }),
+                        target: _,
+                        qos,
                         ..
                     }) => {
                         let ke = wire_expr.suffix;
@@ -81,6 +117,8 @@ where
                                 Some(Value { payload, .. }) => Some(payload),
                                 None => None,
                             },
+                            query_target,
+                            qos,
                         );
 
                         let count = state.queryable_callbacks.intersects(ke).count();

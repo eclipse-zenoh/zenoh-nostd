@@ -1,6 +1,7 @@
 use core::str::FromStr;
 
-use zenoh_proto::{CollectionError, SessionError, keyexpr};
+use zenoh_proto::{CollectionError, SessionError, exts::QoS, fields::ZenohIdProto, keyexpr};
+use zenoh_proto::msgs::exts::QueryTarget;
 
 use crate::{api::session::Session, config::ZSessionConfig};
 
@@ -13,6 +14,8 @@ where
     ke: &'a keyexpr,
     parameters: Option<&'a str>,
     payload: Option<&'a [u8]>,
+    query_target: QueryTarget,
+    qos: QoS,
     finalized: bool,
 }
 
@@ -26,6 +29,8 @@ where
         ke: &'a keyexpr,
         parameters: Option<&'a str>,
         payload: Option<&'a [u8]>,
+        query_target: QueryTarget,
+        qos: QoS,
     ) -> Self {
         Self {
             session,
@@ -33,8 +38,14 @@ where
             ke,
             parameters,
             payload,
+            query_target,
+            qos,
             finalized: false,
         }
+    }
+
+    pub fn zid(&self) -> ZenohIdProto {
+        self.session.zid()
     }
 
     pub fn keyexpr(&self) -> &keyexpr {
@@ -47,6 +58,14 @@ where
 
     pub fn payload(&self) -> Option<&[u8]> {
         self.payload
+    }
+
+    pub fn query_target(&self) -> QueryTarget {
+        self.query_target
+    }
+
+    pub fn qos(&self) -> QoS {
+        self.qos
     }
 
     pub async fn reply(
@@ -88,6 +107,8 @@ pub struct FixedCapacityQueryableQuery<
     ke: heapless::String<MAX_KEYEXPR>,
     parameters: Option<heapless::String<MAX_PARAMETERS>>,
     payload: Option<heapless::Vec<u8, MAX_PAYLOAD>>,
+    query_target: QueryTarget,
+    qos: QoS,
     finalized: bool,
 }
 
@@ -106,6 +127,14 @@ where
 
     pub fn payload(&self) -> Option<&[u8]> {
         self.payload.as_ref().map(|p| p.as_slice())
+    }
+
+    pub fn query_target(&self) -> QueryTarget {
+        self.query_target
+    }
+
+    pub fn qos(&self) -> QoS {
+        self.qos
     }
 
     pub async fn reply(
@@ -167,6 +196,8 @@ where
                 .map(heapless::Vec::from_slice)
                 .transpose()
                 .map_err(|_| CollectionError::CollectionTooSmall)?,
+            query_target: value.query_target,
+            qos: value.qos,
             finalized: value.finalized,
         })
     }
@@ -182,6 +213,8 @@ where
     ke: alloc::string::String,
     parameters: Option<alloc::string::String>,
     payload: Option<alloc::vec::Vec<u8>>,
+    query_target: QueryTarget,
+    qos: QoS,
     finalized: bool,
 }
 
@@ -200,6 +233,14 @@ where
 
     pub fn payload(&self) -> Option<&[u8]> {
         self.payload.as_deref()
+    }
+
+    pub fn query_target(&self) -> QueryTarget {
+        self.query_target
+    }
+
+    pub fn qos(&self) -> QoS {
+        self.qos
     }
 
     pub async fn reply(
@@ -253,6 +294,8 @@ where
             ke: alloc::string::String::from(value.keyexpr().as_str()),
             parameters: value.parameters.map(alloc::string::String::from),
             payload: value.payload.map(alloc::vec::Vec::from),
+            query_target: value.query_target,
+            qos: value.qos,
             finalized: value.finalized,
         })
     }

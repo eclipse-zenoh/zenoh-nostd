@@ -59,7 +59,7 @@ impl<Link, Buff> TransportLink<Link, Buff> {
 impl<Link, Buff> ZTransportLinkTx for TransportLink<Link, Buff>
 where
     Link: ZLinkTx,
-    Buff: AsMut<[u8]> + AsRef<[u8]>,
+    Buff: AsMut<[u8]> + AsRef<[u8]> + Clone,
 {
     fn tx(&mut self) -> (&mut impl ZLinkTx, &mut impl ZTransportTx) {
         (&mut self.link, &mut self.transport.tx)
@@ -69,7 +69,7 @@ where
 impl<Link, Buff> ZTransportLinkRx for TransportLink<Link, Buff>
 where
     Link: ZLinkRx,
-    Buff: AsMut<[u8]> + AsRef<[u8]>,
+    Buff: AsMut<[u8]> + AsRef<[u8]> + Clone,
 {
     fn rx(&mut self) -> (&mut impl ZLinkRx, &mut impl ZTransportRx) {
         (&mut self.link, &mut self.transport.rx)

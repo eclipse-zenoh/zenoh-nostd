@@ -144,6 +144,18 @@ impl ZSessionConfig for ExampleConfig {
     type QueryableCallbacks<'res> =
         AllocQueryableCallbacks<'res, Self, zenoh::storage::Box, zenoh::storage::Box>;
 
+    #[cfg(not(feature = "alloc"))]
+    type LivelinessCallbacks<'res> = FixedCapacityLivelinessCallbacks<
+        'res,
+        8,
+        zenoh::storage::RawOrBox<56>,
+        zenoh::storage::RawOrBox<600>,
+    >;
+
+    #[cfg(feature = "alloc")]
+    type LivelinessCallbacks<'res> =
+        AllocLivelinessCallbacks<'res, zenoh::storage::Box, zenoh::storage::Box>;
+
     fn buff(&self) -> Self::Buff {
         #[cfg(not(feature = "alloc"))]
         {

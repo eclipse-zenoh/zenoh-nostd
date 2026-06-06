@@ -1,5 +1,5 @@
 use super::sample::*;
-use zenoh_proto::{CollectionError, keyexpr};
+use zenoh_proto::CollectionError;
 
 #[derive(Debug)]
 pub enum GetResponse<'a> {
@@ -8,23 +8,37 @@ pub enum GetResponse<'a> {
 }
 
 impl<'a> GetResponse<'a> {
-    pub fn ok(ke: &'a keyexpr, payload: &'a [u8]) -> Self {
-        Self::Ok(Sample::new(ke, payload))
+    pub fn is_ok(&self) -> bool {
+        matches!(self, GetResponse::Ok(_))
     }
 
-    pub fn err(ke: &'a keyexpr, payload: &'a [u8]) -> Self {
-        Self::Err(Sample::new(ke, payload))
+    pub fn is_err(&self) -> bool {
+        matches!(self, GetResponse::Err(_))
+    }
+
+    pub fn ok(&self) -> Option<&Sample<'_>> {
+        match self {
+            GetResponse::Ok(s) => Some(s),
+            GetResponse::Err(_) => None,
+        }
+    }
+
+    pub fn err(&self) -> Option<&Sample<'_>> {
+        match self {
+            GetResponse::Ok(_) => None,
+            GetResponse::Err(s) => Some(s),
+        }
     }
 }
 
 #[derive(Debug)]
-pub enum FixedCapacityGetResponse<const MAX_KEYEXPR: usize, const MAX_PAYLOAD: usize> {
-    Ok(FixedCapacitySample<MAX_KEYEXPR, MAX_PAYLOAD>),
-    Err(FixedCapacitySample<MAX_KEYEXPR, MAX_PAYLOAD>),
+pub enum FixedCapacityGetResponse<const MAX_KEYEXPR: usize, const MAX_PAYLOAD: usize, const MAX_ATTACHMENT: usize> {
+    Ok(FixedCapacitySample<MAX_KEYEXPR, MAX_PAYLOAD, MAX_ATTACHMENT>),
+    Err(FixedCapacitySample<MAX_KEYEXPR, MAX_PAYLOAD, MAX_ATTACHMENT>),
 }
 
-impl<const MAX_KEYEXPR: usize, const MAX_PAYLOAD: usize>
-    FixedCapacityGetResponse<MAX_KEYEXPR, MAX_PAYLOAD>
+impl<const MAX_KEYEXPR: usize, const MAX_PAYLOAD: usize, const MAX_ATTACHMENT: usize>
+    FixedCapacityGetResponse<MAX_KEYEXPR, MAX_PAYLOAD, MAX_ATTACHMENT>
 {
     pub fn as_ref(&self) -> GetResponse<'_> {
         match self {
@@ -32,10 +46,32 @@ impl<const MAX_KEYEXPR: usize, const MAX_PAYLOAD: usize>
             Self::Err(sample) => GetResponse::Err(sample.as_ref()),
         }
     }
+
+    pub fn is_ok(&self) -> bool {
+        matches!(self, Self::Ok(_))
+    }
+
+    pub fn is_err(&self) -> bool {
+        matches!(self, Self::Err(_))
+    }
+
+    pub fn ok(&self) -> Option<&FixedCapacitySample<MAX_KEYEXPR, MAX_PAYLOAD, MAX_ATTACHMENT>> {
+        match self {
+            Self::Ok(s) => Some(s),
+            Self::Err(_) => None,
+        }
+    }
+
+    pub fn err(&self) -> Option<&FixedCapacitySample<MAX_KEYEXPR, MAX_PAYLOAD, MAX_ATTACHMENT>> {
+        match self {
+            Self::Ok(_) => None,
+            Self::Err(s) => Some(s),
+        }
+    }
 }
 
-impl<const MAX_KEYEXPR: usize, const MAX_PAYLOAD: usize> TryFrom<&GetResponse<'_>>
-    for FixedCapacityGetResponse<MAX_KEYEXPR, MAX_PAYLOAD>
+impl<const MAX_KEYEXPR: usize, const MAX_PAYLOAD: usize, const MAX_ATTACHMENT: usize> TryFrom<&GetResponse<'_>>
+    for FixedCapacityGetResponse<MAX_KEYEXPR, MAX_PAYLOAD, MAX_ATTACHMENT>
 {
     type Error = CollectionError;
 
@@ -60,6 +96,28 @@ impl AllocGetResponse {
         match self {
             Self::Ok(sample) => GetResponse::Ok(sample.as_ref()),
             Self::Err(sample) => GetResponse::Err(sample.as_ref()),
+        }
+    }
+
+    pub fn is_ok(&self) -> bool {
+        matches!(self, Self::Ok(_))
+    }
+
+    pub fn is_err(&self) -> bool {
+        matches!(self, Self::Err(_))
+    }
+
+    pub fn ok(&self) -> Option<&AllocSample> {
+        match self {
+            Self::Ok(s) => Some(s),
+            Self::Err(_) => None,
+        }
+    }
+
+    pub fn err(&self) -> Option<&AllocSample> {
+        match self {
+            Self::Ok(_) => None,
+            Self::Err(s) => Some(s),
         }
     }
 }

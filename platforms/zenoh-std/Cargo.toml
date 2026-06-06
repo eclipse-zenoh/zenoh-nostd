@@ -18,3 +18,5 @@ async-net = { version = "2.0.0" }
 socket2 = { version = "0.6.0", features = ["all"] }
 futures-lite = { version = "2.6.1" }
 futures-util = { version = "0.3", features = ["io"] }
+async-native-tls = "0.5"
+serialport = "4"

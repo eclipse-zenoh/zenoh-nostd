@@ -17,6 +17,22 @@ pub trait ZTransportLinkTx {
         transport.encode(msgs);
 
         async move {
+            if transport.is_batching() {
+                Ok(())
+            } else if let Some(bytes) = transport.flush(link.is_streamed()) {
+                link.write_all(bytes).await.map_err(|e| e.into())
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    fn batch_flush(
+        &mut self,
+    ) -> impl Future<Output = core::result::Result<(), zenoh_proto::TransportLinkError>> {
+        let (link, transport) = self.tx();
+
+        async move {
             if let Some(bytes) = transport.flush(link.is_streamed()) {
                 link.write_all(bytes).await.map_err(|e| e.into())
             } else {
@@ -47,6 +63,23 @@ pub trait ZTransportLinkTx {
     ) -> impl Future<Output = core::result::Result<(), zenoh_proto::TransportLinkError>> {
         let (link, transport) = self.tx();
         transport.keepalive();
+
+        async move {
+            if let Some(bytes) = transport.flush(link.is_streamed()) {
+                link.write_all(bytes).await.map_err(|e| e.into())
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    /// Send a Close message and flush it to the transport link.
+    /// This gracefully terminates the transport session.
+    fn close(
+        &mut self,
+    ) -> impl Future<Output = core::result::Result<(), zenoh_proto::TransportLinkError>> {
+        let (link, transport) = self.tx();
+        transport.close();
 
         async move {
             if let Some(bytes) = transport.flush(link.is_streamed()) {

@@ -24,7 +24,7 @@ impl<'transport, LinkTx, Buff> TransportLinkTx<'transport, LinkTx, Buff> {
 impl<'transport, LinkTx, Buff> ZTransportLinkTx for TransportLinkTx<'transport, LinkTx, Buff>
 where
     LinkTx: ZLinkTx,
-    Buff: AsMut<[u8]> + AsRef<[u8]>,
+    Buff: AsMut<[u8]> + AsRef<[u8]> + Clone,
 {
     fn tx(&mut self) -> (&mut impl ZLinkTx, &mut impl ZTransportTx) {
         (&mut self.link, self.transport)

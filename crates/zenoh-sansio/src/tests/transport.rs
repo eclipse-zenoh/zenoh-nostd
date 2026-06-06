@@ -1,4 +1,4 @@
-use crate::{Transport, ZTransportRx, ZTransportTx, transport::establishment::State};
+use crate::{Transport, ZTransportRx, ZTransportTx, transport::{TransportRx, TransportTx, establishment::State}};
 use core::{cell::RefCell, time::Duration};
 use zenoh_proto::{exts::*, fields::*, keyexpr, msgs::*};
 
@@ -463,7 +463,199 @@ fn transport_peer_simultaneous_connect_higher_zid_yields() {
     assert!(desc.is_none(), "description only set after OpenSyn/OpenAck");
 }
 
-#[cfg(feature = "std")]
+#[test]
+fn transport_batching_no_flush() {
+    let mut transport = Transport::builder([0u8; 512]).codec();
+
+    transport.tx.batch_start();
+    assert!(transport.tx.is_batching());
+
+    let msg = NetworkMessage {
+        reliability: Reliability::Reliable,
+        qos: QoS::declare(),
+        body: NetworkBody::Push(Push {
+            wire_expr: WireExpr::from(keyexpr::from_str_unchecked("abc/def")),
+            payload: PushBody::Put(Put {
+                payload: &[1, 2, 3, 4],
+                ..Default::default()
+            }),
+            ..Default::default()
+        }),
+    };
+
+    transport.tx.encode_ref(core::iter::once(msg.as_ref()));
+
+    transport.tx.batch_stop();
+    assert!(!transport.tx.is_batching());
+
+    transport
+        .rx
+        .decode_prefixed(transport.tx.flush_prefixed().unwrap())
+        .unwrap();
+
+    let mut flush = transport.rx.flush();
+    let m = flush.next().unwrap().0;
+    assert_eq!(flush.count(), 0);
+    assert_eq!(
+        m.body,
+        NetworkBody::Push(Push {
+            wire_expr: WireExpr::from(keyexpr::from_str_unchecked("abc/def")),
+            payload: PushBody::Put(Put {
+                payload: &[1, 2, 3, 4],
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
+    );
+}
+
+#[test]
+fn transport_delete_codec() {
+    let mut transport = Transport::builder([0u8; 512]).codec();
+
+    let msg = NetworkMessage {
+        reliability: Reliability::Reliable,
+        qos: QoS::declare(),
+        body: NetworkBody::Push(Push {
+            wire_expr: WireExpr::from(keyexpr::from_str_unchecked("abc/def")),
+            payload: PushBody::Del(Del {
+                timestamp: None,
+                sinfo: None,
+                attachment: None,
+            }),
+            ..Default::default()
+        }),
+    };
+
+    transport.tx.encode_ref(core::iter::once(msg.as_ref()));
+    transport
+        .rx
+        .decode_prefixed(transport.tx.flush_prefixed().unwrap())
+        .unwrap();
+
+    let mut flush = transport.rx.flush();
+    let m = flush.next().unwrap().0;
+    assert_eq!(flush.count(), 0);
+    assert_eq!(m, msg);
+}
+
+#[test]
+fn transport_fragmentation() {
+    let mut tx = TransportTx::new(
+        [0u8; 512],
+        64,
+        0,
+        Resolution::default(),
+        Duration::from_secs(10),
+    )
+    .with_max_fragments(3);
+
+    let payload: [u8; 200] = [0xAAu8; 200];
+
+    let msg = NetworkMessage {
+        reliability: Reliability::Reliable,
+        qos: QoS::declare(),
+        body: NetworkBody::Push(Push {
+            wire_expr: WireExpr::from(keyexpr::from_str_unchecked("abc/def")),
+            payload: PushBody::Put(Put {
+                payload: &payload,
+                ..Default::default()
+            }),
+            ..Default::default()
+        }),
+    };
+
+    let mut body_buff = [0u8; 512];
+    let mut writer = &mut body_buff[..];
+    let wlen = writer.len();
+    <NetworkBody as zenoh_proto::ZEncode>::z_encode(&msg.body, &mut writer).unwrap();
+    let body_len = wlen - writer.len();
+    let _ = writer;
+    let encoded_bytes = &body_buff[..body_len];
+
+    tx.encode_optimized(core::iter::once((msg, encoded_bytes)));
+
+    let mut total_flushed = 0usize;
+    let mut flush_count = 0usize;
+
+    loop {
+        let flushed = match tx.flush_prefixed() {
+            Some(f) if f.len() >= 2 => f,
+            _ => break,
+        };
+
+        total_flushed += flushed.len();
+        flush_count += 1;
+
+        if flush_count > 8 {
+            break;
+        }
+
+        tx.keepalive();
+    }
+
+    assert!(
+        total_flushed > 64,
+        "fragmentation should produce multiple frames exceeding batch size (total={total_flushed})"
+    );
+    assert!(
+        flush_count > 1,
+        "fragmentation should emit more than 1 frame (got {flush_count})"
+    );
+}
+
+#[test]
+fn transport_qos() {
+    let mut transport = Transport::builder([0u8; 512]).codec();
+
+    let realtime_qos = QoS::new(Priority::Data, CongestionControl::Drop, true);
+    let background_qos = QoS::declare();
+
+    let msg1 = NetworkMessage {
+        reliability: Reliability::Reliable,
+        qos: realtime_qos,
+        body: NetworkBody::Push(Push {
+            wire_expr: WireExpr::from(keyexpr::from_str_unchecked("a/b")),
+            payload: PushBody::Put(Put {
+                payload: &[1],
+                ..Default::default()
+            }),
+            ..Default::default()
+        }),
+    };
+
+    let msg2 = NetworkMessage {
+        reliability: Reliability::Reliable,
+        qos: background_qos,
+        body: NetworkBody::Push(Push {
+            wire_expr: WireExpr::from(keyexpr::from_str_unchecked("c/d")),
+            payload: PushBody::Put(Put {
+                payload: &[2],
+                ..Default::default()
+            }),
+            ..Default::default()
+        }),
+    };
+
+    transport
+        .tx
+        .encode_ref(core::iter::once(msg1.as_ref()).chain(core::iter::once(msg2.as_ref())));
+    transport
+        .rx
+        .decode_prefixed(transport.tx.flush_prefixed().unwrap())
+        .unwrap();
+
+    let mut flush = transport.rx.flush();
+    let m1 = flush.next().unwrap().0;
+    let m2 = flush.next().unwrap().0;
+    assert_eq!(flush.count(), 0);
+
+    assert_eq!(m1.qos, realtime_qos);
+    assert_eq!(m2.qos, background_qos);
+    assert_ne!(m1.qos, m2.qos);
+}
+
+#[cfg(feature = "proptest")]
 #[cfg(test)]
 mod proptests {
     use core::time::Duration;

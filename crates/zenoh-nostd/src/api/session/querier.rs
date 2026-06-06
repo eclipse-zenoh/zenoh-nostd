@@ -1,5 +1,5 @@
 use core::time::Duration;
-use zenoh_proto::{SessionError, keyexpr};
+use zenoh_proto::{SessionError, exts::QueryTarget, fields::{Locality, Reliability}, keyexpr};
 
 use crate::{api::session::Session, config::ZSessionConfig, session::GetBuilder};
 
@@ -12,6 +12,8 @@ where
     parameters: Option<&'a str>,
     payload: Option<&'a [u8]>,
     timeout: Option<Duration>,
+    reliability: Reliability,
+    query_target: QueryTarget,
 }
 
 impl<'a, 'res, Config> Querier<'a, 'res, Config>
@@ -27,6 +29,8 @@ where
             timeout: self.timeout,
             callback: None,
             receiver: None,
+            reliability: self.reliability,
+            query_target: self.query_target,
         }
     }
 
@@ -49,6 +53,9 @@ where
     parameters: Option<&'a str>,
     payload: Option<&'a [u8]>,
     timeout: Option<Duration>,
+    allowed_destination: Locality,
+    reliability: Reliability,
+    query_target: QueryTarget,
 }
 
 impl<'a, 'res, Config> QuerierBuilder<'a, 'res, Config>
@@ -62,7 +69,15 @@ where
             parameters: None,
             payload: None,
             timeout: None,
+            allowed_destination: Locality::default(),
+            reliability: Reliability::default(),
+            query_target: QueryTarget::default(),
         }
+    }
+
+    pub fn allowed_destination(mut self, locality: Locality) -> Self {
+        self.allowed_destination = locality;
+        self
     }
 
     pub fn parameters(mut self, parameters: &'a str) -> Self {
@@ -80,6 +95,16 @@ where
         self
     }
 
+    pub fn reliability(mut self, reliability: Reliability) -> Self {
+        self.reliability = reliability;
+        self
+    }
+
+    pub fn query_target(mut self, query_target: QueryTarget) -> Self {
+        self.query_target = query_target;
+        self
+    }
+
     pub async fn finish(self) -> core::result::Result<Querier<'a, 'res, Config>, SessionError> {
         // TODO: send interest msg
         Ok(Querier {
@@ -88,6 +113,8 @@ where
             parameters: self.parameters,
             payload: self.payload,
             timeout: self.timeout,
+            reliability: self.reliability,
+            query_target: self.query_target,
         })
     }
 }

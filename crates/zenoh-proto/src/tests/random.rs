@@ -166,6 +166,8 @@ impl<'a> Query<'a> {
             sinfo,
             body,
             attachment,
+            query_target: QueryTarget::rand(w),
+            reply_keyexpr: ReplyKeyexpr::rand(w),
         }
     }
 }

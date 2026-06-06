@@ -14,6 +14,9 @@ where
     pub(crate) encoding: Encoding<'a>,
     pub(crate) timestamp: Option<Timestamp>,
     pub(crate) attachment: Option<Attachment<'a>>,
+    pub(crate) allowed_destination: Locality,
+    pub(crate) qos: QoS,
+    pub(crate) reliability: Reliability,
 }
 
 impl<'a, 'res, Config> PutBuilder<'a, 'res, Config>
@@ -32,7 +35,15 @@ where
             encoding: Encoding::default(),
             timestamp: None,
             attachment: None,
+            allowed_destination: Locality::default(),
+            qos: QoS::default(),
+            reliability: Reliability::default(),
         }
+    }
+
+    pub fn allowed_destination(mut self, locality: Locality) -> Self {
+        self.allowed_destination = locality;
+        self
     }
 
     pub fn payload(mut self, payload: &'a [u8]) -> Self {
@@ -52,6 +63,16 @@ where
 
     pub fn attachment(mut self, attachment: &'a [u8]) -> Self {
         self.attachment = Some(Attachment { buffer: attachment });
+        self
+    }
+
+    pub fn qos(mut self, qos: QoS) -> Self {
+        self.qos = qos;
+        self
+    }
+
+    pub fn reliability(mut self, reliability: Reliability) -> Self {
+        self.reliability = reliability;
         self
     }
 
@@ -75,8 +96,8 @@ where
             .tx()
             .await
             .send(core::iter::once(NetworkMessage {
-                reliability: Reliability::default(),
-                qos: QoS::default(),
+                reliability: self.reliability,
+                qos: self.qos,
                 body: NetworkBody::Push(msg),
             }))
             .await?)

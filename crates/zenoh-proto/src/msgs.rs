@@ -7,6 +7,7 @@ mod query;
 mod reply;
 
 mod declare;
+mod del;
 mod interest;
 mod push;
 mod request;
@@ -24,6 +25,7 @@ pub use query::*;
 pub use reply::*;
 
 pub use declare::*;
+pub use del::*;
 pub use interest::*;
 pub use push::*;
 pub use request::*;

@@ -3,6 +3,7 @@ use crate::{exts::*, fields::*, msgs::*, *};
 #[derive(ZEnum, Debug, PartialEq)]
 pub enum PushBody<'a> {
     Put(Put<'a>),
+    Del(Del<'a>),
 }
 
 impl Default for PushBody<'_> {

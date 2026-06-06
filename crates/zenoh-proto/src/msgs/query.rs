@@ -14,4 +14,8 @@ pub struct Query<'a> {
     pub body: Option<Value<'a>>,
     #[zenoh(ext = 0x5)]
     pub attachment: Option<Attachment<'a>>,
+    #[zenoh(ext = 0x6, default = QueryTarget::default())]
+    pub query_target: QueryTarget,
+    #[zenoh(ext = 0x7, default = ReplyKeyexpr::default())]
+    pub reply_keyexpr: ReplyKeyexpr,
 }

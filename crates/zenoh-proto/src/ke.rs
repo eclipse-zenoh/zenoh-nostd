@@ -212,6 +212,30 @@ impl keyexpr {
         }
     }
 
+    pub fn includes(&self, other: &Self) -> bool {
+        if self.as_str() == "**" {
+            return true;
+        }
+
+        let a = self.as_bytes();
+        let b = other.as_bytes();
+
+        if let Some(prefix) = a.strip_suffix(b"/**") {
+            return b.starts_with(prefix)
+                && (b.len() == prefix.len() || b[prefix.len()] == b'/');
+        }
+
+        if a == b {
+            return true;
+        }
+
+        if other.is_wild_impl() {
+            return false;
+        }
+
+        ke_matches(a, b)
+    }
+
     pub fn intersects(&self, other: &Self) -> bool {
         let left = self.as_bytes();
         let right = other.as_bytes();
@@ -296,6 +320,32 @@ fn next(s: &[u8]) -> (&[u8], &[u8]) {
     }
 }
 
+fn ke_matches(mut a: &[u8], mut b: &[u8]) -> bool {
+    while !a.is_empty() && !b.is_empty() {
+        let (a_chunk, a_rest) = next(a);
+        let (b_chunk, b_rest) = next(b);
+        match a_chunk {
+            b"**" if a_rest.is_empty() => return true,
+            b"**" => {
+                if ke_matches(a_rest, b) {
+                    return true;
+                }
+                b = b_rest;
+            }
+            b"*" => {
+                a = a_rest;
+                b = b_rest;
+            }
+            _ if a_chunk == b_chunk => {
+                a = a_rest;
+                b = b_rest;
+            }
+            _ => return false,
+        }
+    }
+    a.is_empty() || a == b"**"
+}
+
 fn it_intersect<const STAR_DSL: bool>(mut it1: &[u8], mut it2: &[u8]) -> bool {
     while !it1.is_empty() && !it2.is_empty() {
         let (current1, advanced1) = next(it1);
@@ -337,4 +387,44 @@ fn has_verbatim(x: &[u8]) -> bool {
 
 unsafe fn has_direct_verbatim_non_empty(x: &[u8]) -> bool {
     unsafe { *x.get_unchecked(0) == b'@' }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn includes_demo_star_includes_example() {
+        let a = keyexpr::new("demo/**").unwrap();
+        let b = keyexpr::new("demo/example").unwrap();
+        assert!(a.includes(b));
+    }
+
+    #[test]
+    fn includes_example_not_include_star() {
+        let a = keyexpr::new("demo/example").unwrap();
+        let b = keyexpr::new("demo/**").unwrap();
+        assert!(!a.includes(b));
+    }
+
+    #[test]
+    fn includes_self() {
+        let a = keyexpr::new("demo/example").unwrap();
+        let b = keyexpr::new("demo/example").unwrap();
+        assert!(a.includes(b));
+    }
+
+    #[test]
+    fn includes_double_star() {
+        let a = keyexpr::new("**").unwrap();
+        let b = keyexpr::new("anything/at/all").unwrap();
+        assert!(a.includes(b));
+    }
+
+    #[test]
+    fn includes_star_prefix_not_match_without_slash() {
+        let a = keyexpr::new("demo/**").unwrap();
+        let b = keyexpr::new("demo-example").unwrap();
+        assert!(!a.includes(b));
+    }
 }

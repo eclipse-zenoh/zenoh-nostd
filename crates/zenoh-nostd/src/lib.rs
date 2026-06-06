@@ -17,12 +17,24 @@ pub mod session {
     pub use zenoh_proto::{Endpoint, Error};
 
     pub use super::api::{
+        connectivity::*,
+        advanced_publisher::*,
+        advanced_subscriber::*,
+        auto_reconnect::*,
+        encoding::*,
         query::*,
         response::*,
         sample::*,
         session::Session,
-        session::{get::*, r#pub::*, put::*, querier::*, queryable::*, sub::*},
+        session::{
+            delete::*, get::*, liveliness::*, r#pub::*, put::*, querier::*, queryable::*, sub::*,
+        },
     };
+
+    pub use zenoh_proto::msgs::exts::QoS;
+    pub use zenoh_proto::msgs::exts::QueryTarget;
+    pub use zenoh_proto::msgs::fields::{CongestionControl, ConsolidationMode, Locality, Priority, Reliability};
+    pub use zenoh_proto::msgs::{DeclareKeyExpr, Interest, UndeclareKeyExpr};
 
     pub mod zenoh {
         pub use super::super::api::callbacks::storage;

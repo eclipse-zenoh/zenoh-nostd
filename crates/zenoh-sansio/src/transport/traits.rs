@@ -114,4 +114,8 @@ pub trait ZTransportTx {
         }
     }
     fn clear(&mut self);
+
+    fn batch_start(&mut self);
+    fn batch_stop(&mut self);
+    fn is_batching(&self) -> bool;
 }

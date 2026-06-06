@@ -6,7 +6,8 @@ use zenoh_proto::fields::WhatAmI;
 
 #[test]
 fn peer_transport_handshake_over_tcp() {
-    let listener = TcpListener::bind("127.0.0.1:15561").unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
 
     let handle = thread::spawn(move || {
         let (stream, _) = listener.accept().unwrap();
@@ -36,7 +37,7 @@ fn peer_transport_handshake_over_tcp() {
         }
     });
 
-    let stream = TcpStream::connect("127.0.0.1:15561").unwrap();
+    let stream = TcpStream::connect(addr).unwrap();
     let mut stream = stream;
     stream
         .set_read_timeout(Some(std::time::Duration::from_secs(5)))

@@ -108,6 +108,7 @@ pub struct SubscriberBuilder<
         DynCallback<'res, CallbackStorage<'res, Config>, FutureStorage<'res, Config>, SampleRef>,
     >,
     receiver: Option<DynamicReceiver<'res, OwnedSample>>,
+    allowed_origin: Locality,
 }
 
 impl<'a, 'res, Config> SubscriberBuilder<'a, 'res, Config, (), false, false>
@@ -120,7 +121,13 @@ where
             ke,
             callback: None,
             receiver: None,
+            allowed_origin: Locality::default(),
         }
+    }
+
+    pub fn allowed_origin(mut self, locality: Locality) -> Self {
+        self.allowed_origin = locality;
+        self
     }
 
     pub fn callback(
@@ -132,6 +139,7 @@ where
             ke: self.ke,
             callback: Some(DynObject::new(AsyncCallback::new(callback))),
             receiver: None,
+            allowed_origin: self.allowed_origin,
         }
     }
 
@@ -144,6 +152,7 @@ where
             ke: self.ke,
             callback: Some(DynObject::new(SyncCallback::new(callback))),
             receiver: None,
+            allowed_origin: self.allowed_origin,
         }
     }
 
@@ -171,6 +180,7 @@ where
                 },
             ))),
             receiver: Some(receiver),
+            allowed_origin: self.allowed_origin,
         }
     }
 }

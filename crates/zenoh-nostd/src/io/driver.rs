@@ -17,6 +17,7 @@ use crate::{
 pub struct Driver<'res, Link, Buff>
 where
     Link: ZLink + 'res,
+    Buff: Clone,
 {
     zid: ZenohIdProto,
     tx: Mutex<NoopRawMutex, TransportLinkTx<'res, Link::Tx<'res>, Buff>>,
@@ -26,6 +27,7 @@ where
 impl<'res, Link, Buff> Driver<'res, Link, Buff>
 where
     Link: ZLink,
+    Buff: Clone,
 {
     pub fn new(transport: &'res mut TransportLink<Link, Buff>) -> Self {
         let zid = transport.transport().other_zid;
@@ -80,7 +82,7 @@ where
                     let tx = tx_guard.deref_mut();
 
                     if tx.transport().should_close(start.elapsed().into()) {
-                        // TODO: send Close msg
+                        tx.close().await.map_err(EitherError::A)?;
                         break Err(EitherError::A(TransportLinkError::TransportClosed));
                     }
 
@@ -106,7 +108,8 @@ where
             }
 
             if rx.transport().should_close(start.elapsed().into()) {
-                // TODO: Try send Close msg
+                let mut tx_guard = self.tx.lock().await;
+                tx_guard.deref_mut().close().await.map_err(EitherError::A)?;
                 break Err(EitherError::A(TransportLinkError::TransportClosed));
             }
         }

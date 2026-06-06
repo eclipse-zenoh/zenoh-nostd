@@ -16,7 +16,7 @@ async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
     // if you want a `'static` session.
     let channel = embassy_sync::channel::Channel::<
         embassy_sync::blocking_mutex::raw::NoopRawMutex,
-        FixedCapacitySample<128, 128>,
+        FixedCapacitySample<128, 128, 64>,
         8,
     >::new();
 

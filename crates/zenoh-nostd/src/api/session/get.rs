@@ -6,7 +6,7 @@ use embassy_sync::channel::{DynamicReceiver, DynamicSender};
 use embassy_time::{Instant, Timer};
 use zenoh_proto::{
     SessionError,
-    exts::{QoS, Value},
+    exts::{QoS, QueryTarget, Value},
     fields::{ConsolidationMode, Reliability, WireExpr},
     keyexpr,
     msgs::{NetworkBody, NetworkMessage, Query, Request, RequestBody},
@@ -100,6 +100,8 @@ pub struct GetBuilder<
         >,
     >,
     pub(crate) receiver: Option<DynamicReceiver<'res, OwnedResponse>>,
+    pub(crate) reliability: Reliability,
+    pub(crate) query_target: QueryTarget,
 }
 
 impl<'a, 'res, Config> GetBuilder<'a, 'res, Config, (), false, false>
@@ -115,6 +117,8 @@ where
             timeout: None,
             callback: None,
             receiver: None,
+            reliability: Reliability::default(),
+            query_target: QueryTarget::default(),
         }
     }
 
@@ -130,6 +134,8 @@ where
             timeout: self.timeout,
             callback: Some(DynObject::new(AsyncCallback::new(callback))),
             receiver: None,
+            reliability: self.reliability,
+            query_target: self.query_target,
         }
     }
 
@@ -145,6 +151,8 @@ where
             timeout: self.timeout,
             callback: Some(DynObject::new(SyncCallback::new(callback))),
             receiver: None,
+            reliability: self.reliability,
+            query_target: self.query_target,
         }
     }
 
@@ -175,6 +183,8 @@ where
                 },
             ))),
             receiver: Some(receiver),
+            reliability: self.reliability,
+            query_target: self.query_target,
         }
     }
 }
@@ -201,6 +211,16 @@ where
 
     pub fn timeout(mut self, timeout: Duration) -> Self {
         self.timeout = Some(timeout);
+        self
+    }
+
+    pub fn reliability(mut self, reliability: Reliability) -> Self {
+        self.reliability = reliability;
+        self
+    }
+
+    pub fn query_target(mut self, query_target: QueryTarget) -> Self {
+        self.query_target = query_target;
         self
     }
 }
@@ -240,6 +260,7 @@ where
                     payload: p,
                     ..Default::default()
                 }),
+                query_target: self.query_target,
                 ..Default::default()
             }),
             ..Default::default()
@@ -250,7 +271,7 @@ where
             .tx()
             .await
             .send(core::iter::once(NetworkMessage {
-                reliability: Reliability::default(),
+                reliability: self.reliability,
                 qos: QoS::default(),
                 body: NetworkBody::Request(msg),
             }))

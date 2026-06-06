@@ -1,20 +1,31 @@
+use core::ops::DerefMut;
+
 use embassy_sync::{
     blocking_mutex::raw::NoopRawMutex,
     mutex::{Mutex, MutexGuard},
 };
-use zenoh_proto::{Endpoint, TransportLinkError};
+use zenoh_proto::{
+    Endpoint, SessionError, TransportLinkError,
+    exts::QoS,
+    fields::{Reliability, ZenohIdProto},
+    msgs::{Declare, DeclareBody, NetworkBody, NetworkMessage, UndeclareQueryable},
+};
+use zenoh_sansio::ZTransportTx;
 
 use crate::{
     api::callbacks::ZCallbacks,
     config::ZSessionConfig,
-    io::{driver::Driver, transport::TransportLink},
+    io::{driver::Driver, transport::{TransportLink, ZTransportLinkTx}},
     platform::ZLinkManager,
     resources::Resources,
 };
 
 mod run;
 
+pub mod admin_space;
+pub mod delete;
 pub mod get;
+pub mod liveliness;
 pub mod r#pub;
 pub mod put;
 pub mod querier;
@@ -29,6 +40,8 @@ where
     sub_callbacks: Config::SubCallbacks<'res>,
     get_callbacks: Config::GetCallbacks<'res>,
     queryable_callbacks: Config::QueryableCallbacks<'res>,
+    liveliness_callbacks: Config::LivelinessCallbacks<'res>,
+    admin_space: Option<u32>,
 }
 
 impl<'res, Config> SessionState<'res, Config>
@@ -41,6 +54,8 @@ where
             sub_callbacks: Config::SubCallbacks::empty(),
             get_callbacks: Config::GetCallbacks::empty(),
             queryable_callbacks: Config::QueryableCallbacks::empty(),
+            liveliness_callbacks: Config::LivelinessCallbacks::empty(),
+            admin_space: None,
         }
     }
 
@@ -48,6 +63,14 @@ where
         let next = self.next;
         self.next += 1;
         next
+    }
+
+    pub(crate) fn admin_space_id(&self) -> Option<u32> {
+        self.admin_space
+    }
+
+    pub(crate) fn set_admin_space_id(&mut self, id: Option<u32>) {
+        self.admin_space = id;
     }
 }
 
@@ -77,6 +100,58 @@ where
 
     pub(crate) async fn state(&self) -> MutexGuard<'_, NoopRawMutex, SessionState<'res, Config>> {
         self.state.lock().await
+    }
+
+    pub async fn batch_start(&self) -> core::result::Result<(), TransportLinkError> {
+        let mut tx_guard = self.driver.tx().await;
+        let (_, transport) = tx_guard.tx();
+        transport.batch_start();
+        Ok(())
+    }
+
+    pub async fn batch_flush(&self) -> core::result::Result<(), TransportLinkError> {
+        ZTransportLinkTx::batch_flush(self.driver.tx().await.deref_mut()).await
+    }
+
+    pub async fn batch_stop(&self) -> core::result::Result<(), TransportLinkError> {
+        {
+            let mut tx_guard = self.driver.tx().await;
+            let (_, transport) = tx_guard.tx();
+            transport.batch_stop();
+        }
+        ZTransportLinkTx::batch_flush(self.driver.tx().await.deref_mut()).await
+    }
+
+    pub fn zid(&self) -> ZenohIdProto {
+        self.driver.zid()
+    }
+
+    pub(crate) async fn _undeclare_queryable(
+        &self,
+        id: u32,
+    ) -> core::result::Result<(), SessionError> {
+        let mut state = self.state().await;
+        state.queryable_callbacks.remove(id)?;
+
+        let msg = Declare {
+            body: DeclareBody::UndeclareQueryable(UndeclareQueryable {
+                id,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        self.driver
+            .tx()
+            .await
+            .send(core::iter::once(NetworkMessage {
+                reliability: Reliability::default(),
+                qos: QoS::default(),
+                body: NetworkBody::Declare(msg),
+            }))
+            .await?;
+
+        Ok(())
     }
 }
 
