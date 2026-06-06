@@ -3,8 +3,9 @@ use crate::msgs::InitIdentifier;
 
 /// SCOUT message — discover peers/routers on the network.
 #[derive(ZStruct, Debug, PartialEq, Default)]
-#[zenoh(header = "Z|_:1|S|ID:5=0x00")]
+#[zenoh(header = "Z|_:1|S|ID:5=0x01")]
 pub struct Scout {
+    pub version: u8,
     #[zenoh(presence = header(S), default = 0)]
     pub what: u8,
 }

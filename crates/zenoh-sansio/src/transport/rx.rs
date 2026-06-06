@@ -352,6 +352,9 @@ where
         }
 
         let max = core::cmp::min(self.buff.as_ref().len(), self.batch_size);
+        if self.cursor >= max {
+            return Ok(());
+        }
         let buff = &mut self.buff.as_mut()[self.cursor..max];
 
         let len = read.len();
@@ -429,6 +432,9 @@ where
         }
 
         let max = core::cmp::min(self.buff.as_ref().len(), self.batch_size);
+        if self.cursor >= max {
+            return Ok(());
+        }
         let buff = &mut self.buff.as_mut()[self.cursor..max];
 
         let len = read(buff).map_err(EitherError::B)?;

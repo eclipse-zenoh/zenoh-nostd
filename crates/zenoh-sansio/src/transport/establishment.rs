@@ -126,7 +126,7 @@ impl State {
                                 batch_size: BatchSize(mine_batch_size),
                             },
                             cookie: buff, // TODO: cypher ChaCha20
-                            version: 0u8,
+                            version: zenoh_proto::VERSION,
                             qos: None,
                             qos_link: None,
                             auth: None,
@@ -174,7 +174,7 @@ impl State {
                                     batch_size: BatchSize(mine_batch_size),
                                 },
                                 cookie: buff, // TODO: cypher ChaCha20
-                                version: 0u8,
+                                version: zenoh_proto::VERSION,
                                 qos: None,
                                 qos_link: None,
                                 auth: None,

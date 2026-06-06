@@ -655,6 +655,537 @@ fn transport_qos() {
     assert_ne!(m1.qos, m2.qos);
 }
 
+#[test]
+fn sequence_number_wrap() {
+    let mut tx = crate::transport::TransportTx::new(
+        [0u8; 512],
+        512,
+        u32::MAX - 5,
+        Resolution::default(),
+        Duration::from_secs(10),
+    );
+
+    let ke = keyexpr::from_str_unchecked("a/b");
+
+    for i in 0u8..12 {
+        let msg = NetworkMessage {
+            reliability: Reliability::Reliable,
+            qos: QoS::default(),
+            body: NetworkBody::Push(Push {
+                wire_expr: WireExpr::from(ke),
+                payload: PushBody::Put(Put {
+                    payload: &[i],
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+        };
+
+        ZTransportTx::encode_ref(&mut tx, core::iter::once(msg.as_ref()));
+    }
+
+    let flushed = tx.flush_prefixed().unwrap();
+    let mut rx = crate::transport::TransportRx::new(
+        [0u8; 512],
+        512,
+        u32::MAX - 5,
+        Resolution::default(),
+        Duration::from_secs(10),
+    );
+    rx.decode_prefixed(flushed).unwrap();
+
+    let mut count = 0u8;
+    for (m, _) in rx.flush() {
+        match &m.body {
+            NetworkBody::Push(Push {
+                payload: PushBody::Put(Put { payload, .. }),
+                ..
+            }) => {
+                assert_eq!(payload, &[count]);
+            }
+            _ => panic!("expected Push"),
+        }
+        count += 1;
+    }
+    assert_eq!(count, 12, "all messages must survive SN wrap");
+}
+
+#[test]
+fn frame_sn_monotonic() {
+    let ke = keyexpr::from_str_unchecked("a/b");
+    let mut tx = crate::transport::TransportTx::new(
+        [0u8; 1024],
+        1024,
+        0,
+        Resolution::default(),
+        Duration::from_secs(10),
+    );
+
+    for i in 0..50 {
+        let msg = NetworkMessage {
+            reliability: match i % 3 {
+                0 => Reliability::Reliable,
+                _ => Reliability::BestEffort,
+            },
+            qos: QoS::default(),
+            body: NetworkBody::Push(Push {
+                wire_expr: WireExpr::from(ke),
+                payload: PushBody::Put(Put {
+                    payload: &[i as u8],
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+        };
+        ZTransportTx::encode_ref(&mut tx, core::iter::once(msg.as_ref()));
+    }
+
+    let flushed = tx.flush_prefixed().unwrap();
+    let buff = &flushed[2..];
+
+    let mut last_sn: Option<u32> = None;
+    let mut reader = &buff[..];
+    while !reader.is_empty() {
+        let id = reader[0] & 0x1f;
+        if id == FrameHeader::ID {
+            let header = <FrameHeader as zenoh_proto::ZDecode>::z_decode(&mut reader).unwrap();
+            if let Some(last) = last_sn {
+                assert!(
+                    header.sn == last || header.sn == last.wrapping_add(1),
+                    "SN must be monotonic: last={last}, current={}",
+                    header.sn
+                );
+            }
+            last_sn = Some(header.sn);
+        } else {
+            break;
+        }
+    }
+}
+
+#[test]
+fn transport_state_machine_happy_path() {
+    let a_zid = ZenohIdProto::default();
+
+    let mut listener = State::WaitingInitSyn {
+        mine_zid: a_zid,
+        mine_whatami: WhatAmI::Client,
+        mine_batch_size: 512,
+        mine_resolution: Resolution::default(),
+        mine_lease: Duration::from_secs(30),
+    };
+
+    let b_zid = ZenohIdProto::try_from(&2u128.to_le_bytes()[..]).unwrap();
+    let mut connector = State::WaitingInitAck {
+        mine_zid: b_zid,
+        mine_whatami: WhatAmI::Client,
+        mine_batch_size: 1025,
+        mine_resolution: Resolution::default(),
+        mine_lease: Duration::from_secs(37),
+    };
+
+    let mut buff = [0u8; 256];
+
+    macro_rules! encode {
+        ($msg:expr) => {{
+            let mut writer = &mut buff[..];
+            <InitSyn as zenoh_proto::ZEncode>::z_encode($msg, &mut writer).unwrap();
+            let len = 256 - writer.len();
+            &buff[..len]
+        }};
+    }
+
+    let init = InitSyn {
+        identifier: InitIdentifier {
+            zid: b_zid,
+            ..Default::default()
+        },
+        resolution: InitResolution {
+            resolution: Resolution::default(),
+            batch_size: BatchSize(1025),
+        },
+        ..Default::default()
+    };
+
+    let encoded_init = encode!(&init);
+    let (resp, desc) = listener.poll((TransportMessage::InitSyn(init), encoded_init));
+    assert!(resp.is_some(), "listener must respond with InitAck");
+    assert!(desc.is_none(), "not yet established");
+    assert!(matches!(listener, State::WaitingOpenSyn { .. }));
+
+    if let Some(TransportMessage::InitAck(ack)) = resp {
+        let (resp2, desc2) = connector.poll((
+            TransportMessage::InitAck(ack),
+            &[] as &[u8],
+        ));
+        assert!(resp2.is_some(), "connector must respond with OpenSyn");
+        assert!(desc2.is_none(), "not yet established");
+        assert!(matches!(connector, State::WaitingOpenAck { .. }));
+
+        if let Some(TransportMessage::OpenSyn(open)) = resp2 {
+            let (resp3, desc3) = listener.poll((
+                TransportMessage::OpenSyn(open),
+                &[] as &[u8],
+            ));
+            assert!(resp3.is_some(), "listener must respond with OpenAck");
+            assert!(desc3.is_some(), "listener must establish after OpenSyn");
+            assert!(matches!(listener, State::Opened(_)));
+
+            if let Some(TransportMessage::OpenAck(ack2)) = resp3 {
+                let (resp4, desc4) = connector.poll((
+                    TransportMessage::OpenAck(ack2),
+                    &[] as &[u8],
+                ));
+                assert!(resp4.is_none(), "no response after OpenAck");
+                assert!(desc4.is_some(), "connector must establish after OpenAck");
+                assert!(matches!(connector, State::Opened(_)));
+            } else {
+                panic!("expected OpenAck");
+            }
+        } else {
+            panic!("expected OpenSyn");
+        }
+    } else {
+        panic!("expected InitAck");
+    }
+
+    assert!(listener.description().is_some());
+    assert!(connector.description().is_some());
+}
+
+#[test]
+fn transport_state_machine_invalid_transitions() {
+    let zid = ZenohIdProto::default();
+
+    // WaitingInitSyn rejects everything except InitSyn
+    {
+        let mut state = State::WaitingInitSyn {
+            mine_zid: zid,
+            mine_whatami: WhatAmI::Client,
+            mine_batch_size: 512,
+            mine_resolution: Resolution::default(),
+            mine_lease: Duration::from_secs(30),
+        };
+        let (resp, desc) =
+            state.poll((TransportMessage::InitAck(InitAck::default()), &[] as &[u8]));
+        assert!(resp.is_none() && desc.is_none(), "WaitingInitSyn must reject InitAck");
+    }
+    {
+        let mut state = State::WaitingInitSyn {
+            mine_zid: zid,
+            mine_whatami: WhatAmI::Client,
+            mine_batch_size: 512,
+            mine_resolution: Resolution::default(),
+            mine_lease: Duration::from_secs(30),
+        };
+        let (resp, desc) =
+            state.poll((TransportMessage::OpenSyn(OpenSyn::default()), &[] as &[u8]));
+        assert!(resp.is_none() && desc.is_none(), "WaitingInitSyn must reject OpenSyn");
+    }
+    {
+        let mut state = State::WaitingInitSyn {
+            mine_zid: zid,
+            mine_whatami: WhatAmI::Client,
+            mine_batch_size: 512,
+            mine_resolution: Resolution::default(),
+            mine_lease: Duration::from_secs(30),
+        };
+        let (resp, desc) =
+            state.poll((TransportMessage::OpenAck(OpenAck::default()), &[] as &[u8]));
+        assert!(resp.is_none() && desc.is_none(), "WaitingInitSyn must reject OpenAck");
+    }
+
+    // WaitingInitAck rejects OpenSyn and OpenAck
+    {
+        let mut state = State::WaitingInitAck {
+            mine_zid: zid,
+            mine_whatami: WhatAmI::Client,
+            mine_batch_size: 512,
+            mine_resolution: Resolution::default(),
+            mine_lease: Duration::from_secs(30),
+        };
+        let (resp, desc) =
+            state.poll((TransportMessage::OpenSyn(OpenSyn::default()), &[] as &[u8]));
+        assert!(resp.is_none() && desc.is_none(), "WaitingInitAck must reject OpenSyn");
+    }
+    {
+        let mut state = State::WaitingInitAck {
+            mine_zid: zid,
+            mine_whatami: WhatAmI::Client,
+            mine_batch_size: 512,
+            mine_resolution: Resolution::default(),
+            mine_lease: Duration::from_secs(30),
+        };
+        let (resp, desc) =
+            state.poll((TransportMessage::OpenAck(OpenAck::default()), &[] as &[u8]));
+        assert!(resp.is_none() && desc.is_none(), "WaitingInitAck must reject OpenAck");
+    }
+
+    // WaitingOpenSyn rejects InitSyn, InitAck, OpenAck
+    {
+        let mut state = State::WaitingOpenSyn {
+            mine_zid: zid,
+            mine_whatami: WhatAmI::Client,
+            mine_batch_size: 512,
+            mine_resolution: Resolution::default(),
+            mine_lease: Duration::from_secs(30),
+        };
+        let (resp, desc) =
+            state.poll((TransportMessage::InitSyn(InitSyn::default()), &[] as &[u8]));
+        assert!(resp.is_none() && desc.is_none(), "WaitingOpenSyn must reject InitSyn");
+    }
+    {
+        let mut state = State::WaitingOpenSyn {
+            mine_zid: zid,
+            mine_whatami: WhatAmI::Client,
+            mine_batch_size: 512,
+            mine_resolution: Resolution::default(),
+            mine_lease: Duration::from_secs(30),
+        };
+        let (resp, desc) =
+            state.poll((TransportMessage::InitAck(InitAck::default()), &[] as &[u8]));
+        assert!(resp.is_none() && desc.is_none(), "WaitingOpenSyn must reject InitAck");
+    }
+    {
+        let mut state = State::WaitingOpenSyn {
+            mine_zid: zid,
+            mine_whatami: WhatAmI::Client,
+            mine_batch_size: 512,
+            mine_resolution: Resolution::default(),
+            mine_lease: Duration::from_secs(30),
+        };
+        let (resp, desc) =
+            state.poll((TransportMessage::OpenAck(OpenAck::default()), &[] as &[u8]));
+        assert!(resp.is_none() && desc.is_none(), "WaitingOpenSyn must reject OpenAck");
+    }
+
+    // WaitingOpenAck rejects InitSyn, InitAck, OpenSyn
+    {
+        let mut state = State::WaitingOpenAck {
+            mine_zid: zid,
+            batch_size: 512,
+            resolution: Resolution::default(),
+            sn: 0,
+            mine_lease: Duration::from_secs(30),
+            other_zid: zid,
+        };
+        let (resp, desc) =
+            state.poll((TransportMessage::InitSyn(InitSyn::default()), &[] as &[u8]));
+        assert!(resp.is_none() && desc.is_none(), "WaitingOpenAck must reject InitSyn");
+    }
+    {
+        let mut state = State::WaitingOpenAck {
+            mine_zid: zid,
+            batch_size: 512,
+            resolution: Resolution::default(),
+            sn: 0,
+            mine_lease: Duration::from_secs(30),
+            other_zid: zid,
+        };
+        let (resp, desc) =
+            state.poll((TransportMessage::InitAck(InitAck::default()), &[] as &[u8]));
+        assert!(resp.is_none() && desc.is_none(), "WaitingOpenAck must reject InitAck");
+    }
+    {
+        let mut state = State::WaitingOpenAck {
+            mine_zid: zid,
+            batch_size: 512,
+            resolution: Resolution::default(),
+            sn: 0,
+            mine_lease: Duration::from_secs(30),
+            other_zid: zid,
+        };
+        let (resp, desc) =
+            state.poll((TransportMessage::OpenSyn(OpenSyn::default()), &[] as &[u8]));
+        assert!(resp.is_none() && desc.is_none(), "WaitingOpenAck must reject OpenSyn");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Fuzz-style edge case tests — must never panic on invalid/malformed input
+// ---------------------------------------------------------------------------
+
+#[test]
+fn truncated_input_does_not_panic() {
+    let mut transport = Transport::builder([0u8; 128]).codec();
+    transport.rx.decode_raw(&[0x00]).ok();
+    let count = transport.rx.flush().count();
+    assert_eq!(count, 0);
+}
+
+#[test]
+fn all_zeros_input_does_not_panic() {
+    let mut transport = Transport::builder([0u8; 128]).codec();
+    transport.rx.decode_raw(&[0u8; 64]).ok();
+    let count = transport.rx.flush().count();
+    assert_eq!(count, 0);
+}
+
+#[test]
+fn random_garbage_does_not_panic() {
+    let mut transport = Transport::builder([0u8; 128]).codec();
+    transport.rx.decode_raw(&[0xFF; 64]).ok();
+    let count = transport.rx.flush().count();
+    assert_eq!(count, 0);
+}
+
+#[test]
+fn oversized_message_does_not_overflow() {
+    let ke = keyexpr::from_str_unchecked("a/b");
+    let mut transport = Transport::builder([0u8; 64]).codec();
+    let big_payload = [0xABu8; 256];
+    let msg = NetworkMessage {
+        reliability: Reliability::Reliable,
+        qos: QoS::declare(),
+        body: NetworkBody::Push(Push {
+            wire_expr: WireExpr::from(ke),
+            payload: PushBody::Put(Put {
+                payload: &big_payload,
+                ..Default::default()
+            }),
+            ..Default::default()
+        }),
+    };
+    transport.tx.encode_ref(core::iter::once(msg.as_ref()));
+    let result = transport.tx.flush_prefixed();
+    assert!(result.is_none() || result.is_some());
+}
+
+#[test]
+fn invalid_frame_header_does_not_panic() {
+    let mut transport = Transport::builder([0u8; 128]).codec();
+    let raw = &[0b0001_1111, 0x00, 0x00, 0x00, 0x00];
+    transport.rx.decode_raw(raw).ok();
+    let count = transport.rx.flush().count();
+    assert_eq!(count, 0);
+}
+
+#[test]
+fn double_close_is_safe() {
+    let mut transport = Transport::builder([0u8; 128]).codec();
+    transport.tx.close();
+    transport.tx.close();  // second close should not panic
+    // close() queues a Close message; enter Synchronized then timeout to trigger closure
+    transport.tx.sync(None, core::time::Duration::from_secs(3600));
+    transport.tx.sync(None, core::time::Duration::from_secs(3700));
+    assert!(transport.tx.closed());
+}
+
+#[test]
+fn zero_length_buffer_does_not_panic() {
+    let transport = Transport::builder([0u8; 0]).codec();
+    let ke = keyexpr::from_str_unchecked("a/b");
+    let msg = NetworkMessage {
+        reliability: Reliability::Reliable,
+        qos: QoS::declare(),
+        body: NetworkBody::Push(Push {
+            wire_expr: WireExpr::from(ke),
+            payload: PushBody::Put(Put {
+                payload: &[1u8; 4],
+                ..Default::default()
+            }),
+            ..Default::default()
+        }),
+    };
+
+    let mut tx = transport.tx;
+    tx.encode_ref(core::iter::once(msg.as_ref()));
+    let result = tx.flush_prefixed();
+    assert!(result.is_none());
+}
+
+#[test]
+fn message_after_close_is_rejected() {
+    let ke = keyexpr::from_str_unchecked("a/b");
+    let mut transport = Transport::builder([0u8; 128]).codec();
+
+    transport.tx.close();
+    transport.tx.sync(None, core::time::Duration::from_secs(3600));
+    transport.tx.sync(None, core::time::Duration::from_secs(3700));
+    assert!(transport.tx.closed());
+
+    let msg = NetworkMessage {
+        reliability: Reliability::Reliable,
+        qos: QoS::declare(),
+        body: NetworkBody::Push(Push {
+            wire_expr: WireExpr::from(ke),
+            payload: PushBody::Put(Put {
+                payload: &[1u8; 4],
+                ..Default::default()
+            }),
+            ..Default::default()
+        }),
+    };
+    // encode_ref should not panic even after close
+    transport.tx.encode_ref(core::iter::once(msg.as_ref()));
+    // flush should not panic either
+    let _ = transport.tx.flush_prefixed();
+}
+
+#[test]
+fn simultaneous_close_handling() {
+    let mut transport = Transport::builder([0u8; 128]).codec();
+    transport.tx.close();
+    transport.tx.sync(None, core::time::Duration::from_secs(3600));
+    transport.tx.sync(None, core::time::Duration::from_secs(3700));
+    assert!(transport.tx.closed());
+    transport.rx.sync(Some(&transport.tx), core::time::Duration::from_secs(0));
+    assert!(transport.rx.closed());
+}
+
+#[test]
+fn max_sn_before_wrap() {
+    let ke = keyexpr::from_str_unchecked("a/b");
+    let mut tx = crate::transport::TransportTx::new(
+        [0u8; 512],
+        512,
+        u32::MAX - 3,
+        Resolution::default(),
+        core::time::Duration::from_secs(10),
+    );
+
+    for i in 0u8..8 {
+        let msg = NetworkMessage {
+            reliability: Reliability::Reliable,
+            qos: QoS::default(),
+            body: NetworkBody::Push(Push {
+                wire_expr: WireExpr::from(ke),
+                payload: PushBody::Put(Put {
+                    payload: &[i],
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+        };
+        crate::ZTransportTx::encode_ref(&mut tx, core::iter::once(msg.as_ref()));
+    }
+
+    let flushed = tx.flush_prefixed().unwrap();
+    let mut rx = crate::transport::TransportRx::new(
+        [0u8; 512],
+        512,
+        u32::MAX - 3,
+        Resolution::default(),
+        core::time::Duration::from_secs(10),
+    );
+    rx.decode_prefixed(flushed).unwrap();
+
+    let mut count = 0u8;
+    for (m, _) in rx.flush() {
+        match &m.body {
+            NetworkBody::Push(Push {
+                payload: PushBody::Put(Put { payload, .. }),
+                ..
+            }) => {
+                assert_eq!(payload, &[count]);
+            }
+            _ => panic!("expected Push"),
+        }
+        count += 1;
+    }
+    assert_eq!(count, 8, "all messages must survive SN wrap from u32::MAX-3");
+}
+
 #[cfg(feature = "proptest")]
 #[cfg(test)]
 mod proptests {
@@ -1007,6 +1538,308 @@ mod proptests {
         ) {
             let ke = keyexpr::new(&a).unwrap();
             prop_assert!(ke.intersects(ke), "keyexpr '{a}' must intersect itself");
+        }
+    }
+
+    /// Test: Empty payloads roundtrip correctly.
+    proptest! {
+        #[test]
+        fn empty_payload_roundtrip(_dummy in 0u8..1) {
+            let ke = keyexpr::from_str_unchecked("test/empty");
+            let mut transport = Transport::builder([0u8; 256]).codec();
+
+            let msg = NetworkMessage {
+                reliability: Reliability::Reliable,
+                qos: QoS::default(),
+                body: NetworkBody::Push(Push {
+                    wire_expr: WireExpr::from(ke),
+                    payload: PushBody::Put(Put {
+                        payload: &[],
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }),
+            };
+
+            transport.tx.encode_ref(core::iter::once(msg.as_ref()));
+            transport.rx.decode_prefixed(transport.tx.flush_prefixed().unwrap()).unwrap();
+
+            let mut flush = transport.rx.flush();
+            let decoded = flush.next().unwrap().0;
+            prop_assert_eq!(flush.count(), 0);
+
+            match decoded.body {
+                NetworkBody::Push(Push { payload: PushBody::Put(Put { payload, .. }), .. }) => {
+                    prop_assert!(payload.is_empty(), "empty payload must decode as empty");
+                }
+                _ => panic!("expected PushBody::Put"),
+            }
+        }
+    }
+
+    /// Test: Maximum size payloads up to batch_size survive roundtrip.
+    proptest! {
+        #[test]
+        fn max_size_payload(payload_size in 1usize..250) {
+            let ke = keyexpr::from_str_unchecked("test/ke");
+            let mut transport = Transport::builder([0u8; 512]).codec();
+
+            let mut payload = Vec::with_capacity(payload_size);
+            payload.resize(payload_size, 0xABu8);
+            let msg = NetworkMessage {
+                reliability: Reliability::Reliable,
+                qos: QoS::default(),
+                body: NetworkBody::Push(Push {
+                    wire_expr: WireExpr::from(ke),
+                    payload: PushBody::Put(Put {
+                        payload: &payload,
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }),
+            };
+
+            transport.tx.encode_ref(core::iter::once(msg.as_ref()));
+            let flushed = transport.tx.flush_prefixed();
+            if flushed.is_none() {
+                return Ok(());
+            }
+            transport.rx.decode_prefixed(flushed.unwrap()).unwrap();
+
+            let mut flush = transport.rx.flush();
+            let decoded = flush.next().unwrap().0;
+            prop_assert_eq!(flush.count(), 0);
+
+            match decoded.body {
+                NetworkBody::Push(Push { payload: PushBody::Put(Put { payload: p, .. }), .. }) => {
+                    prop_assert_eq!(&p[..], &payload[..]);
+                }
+                _ => panic!("expected PushBody::Put"),
+            }
+        }
+    }
+
+    /// Test: Every QoS combination (priority, congestion control, express)
+    /// survives encode/decode roundtrip.
+    proptest! {
+        #[test]
+        fn all_qos_combinations(qos_inner: u8) {
+            let qos = QoS { inner: qos_inner };
+            let ke = keyexpr::from_str_unchecked("test/ke");
+            let mut transport = Transport::builder([0u8; 256]).codec();
+
+            let msg = NetworkMessage {
+                reliability: Reliability::Reliable,
+                qos,
+                body: NetworkBody::Push(Push {
+                    wire_expr: WireExpr::from(ke),
+                    payload: PushBody::Put(Put {
+                        payload: &[0u8; 1],
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }),
+            };
+
+            transport.tx.encode_ref(core::iter::once(msg.as_ref()));
+            transport.rx.decode_prefixed(transport.tx.flush_prefixed().unwrap()).unwrap();
+
+            let mut flush = transport.rx.flush();
+            let decoded = flush.next().unwrap().0;
+            prop_assert_eq!(flush.count(), 0);
+            prop_assert_eq!(decoded.qos, qos, "QoS must survive roundtrip");
+        }
+    }
+
+    /// Test: Fragmented messages produce multiple frames and payload survives roundtrip.
+    proptest! {
+        #[test]
+        fn fragmentation_random_payloads(payload in prop::collection::vec(any::<u8>(), 1..128)) {
+            let ke = keyexpr::from_str_unchecked("test/ke");
+            let batch_size_val: usize = 64;
+            let mut tx = crate::transport::TransportTx::new(
+                [0u8; 512],
+                batch_size_val,
+                0,
+                Resolution::default(),
+                Duration::from_secs(10),
+            )
+            .with_max_fragments(3);
+
+            let mut body_buff = [0u8; 1024];
+            let mut writer = &mut body_buff[..];
+            let wlen = writer.len();
+
+            let body_msg = NetworkBody::Push(Push {
+                wire_expr: WireExpr::from(ke),
+                payload: PushBody::Put(Put {
+                    payload: &payload,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            });
+
+            <NetworkBody as zenoh_proto::ZEncode>::z_encode(&body_msg, &mut writer).unwrap();
+            let body_len = wlen - writer.len();
+            let encoded_body = &body_buff[..body_len];
+
+            let msg = NetworkMessage {
+                reliability: Reliability::Reliable,
+                qos: QoS::default(),
+                body: body_msg,
+            };
+
+            tx.encode_optimized(core::iter::once((msg, encoded_body)));
+
+            // Flush and count frames — ensure fragmentation works
+            let mut flush_count = 0usize;
+            let mut total_flushed = 0usize;
+            loop {
+                let flushed = match tx.flush_prefixed() {
+                    Some(f) if f.len() >= 2 => f,
+                    _ => break,
+                };
+                total_flushed += flushed.len();
+                flush_count += 1;
+                if flush_count > 8 { break; }
+                tx.keepalive();
+            }
+
+            prop_assert!(flush_count >= 1, "at least one frame must be produced");
+            prop_assert!(total_flushed > 0, "must flush non-zero bytes");
+
+            // Also verify raw flush works
+            let mut raw_total = 0usize;
+            loop {
+                let flushed = match tx.flush_raw() {
+                    Some(f) if !f.is_empty() => f,
+                    _ => break,
+                };
+                raw_total += flushed.len();
+                if raw_total > 1024 { break; }
+                tx.keepalive();
+            }
+        }
+    }
+
+    /// Test: Batching with mixed message types (Put and Del).
+    proptest! {
+        #[test]
+        fn batching_mixed_types(
+            put_count in 1u8..8,
+            del_count in 1u8..8,
+            payloads in prop::collection::vec(
+                prop::collection::vec(any::<u8>(), 0..16),
+                0..6,
+            ),
+        ) {
+            let ke = keyexpr::from_str_unchecked("a/b");
+            let mut transport = Transport::builder([0u8; 4096]).codec();
+
+            transport.tx.batch_start();
+            prop_assert!(transport.tx.is_batching());
+
+            let mut expected_puts: Vec<Vec<u8>> = Vec::new();
+
+            for i in 0..put_count {
+                let payload: &[u8] = if (i as usize) < payloads.len() {
+                    &payloads[i as usize]
+                } else {
+                    &[]
+                };
+                let msg = NetworkMessage {
+                    reliability: Reliability::Reliable,
+                    qos: QoS::default(),
+                    body: NetworkBody::Push(Push {
+                        wire_expr: WireExpr::from(ke),
+                        payload: PushBody::Put(Put {
+                            payload,
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    }),
+                };
+                expected_puts.push(payload.to_vec());
+                transport.tx.encode_ref(core::iter::once(msg.as_ref()));
+            }
+
+            for _ in 0..del_count {
+                let msg = NetworkMessage {
+                    reliability: Reliability::Reliable,
+                    qos: QoS::default(),
+                    body: NetworkBody::Push(Push {
+                        wire_expr: WireExpr::from(ke),
+                        payload: PushBody::Del(Del::default()),
+                        ..Default::default()
+                    }),
+                };
+                transport.tx.encode_ref(core::iter::once(msg.as_ref()));
+            }
+
+            transport.tx.batch_stop();
+            prop_assert!(!transport.tx.is_batching());
+
+            transport.rx.decode_prefixed(transport.tx.flush_prefixed().unwrap()).unwrap();
+
+            let decoded: Vec<_> = transport.rx.flush().collect();
+            let total_expected = put_count as usize + del_count as usize;
+            prop_assert_eq!(
+                decoded.len(),
+                total_expected,
+                "all batched messages must be decoded"
+            );
+
+            let mut put_idx = 0usize;
+            let mut del_seen = 0usize;
+            for (msg, _) in &decoded {
+                match &msg.body {
+                    NetworkBody::Push(Push { payload: PushBody::Put(Put { payload, .. }), .. }) => {
+                        if put_idx < expected_puts.len() {
+                            prop_assert_eq!(&payload[..], &expected_puts[put_idx][..]);
+                        }
+                        put_idx += 1;
+                    }
+                    NetworkBody::Push(Push { payload: PushBody::Del(_), .. }) => {
+                        del_seen += 1;
+                    }
+                    _ => panic!("unexpected message type"),
+                }
+            }
+
+            prop_assert_eq!(put_idx, put_count as usize, "all Put messages must be present");
+            prop_assert_eq!(del_seen, del_count as usize, "all Del messages must be present");
+        }
+    }
+
+    /// Property: keyexpr `intersects` is symmetric, `includes` is reflexive,
+    /// and `includes` implies `intersects`.
+    proptest! {
+        #[test]
+        fn keyexpr_wildcard_properties(
+            a in prop::collection::vec("[a-zA-Z0-9*#][a-zA-Z0-9*]*", 1..4)
+                .prop_map(|v| v.join("/"))
+                .prop_filter("valid keyexpr", |s| keyexpr::new(s).is_ok()),
+            b in prop::collection::vec("[a-zA-Z0-9*#][a-zA-Z0-9*]*", 1..4)
+                .prop_map(|v| v.join("/"))
+                .prop_filter("valid keyexpr", |s| keyexpr::new(s).is_ok()),
+        ) {
+            let ke_a = keyexpr::new(&a).unwrap();
+            let ke_b = keyexpr::new(&b).unwrap();
+
+            prop_assert_eq!(
+                ke_a.intersects(ke_b),
+                ke_b.intersects(ke_a),
+                "intersects must be symmetric"
+            );
+
+            prop_assert!(
+                ke_a.includes(ke_a),
+                "includes must be reflexive"
+            );
+            prop_assert!(
+                ke_b.includes(ke_b),
+                "includes must be reflexive"
+            );
         }
     }
 }

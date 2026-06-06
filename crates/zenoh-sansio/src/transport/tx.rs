@@ -132,6 +132,9 @@ impl<Buff> TransportTx<Buff> {
         }
 
         let max = core::cmp::min(self.buff.as_ref().len(), self.batch_size);
+        if self.cursor >= max {
+            return None;
+        }
         let mut buff = &mut self.buff.as_mut()[self.cursor..max];
 
         let start = buff.len();
@@ -224,6 +227,9 @@ impl<Buff> TransportTx<Buff> {
         Buff: AsMut<[u8]> + AsRef<[u8]>,
     {
         let max = core::cmp::min(self.buff.as_ref().len(), self.batch_size);
+        if self.cursor >= max {
+            return None;
+        }
         let mut buff = &mut self.buff.as_mut()[self.cursor..max];
         let start = buff.len();
 
@@ -372,6 +378,10 @@ where
         );
 
         self.clear();
+
+        if size <= 2 {
+            return None;
+        }
 
         let buff_ref = &self.buff.as_ref()[2..size];
         if size > 0 { Some(buff_ref) } else { None }
