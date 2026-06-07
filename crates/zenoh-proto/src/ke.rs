@@ -3,10 +3,61 @@ use core::ops::Deref;
 const DELIMITER: u8 = b'/';
 const SINGLE_WILD: u8 = b'*';
 
+const MAX_KEYEXPR_LEN: usize = 255;
+
 #[allow(non_camel_case_types)]
 #[repr(transparent)]
 #[derive(PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct keyexpr(str);
+
+#[allow(non_camel_case_types)]
+#[derive(Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct OwnedKeyExpr {
+    data: [u8; MAX_KEYEXPR_LEN],
+    len: u8,
+}
+
+impl OwnedKeyExpr {
+    pub fn as_str(&self) -> &str {
+        unsafe { core::str::from_utf8_unchecked(&self.data[..self.len as usize]) }
+    }
+}
+
+impl Deref for OwnedKeyExpr {
+    type Target = keyexpr;
+    fn deref(&self) -> &keyexpr {
+        keyexpr::from_str_unchecked(self.as_str())
+    }
+}
+
+impl AsRef<str> for OwnedKeyExpr {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl core::fmt::Display for OwnedKeyExpr {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl<'a> From<&'a keyexpr> for OwnedKeyExpr {
+    fn from(ke: &'a keyexpr) -> Self {
+        let s = ke.as_str();
+        let bytes = s.as_bytes();
+        let mut data = [0u8; MAX_KEYEXPR_LEN];
+        let len = bytes.len().min(MAX_KEYEXPR_LEN) as u8;
+        data[..len as usize].copy_from_slice(&bytes[..len as usize]);
+        OwnedKeyExpr { data, len }
+    }
+}
+
+impl keyexpr {
+    pub fn to_owned(&self) -> OwnedKeyExpr {
+        OwnedKeyExpr::from(self)
+    }
+}
 
 impl keyexpr {
     pub fn new(v: &str) -> core::result::Result<&'_ Self, crate::KeyexprError> {
@@ -113,6 +164,64 @@ impl keyexpr {
     pub const fn from_str_unchecked(s: &str) -> &Self {
         unsafe { core::mem::transmute(s) }
     }
+
+    pub fn from_str_autocanonize(s: &str) -> Result<OwnedKeyExpr, crate::KeyexprError> {
+        if let Ok(ke) = keyexpr::new(s) {
+            return Ok(ke.to_owned());
+        }
+        canonize_str(s)
+    }
+}
+
+pub fn canonize_str(s: &str) -> Result<OwnedKeyExpr, crate::KeyexprError> {
+    let bytes = s.as_bytes();
+    let mut out = OwnedKeyExpr {
+        data: [0u8; MAX_KEYEXPR_LEN],
+        len: 0,
+    };
+
+    let mut i = 0;
+    while i < bytes.len() && bytes[i] == b'/' {
+        i += 1;
+    }
+
+    while i < bytes.len() {
+        if bytes[i] == b'/' {
+            if out.len as usize >= MAX_KEYEXPR_LEN {
+                crate::zbail!(
+                    crate::KeyexprError::EmptyChunk,
+                    "keyexpr too long after canonization"
+                );
+            }
+            out.data[out.len as usize] = b'/';
+            out.len += 1;
+            i += 1;
+            while i < bytes.len() && bytes[i] == b'/' {
+                i += 1;
+            }
+        } else {
+            if out.len as usize >= MAX_KEYEXPR_LEN {
+                crate::zbail!(
+                    crate::KeyexprError::EmptyChunk,
+                    "keyexpr too long after canonization"
+                );
+            }
+            out.data[out.len as usize] = bytes[i];
+            out.len += 1;
+            i += 1;
+        }
+    }
+
+    if out.len > 0 && out.data[(out.len - 1) as usize] == b'/' {
+        out.len -= 1;
+    }
+
+    let result_str = out.as_str();
+    if result_str.is_empty() {
+        crate::zbail!(crate::KeyexprError::EmptyChunk, "empty keyexpr after canonization");
+    }
+    keyexpr::new(result_str)?;
+    Ok(out)
 }
 
 impl core::fmt::Debug for keyexpr {
@@ -429,5 +538,89 @@ mod tests {
         let a = keyexpr::new("demo/**").unwrap();
         let b = keyexpr::new("demo-example").unwrap();
         assert!(!a.includes(b));
+    }
+
+    #[test]
+    fn from_str_autocanonize_already_canonical() {
+        let ke = keyexpr::from_str_autocanonize("demo/example/test").unwrap();
+        assert_eq!(ke.as_str(), "demo/example/test");
+    }
+
+    #[test]
+    fn from_str_autocanonize_consecutive_slashes() {
+        let ke = keyexpr::from_str_autocanonize("a//b").unwrap();
+        assert_eq!(ke.as_str(), "a/b");
+    }
+
+    #[test]
+    fn from_str_autocanonize_many_consecutive_slashes() {
+        let ke = keyexpr::from_str_autocanonize("a///b///c").unwrap();
+        assert_eq!(ke.as_str(), "a/b/c");
+    }
+
+    #[test]
+    fn from_str_autocanonize_leading_slash() {
+        let ke = keyexpr::from_str_autocanonize("/demo/test").unwrap();
+        assert_eq!(ke.as_str(), "demo/test");
+    }
+
+    #[test]
+    fn from_str_autocanonize_trailing_slash() {
+        let ke = keyexpr::from_str_autocanonize("demo/test/").unwrap();
+        assert_eq!(ke.as_str(), "demo/test");
+    }
+
+    #[test]
+    fn from_str_autocanonize_leading_and_trailing_slash() {
+        let ke = keyexpr::from_str_autocanonize("/demo/test/").unwrap();
+        assert_eq!(ke.as_str(), "demo/test");
+    }
+
+    #[test]
+    fn from_str_autocanonize_single_slash_errors() {
+        assert!(keyexpr::from_str_autocanonize("/").is_err());
+    }
+
+    #[test]
+    fn from_str_autocanonize_empty_errors() {
+        assert!(keyexpr::from_str_autocanonize("").is_err());
+    }
+
+    #[test]
+    fn from_str_autocanonize_only_slashes_errors() {
+        assert!(keyexpr::from_str_autocanonize("///").is_err());
+    }
+
+    #[test]
+    fn from_str_autocanonize_invalid_chars_errors() {
+        assert!(keyexpr::from_str_autocanonize("demo/#test").is_err());
+        assert!(keyexpr::from_str_autocanonize("demo/?test").is_err());
+    }
+
+    #[test]
+    fn from_str_autocanonize_wildcard_still_works() {
+        let ke = keyexpr::from_str_autocanonize("demo/**").unwrap();
+        assert_eq!(ke.as_str(), "demo/**");
+    }
+
+    #[test]
+    fn from_str_autocanonize_canonical_mixed() {
+        let ke = keyexpr::from_str_autocanonize("//a//b///c//").unwrap();
+        assert_eq!(ke.as_str(), "a/b/c");
+    }
+
+    #[test]
+    fn owned_keyexpr_from_keyexpr() {
+        let ke = keyexpr::new("demo/example").unwrap();
+        let owned = OwnedKeyExpr::from(ke);
+        assert_eq!(owned.as_str(), "demo/example");
+        assert_eq!(owned.as_str(), ke.as_str());
+    }
+
+    #[test]
+    fn owned_keyexpr_deref() {
+        let ke = keyexpr::from_str_autocanonize("a/b/c").unwrap();
+        let _: &keyexpr = &ke;
+        assert!(ke.includes(keyexpr::new("a/b/c").unwrap()));
     }
 }
