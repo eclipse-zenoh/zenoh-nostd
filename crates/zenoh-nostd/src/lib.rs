@@ -31,6 +31,23 @@ pub mod session {
         },
     };
 
+    #[cfg(feature = "acl")]
+    pub use super::api::acl::*;
+    #[cfg(feature = "bytes")]
+    pub use super::api::bytes::*;
+    #[cfg(feature = "cancellation_token")]
+    pub use super::api::cancellation_token::*;
+    #[cfg(feature = "matching")]
+    pub use super::api::matching::*;
+    #[cfg(feature = "publisher_detection")]
+    pub use super::api::publisher_detection::*;
+    #[cfg(feature = "ring_channels")]
+    pub use super::api::ring_channel::*;
+    #[cfg(feature = "serialization")]
+    pub use super::api::serialization::*;
+    #[cfg(feature = "scouting")]
+    pub use super::api::session::scout::*;
+
     pub use zenoh_proto::msgs::exts::QoS;
     pub use zenoh_proto::msgs::exts::QueryTarget;
     pub use zenoh_proto::msgs::fields::{CongestionControl, ConsolidationMode, Locality, Priority, Reliability};

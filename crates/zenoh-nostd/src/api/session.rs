@@ -22,16 +22,23 @@ use crate::{
     resources::Resources,
 };
 
-mod run;
+#[cfg(feature = "acl")]
+use crate::api::acl::AclOperation;
+
+pub(crate) mod run;
 
 pub mod admin_space;
+#[cfg(feature = "background_subscriber")]
+pub mod background_sub;
 pub mod delete;
 pub mod get;
 pub mod liveliness;
-pub mod r#pub;
 pub mod put;
 pub mod querier;
 pub mod queryable;
+pub mod r#pub;
+#[cfg(feature = "scouting")]
+pub mod scout;
 pub mod sub;
 
 pub(crate) struct SessionState<'res, Config>
@@ -209,6 +216,15 @@ where
 
     pub fn on_disconnect(&mut self, sender: DynamicSender<'static, TransportEvent>) {
         let _ = self.connectivity.transport_senders.push(sender);
+    }
+
+    #[cfg(feature = "acl")]
+    pub fn check_acl_permission(
+        &self,
+        _operation: AclOperation,
+        _ke: &keyexpr,
+    ) -> core::result::Result<(), SessionError> {
+        Ok(())
     }
 }
 
