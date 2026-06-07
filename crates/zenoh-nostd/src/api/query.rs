@@ -1,6 +1,7 @@
 use core::str::FromStr;
 
 use zenoh_proto::{CollectionError, SessionError, exts::QoS, fields::ZenohIdProto, keyexpr};
+use zenoh_proto::fields::Encoding;
 use zenoh_proto::msgs::exts::QueryTarget;
 
 use crate::{api::session::Session, config::ZSessionConfig};
@@ -17,6 +18,10 @@ where
     query_target: QueryTarget,
     qos: QoS,
     finalized: bool,
+    encoding: Option<Encoding<'a>>,
+    attachment: Option<&'a [u8]>,
+    source_info: Option<ZenohIdProto>,
+    accept_replies: Option<&'a keyexpr>,
 }
 
 impl<'a, 'res, Config> QueryableQuery<'a, 'res, Config>
@@ -41,6 +46,10 @@ where
             query_target,
             qos,
             finalized: false,
+            encoding: None,
+            attachment: None,
+            source_info: None,
+            accept_replies: None,
         }
     }
 
@@ -66,6 +75,30 @@ where
 
     pub fn qos(&self) -> QoS {
         self.qos
+    }
+
+    pub fn encoding(&self) -> Option<&Encoding<'a>> {
+        self.encoding.as_ref()
+    }
+
+    pub fn attachment(&self) -> Option<&[u8]> {
+        self.attachment
+    }
+
+    pub fn source_info(&self) -> Option<ZenohIdProto> {
+        self.source_info
+    }
+
+    #[allow(clippy::unnecessary_map_or)]
+    pub fn accept_replies(&self, ke: &keyexpr) -> bool {
+        self.accept_replies.map_or(true, |ar| ar.intersects(ke))
+    }
+
+    pub async fn reply_del(
+        &self,
+        ke: &keyexpr,
+    ) -> core::result::Result<(), SessionError> {
+        self.session.reply_del(self.rid, ke).await
     }
 
     pub async fn reply(

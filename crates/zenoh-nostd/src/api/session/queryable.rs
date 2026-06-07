@@ -330,6 +330,31 @@ where
             .await?)
     }
 
+    pub(crate) async fn reply_del(
+        &self,
+        rid: u32,
+        ke: &keyexpr,
+    ) -> core::result::Result<(), SessionError> {
+        Ok(self
+            .driver
+            .tx()
+            .await
+            .send(core::iter::once(NetworkMessage {
+                reliability: Reliability::default(),
+                qos: QoS::default(),
+                body: NetworkBody::Response(Response {
+                    rid,
+                    wire_expr: WireExpr::from(ke),
+                    payload: ResponseBody::Reply(Reply {
+                        consolidation: ConsolidationMode::None,
+                        payload: PushBody::Del(Del::default()),
+                    }),
+                    ..Default::default()
+                }),
+            }))
+            .await?)
+    }
+
     pub(crate) async fn finalize(&self, rid: u32) -> core::result::Result<(), SessionError> {
         if self.state().await.queryable_callbacks.decrease(rid) {
             self.driver

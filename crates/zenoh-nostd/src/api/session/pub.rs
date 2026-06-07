@@ -24,6 +24,8 @@ where
     attachment: Option<Attachment<'a>>,
     reliability: Reliability,
     has_matching: bool,
+    #[cfg(feature = "publisher_id")]
+    id: u32,
 }
 
 impl<'a, 'res, Config> Publisher<'a, 'res, Config>
@@ -61,6 +63,11 @@ where
 
     pub async fn matching_status(&self) -> bool {
         self.has_matching
+    }
+
+    #[cfg(feature = "publisher_id")]
+    pub fn id(&self) -> u32 {
+        self.id
     }
 }
 
@@ -126,6 +133,11 @@ where
 
     pub async fn finish(self) -> core::result::Result<Publisher<'a, 'res, Config>, SessionError> {
         let has_matching = self.matching;
+        #[cfg(feature = "publisher_id")]
+        let id = {
+            let mut state = self.session.state().await;
+            state.next()
+        };
         Ok(Publisher {
             session: self.session,
             ke: self.ke,
@@ -134,6 +146,8 @@ where
             attachment: self.attachment,
             reliability: self.reliability,
             has_matching,
+            #[cfg(feature = "publisher_id")]
+            id,
         })
     }
 }

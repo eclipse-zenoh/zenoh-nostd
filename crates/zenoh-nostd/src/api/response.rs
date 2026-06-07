@@ -1,5 +1,6 @@
 use super::sample::*;
 use zenoh_proto::CollectionError;
+use zenoh_proto::fields::Encoding;
 
 #[derive(Debug)]
 pub enum GetResponse<'a> {
@@ -27,6 +28,20 @@ impl<'a> GetResponse<'a> {
         match self {
             GetResponse::Ok(_) => None,
             GetResponse::Err(s) => Some(s),
+        }
+    }
+
+    pub fn err_payload(&self) -> Option<&[u8]> {
+        match self {
+            GetResponse::Ok(_) => None,
+            GetResponse::Err(s) => Some(s.payload()),
+        }
+    }
+
+    pub fn err_encoding(&self) -> Option<&Encoding<'_>> {
+        match self {
+            GetResponse::Ok(_) => None,
+            GetResponse::Err(s) => s.encoding(),
         }
     }
 }
@@ -131,5 +146,48 @@ impl TryFrom<&GetResponse<'_>> for AllocGetResponse {
             GetResponse::Ok(sample) => Ok(Self::Ok(sample.try_into()?)),
             GetResponse::Err(sample) => Ok(Self::Err(sample.try_into()?)),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::api::sample::SampleKind;
+    use zenoh_proto::exts::QoS;
+    use zenoh_proto::fields::{Encoding, Reliability};
+    use zenoh_proto::keyexpr;
+
+    fn make_err_sample<'a>(ke: &'a keyexpr, payload: &'a [u8], encoding: Option<Encoding<'a>>) -> Sample<'a> {
+        Sample::new(
+            ke,
+            payload,
+            SampleKind::Put,
+            encoding,
+            None,
+            None,
+            QoS::default(),
+            Reliability::default(),
+        )
+    }
+
+    #[test]
+    fn test_get_response_err_payload_and_encoding() {
+        let ke = keyexpr::new("test/err").unwrap();
+        let payload = b"error payload";
+        let enc = Encoding::text_plain();
+        let sample = make_err_sample(ke, payload, Some(enc));
+        let resp = GetResponse::Err(sample);
+        assert_eq!(resp.err_payload(), Some(&b"error payload"[..]));
+        assert!(resp.err_encoding().is_some());
+        assert_eq!(*resp.err_encoding().unwrap(), Encoding::text_plain());
+    }
+
+    #[test]
+    fn test_get_response_err_payload_none_on_ok() {
+        let ke = keyexpr::new("test/ok").unwrap();
+        let sample = make_err_sample(ke, b"ok", None);
+        let resp = GetResponse::Ok(sample);
+        assert!(resp.err_payload().is_none());
+        assert!(resp.err_encoding().is_none());
     }
 }
