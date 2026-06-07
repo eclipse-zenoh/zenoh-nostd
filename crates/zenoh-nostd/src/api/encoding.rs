@@ -56,3 +56,143 @@ pub const VIDEO_OGG: Encoding<'static> = Encoding::video_ogg();
 pub const VIDEO_RAW: Encoding<'static> = Encoding::video_raw();
 pub const VIDEO_VP8: Encoding<'static> = Encoding::video_vp8();
 pub const VIDEO_VP9: Encoding<'static> = Encoding::video_vp9();
+
+#[cfg(feature = "encoding_ext")]
+pub mod ext {
+    use heapless::String;
+    use zenoh_proto::fields::Encoding;
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub enum EncodingError {
+        UnknownEncoding,
+        SchemaTooLong,
+        StringConversionFailed,
+    }
+
+    pub trait EncodingExt<'a> {
+        fn from_substr(s: &'a str) -> Result<Self, EncodingError>
+        where
+            Self: Sized;
+
+        fn schema(&self) -> Option<&str>;
+
+        fn set_schema(&mut self, schema: &'a str) -> Result<(), EncodingError>;
+
+        fn to_encoding_str(&self) -> Result<String<64>, EncodingError>;
+    }
+
+    impl<'a> EncodingExt<'a> for Encoding<'a> {
+        fn from_substr(s: &'a str) -> Result<Self, EncodingError> {
+            if s.is_empty() {
+                return Err(EncodingError::UnknownEncoding);
+            }
+            Ok(Encoding::parse_str(s))
+        }
+
+        fn schema(&self) -> Option<&str> {
+            self.schema
+                .and_then(|b| core::str::from_utf8(b).ok())
+        }
+
+        fn set_schema(&mut self, schema: &'a str) -> Result<(), EncodingError> {
+            if schema.len() > 64 {
+                return Err(EncodingError::SchemaTooLong);
+            }
+            self.schema = Some(schema.as_bytes());
+            Ok(())
+        }
+
+        fn to_encoding_str(&self) -> Result<String<64>, EncodingError> {
+            let s = Encoding::to_string(self);
+            String::try_from(s).map_err(|_| EncodingError::StringConversionFailed)
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use crate::api::encoding::{
+            APPLICATION_JSON, APPLICATION_OCTET_STREAM, TEXT_PLAIN, ZENOH_BYTES, ZENOH_STRING,
+        };
+
+        #[test]
+        fn from_substr_known_encoding() {
+            let enc = Encoding::from_substr("application/json").unwrap();
+            assert_eq!(enc.id, APPLICATION_JSON.id);
+            assert!(enc.schema.is_none());
+        }
+
+        #[test]
+        fn from_substr_unknown_encoding() {
+            let enc = Encoding::from_substr("my/custom").unwrap();
+            assert_eq!(enc.id, 0);
+            let s = enc.schema().unwrap();
+            assert_eq!(s, "my/custom");
+        }
+
+        #[test]
+        fn from_substr_empty_string() {
+            let err = Encoding::from_substr("").unwrap_err();
+            assert_eq!(err, EncodingError::UnknownEncoding);
+        }
+
+        #[test]
+        fn set_schema_and_schema_accessor() {
+            let mut enc = Encoding::text_plain();
+            assert!(enc.schema().is_none());
+
+            enc.set_schema("utf-8").unwrap();
+            assert_eq!(enc.schema().unwrap(), "utf-8");
+        }
+
+        #[test]
+        fn set_schema_roundtrip() {
+            let mut enc = Encoding::application_json();
+            enc.set_schema("v1").unwrap();
+            let schema = enc.schema().unwrap();
+            assert_eq!(schema, "v1");
+        }
+
+        #[test]
+        fn to_encoding_str_known_encoding() {
+            let s = APPLICATION_OCTET_STREAM.to_encoding_str().unwrap();
+            assert_eq!(s, "application/octet-stream");
+
+            let s = TEXT_PLAIN.to_encoding_str().unwrap();
+            assert_eq!(s, "text/plain");
+
+            let s = ZENOH_BYTES.to_encoding_str().unwrap();
+            assert_eq!(s, "zenoh/bytes");
+
+            let s = ZENOH_STRING.to_encoding_str().unwrap();
+            assert_eq!(s, "zenoh/string");
+
+            let s = APPLICATION_JSON.to_encoding_str().unwrap();
+            assert_eq!(s, "application/json");
+        }
+
+        #[test]
+        fn to_encoding_str_custom_encoding() {
+            let mut enc = Encoding::text_plain();
+            enc.set_schema("custom-schema").unwrap();
+            let s = enc.to_encoding_str().unwrap();
+            assert_eq!(s, "custom-schema");
+        }
+
+        #[test]
+        fn schema_preserved_across_clone() {
+            let mut enc = Encoding::application_json();
+            enc.set_schema("v2").unwrap();
+            let cloned = enc.clone();
+            assert_eq!(cloned.schema().unwrap(), "v2");
+        }
+
+        #[test]
+        fn set_schema_rejects_too_long() {
+            let mut enc = Encoding::text_plain();
+            let long_schema = "a".repeat(65);
+            let err = enc.set_schema(&long_schema).unwrap_err();
+            assert_eq!(err, EncodingError::SchemaTooLong);
+        }
+    }
+}
