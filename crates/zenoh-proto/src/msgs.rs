@@ -1,5 +1,9 @@
 pub mod exts;
 pub mod fields;
+#[cfg(feature = "scouting")]
+pub mod scout;
+#[cfg(feature = "scouting")]
+pub use scout::{Hello, MAX_LOCATORS, Scout, ZLocator};
 
 mod err;
 mod put;

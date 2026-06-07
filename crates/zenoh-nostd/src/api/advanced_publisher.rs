@@ -90,4 +90,9 @@ impl<'a, 'res, Config: ZSessionConfig, const CACHE_SIZE: usize>
     pub fn undeclare(self) -> Publisher<'a, 'res, Config> {
         self.publisher
     }
+
+    #[cfg(feature = "publisher_id")]
+    pub fn id(&self) -> u32 {
+        self.publisher.id()
+    }
 }

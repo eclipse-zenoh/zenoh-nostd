@@ -15,6 +15,8 @@ default = []
 
 std = []
 
+scouting = ["dep:heapless"]
+
 log = ["std", "dep:log"]
 defmt = ["dep:defmt"]
 web_console = ["std", "dep:web-sys"]
@@ -23,6 +25,7 @@ web_console = ["std", "dep:web-sys"]
 zenoh-derive.workspace = true
 uhlc.workspace = true
 sha3.workspace = true
+heapless = { workspace = true, optional = true }
 
 log = { workspace = true, optional = true }
 defmt = { workspace = true, optional = true }

@@ -896,6 +896,24 @@ impl WhatAmI {
     const U8_C: u8 = 0b0000_0010;
 }
 
+/// Bitmask matching one or more WhatAmI variants (used in scouting).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WhatAmIMatcher(u8);
+
+impl WhatAmIMatcher {
+    pub const ROUTER: Self = Self(0x01);
+    pub const PEER: Self = Self(0x02);
+    pub const CLIENT: Self = Self(0x04);
+
+    pub const fn from_bits(bits: u8) -> Self {
+        Self(bits & 0x07)
+    }
+
+    pub const fn bits(&self) -> u8 {
+        self.0
+    }
+}
+
 #[repr(u8)]
 #[derive(ZRU8, Debug, Default, PartialEq, Clone, Copy)]
 pub enum Mapping {
