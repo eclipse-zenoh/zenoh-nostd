@@ -803,7 +803,9 @@ impl Resolution {
             0b01 => Bits::U16,
             0b10 => Bits::U32,
             0b11 => Bits::U64,
-            _ => unreachable!(),
+            // SAFETY: value & 0b11 guarantees value ∈ {0,1,2,3},
+            // and Bits repr(u8) has variants for all four values.
+            _ => unsafe { core::hint::unreachable_unchecked() },
         }
     }
 

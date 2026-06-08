@@ -30,7 +30,7 @@ pub enum StdLink {
 
 #[derive(ZLinkInfo, ZLinkTx)]
 pub enum StdLinkTx {
-    Bt(bt::BtStream),
+    Bt(bt::BtStreamTx),
     RawEth(raw_eth::RawEthTx),
     Serial(serial::SerialTx),
     Tcp(tcp::StdTcpLinkTx),
@@ -42,7 +42,7 @@ pub enum StdLinkTx {
 
 #[derive(ZLinkInfo, ZLinkRx)]
 pub enum StdLinkRx {
-    Bt(bt::BtStream),
+    Bt(bt::BtStreamRx),
     RawEth(raw_eth::RawEthRx),
     Serial(serial::SerialRx),
     Tcp(tcp::StdTcpLinkRx),

@@ -247,9 +247,10 @@ impl<Buff> TransportRx<Buff> {
         let start = reader.len();
         let original = *reader;
 
-        let header = reader
-            .read_u8()
-            .expect("reader should not be empty at this stage");
+        let header = match reader.read_u8() {
+            Ok(h) => h,
+            Err(_) => return None,
+        };
 
         macro_rules! decode {
             ($ty:ty) => {

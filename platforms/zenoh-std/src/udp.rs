@@ -55,8 +55,16 @@ impl ZLinkRx for StdUdpLink {
         self.socket.recv(buffer).map_err(|_| LinkError::LinkTxFailed)
     }
 
-    fn read_exact(&mut self, _: &mut [u8]) -> core::result::Result<(), LinkError> {
-        unimplemented!()
+    fn read_exact(&mut self, buffer: &mut [u8]) -> core::result::Result<(), LinkError> {
+        let mut offset = 0;
+        while offset < buffer.len() {
+            let n = self.read(&mut buffer[offset..])?;
+            if n == 0 {
+                return Err(LinkError::LinkRxFailed);
+            }
+            offset += n;
+        }
+        Ok(())
     }
 }
 
@@ -65,8 +73,16 @@ impl ZLinkRx for StdUdpLinkRx {
         self.socket.recv(buffer).map_err(|_| LinkError::LinkTxFailed)
     }
 
-    fn read_exact(&mut self, _: &mut [u8]) -> core::result::Result<(), LinkError> {
-        unimplemented!()
+    fn read_exact(&mut self, buffer: &mut [u8]) -> core::result::Result<(), LinkError> {
+        let mut offset = 0;
+        while offset < buffer.len() {
+            let n = self.read(&mut buffer[offset..])?;
+            if n == 0 {
+                return Err(LinkError::LinkRxFailed);
+            }
+            offset += n;
+        }
+        Ok(())
     }
 }
 
