@@ -1,6 +1,3 @@
-use std::net::SocketAddr;
-
-use yawc::WebSocket;
 use zenoh_nostd::platform::*;
 
 pub mod ws;
@@ -29,7 +26,7 @@ impl ZLinkManager for WasmLinkManager {
     where
         Self: 'a;
 
-    async fn connect(
+    fn connect(
         &self,
         endpoint: Endpoint<'_>,
     ) -> core::result::Result<Self::Link<'_>, LinkError> {
@@ -38,20 +35,16 @@ impl ZLinkManager for WasmLinkManager {
 
         match protocol.as_str() {
             "ws" => {
-                let dst_addr = SocketAddr::try_from(address)?;
-                let url = format!("ws://{}", dst_addr);
-                let socket =
-                    WebSocket::connect(url.parse().map_err(|_| LinkError::CouldNotConnect)?)
-                        .await
-                        .map_err(|_| LinkError::CouldNotConnect)?;
-
+                let url = format!("ws://{}", address);
+                let (socket, _) =
+                    tungstenite::connect(url).map_err(|_| LinkError::CouldNotConnect)?;
                 Ok(Self::Link::Ws(ws::WasmWsLink::new(socket)))
             }
             _ => zenoh::zbail!(LinkError::CouldNotParseProtocol),
         }
     }
 
-    async fn listen(&self, _: Endpoint<'_>) -> core::result::Result<Self::Link<'_>, LinkError> {
+    fn listen(&self, _: Endpoint<'_>) -> core::result::Result<Self::Link<'_>, LinkError> {
         zenoh::zbail!(LinkError::CouldNotListen)
     }
 }

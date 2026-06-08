@@ -2,7 +2,7 @@
 name = "zenoh-wasm"
 authors = []
 categories = ["network-programming"]
-description = "Zenoh: The Zero Overhead Pub/Sub/Query Protocol."
+description = "Zenoh platform support for WASM (wasm32-wasi via std::net)"
 edition = "2024"
 homepage = "http://zenoh.io"
 license = "EPL-2.0 OR Apache-2.0"
@@ -12,11 +12,5 @@ version = "0.1.0"
 
 [dependencies]
 zenoh-nostd = { version = "0.1.0", path = "../../crates/zenoh-nostd" }
-
-futures-util = "0.3"
+tungstenite = "0.26"
 getrandom = { version = "0.2", features = ["std", "js"] }
-yawc = "0.2.7"
-
-[patch.crates-io.yawc]
-git = "https://github.com/infinitefield/yawc"
-rev = "b43b05d51e18345d228b72c4f12a93e2f51df9d8"

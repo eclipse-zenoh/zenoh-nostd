@@ -1,40 +1,35 @@
-use {
-    futures_util::{
-        SinkExt as _, StreamExt as _,
-        stream::{SplitSink, SplitStream},
-    },
-    yawc::{
-        WebSocket,
-        frame::{FrameView, OpCode},
-    },
-    zenoh_nostd::platform::*,
+use std::{marker::PhantomData, net::TcpStream};
+
+use tungstenite::{
+    Message, WebSocket,
+    stream::MaybeTlsStream,
 };
+use zenoh_nostd::platform::*;
 
 pub struct WasmWsLink {
-    sink: SplitSink<WebSocket, FrameView>,
-    stream: SplitStream<WebSocket>,
+    socket: WebSocket<MaybeTlsStream<TcpStream>>,
     mtu: u16,
 }
 
 impl WasmWsLink {
-    pub fn new(stream: WebSocket) -> Self {
-        let (sink, stream) = stream.split();
+    pub fn new(socket: WebSocket<MaybeTlsStream<TcpStream>>) -> Self {
         Self {
-            sink,
-            stream,
+            socket,
             mtu: u16::MAX,
         }
     }
 }
 
 pub struct WasmWsLinkTx<'a> {
-    sink: &'a mut SplitSink<WebSocket, FrameView>,
+    socket: *mut WebSocket<MaybeTlsStream<TcpStream>>,
     mtu: u16,
+    _marker: PhantomData<&'a ()>,
 }
 
 pub struct WasmWsLinkRx<'a> {
-    stream: &'a mut SplitStream<WebSocket>,
+    socket: *mut WebSocket<MaybeTlsStream<TcpStream>>,
     mtu: u16,
+    _marker: PhantomData<&'a ()>,
 }
 
 impl ZLinkInfo for WasmWsLink {
@@ -68,72 +63,68 @@ impl ZLinkInfo for WasmWsLinkRx<'_> {
 }
 
 impl ZLinkTx for WasmWsLink {
-    async fn write_all(&mut self, buffer: &[u8]) -> core::result::Result<(), LinkError> {
-        let item = FrameView::binary(buffer.to_vec());
-        self.sink
-            .send(item)
-            .await
+    fn write_all(&mut self, buffer: &[u8]) -> core::result::Result<(), LinkError> {
+        self.socket
+            .send(Message::Binary(buffer.to_vec().into()))
             .map_err(|_| LinkError::LinkTxFailed)
     }
 }
 
 impl ZLinkTx for WasmWsLinkTx<'_> {
-    async fn write_all(&mut self, buffer: &[u8]) -> core::result::Result<(), LinkError> {
-        let item = FrameView::binary(buffer.to_vec());
-        self.sink
-            .send(item)
-            .await
+    fn write_all(&mut self, buffer: &[u8]) -> core::result::Result<(), LinkError> {
+        let socket = unsafe { &mut *self.socket };
+        socket
+            .send(Message::Binary(buffer.to_vec().into()))
             .map_err(|_| LinkError::LinkTxFailed)
     }
 }
 
 impl ZLinkRx for WasmWsLink {
-    async fn read(&mut self, buffer: &mut [u8]) -> core::result::Result<usize, LinkError> {
-        #[cfg(target_arch = "wasm32")]
-        let Some(Ok(frame)) = self.stream.next().await else {
-            return Err(LinkError::LinkRxFailed);
-        };
-        #[cfg(not(target_arch = "wasm32"))]
-        let Some(frame) = self.stream.next().await else {
-            return Err(LinkError::LinkRxFailed);
-        };
-        match frame.opcode {
-            OpCode::Binary => {
-                let len = frame.payload.len().min(buffer.len());
-                buffer[..len].copy_from_slice(&frame.payload[..len]);
+    fn read(&mut self, buffer: &mut [u8]) -> core::result::Result<usize, LinkError> {
+        match self.socket.read().map_err(|_| LinkError::LinkRxFailed)? {
+            Message::Binary(data) => {
+                let len = data.len().min(buffer.len());
+                buffer[..len].copy_from_slice(&data[..len]);
                 Ok(len)
             }
-            _ => zenoh::zbail!(LinkError::LinkRxFailed),
+            Message::Text(data) => {
+                let bytes = data.as_bytes();
+                let len = bytes.len().min(buffer.len());
+                buffer[..len].copy_from_slice(&bytes[..len]);
+                Ok(len)
+            }
+            Message::Ping(_) | Message::Pong(_) => Ok(0),
+            Message::Close(_) | Message::Frame(_) => Err(LinkError::LinkRxFailed),
         }
     }
 
-    async fn read_exact(&mut self, buffer: &mut [u8]) -> core::result::Result<(), LinkError> {
-        self.read(buffer).await.map(|_| ())
+    fn read_exact(&mut self, buffer: &mut [u8]) -> core::result::Result<(), LinkError> {
+        self.read(buffer).map(|_| ())
     }
 }
 
 impl ZLinkRx for WasmWsLinkRx<'_> {
-    async fn read(&mut self, buffer: &mut [u8]) -> core::result::Result<usize, LinkError> {
-        #[cfg(target_arch = "wasm32")]
-        let Some(Ok(frame)) = self.stream.next().await else {
-            return Err(LinkError::LinkRxFailed);
-        };
-        #[cfg(not(target_arch = "wasm32"))]
-        let Some(frame) = self.stream.next().await else {
-            return Err(LinkError::LinkRxFailed);
-        };
-        match frame.opcode {
-            OpCode::Binary => {
-                let len = frame.payload.len().min(buffer.len());
-                buffer[..len].copy_from_slice(&frame.payload[..len]);
+    fn read(&mut self, buffer: &mut [u8]) -> core::result::Result<usize, LinkError> {
+        let socket = unsafe { &mut *self.socket };
+        match socket.read().map_err(|_| LinkError::LinkRxFailed)? {
+            Message::Binary(data) => {
+                let len = data.len().min(buffer.len());
+                buffer[..len].copy_from_slice(&data[..len]);
                 Ok(len)
             }
-            _ => zenoh::zbail!(LinkError::LinkRxFailed),
+            Message::Text(data) => {
+                let bytes = data.as_bytes();
+                let len = bytes.len().min(buffer.len());
+                buffer[..len].copy_from_slice(&bytes[..len]);
+                Ok(len)
+            }
+            Message::Ping(_) | Message::Pong(_) => Ok(0),
+            Message::Close(_) | Message::Frame(_) => Err(LinkError::LinkRxFailed),
         }
     }
 
-    async fn read_exact(&mut self, buffer: &mut [u8]) -> core::result::Result<(), LinkError> {
-        self.read(buffer).await.map(|_| ())
+    fn read_exact(&mut self, buffer: &mut [u8]) -> core::result::Result<(), LinkError> {
+        self.read(buffer).map(|_| ())
     }
 }
 
@@ -149,13 +140,16 @@ impl ZLink for WasmWsLink {
         Self: 'link;
 
     fn split(&mut self) -> (Self::Tx<'_>, Self::Rx<'_>) {
+        let ptr: *mut WebSocket<MaybeTlsStream<TcpStream>> = &mut self.socket;
         let tx = WasmWsLinkTx {
-            sink: &mut self.sink,
+            socket: ptr,
             mtu: self.mtu,
+            _marker: PhantomData,
         };
         let rx = WasmWsLinkRx {
-            stream: &mut self.stream,
+            socket: ptr,
             mtu: self.mtu,
+            _marker: PhantomData,
         };
         (tx, rx)
     }
