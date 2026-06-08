@@ -15,17 +15,17 @@ fn duration_as_micros_never_panics() {
     let _micros = d.as_micros() as u64;
 }
 
-/// Proof 2: embassy_time::Duration::from_micros never panics for capped u64.
+/// Proof 2: core::time::Duration::from_micros never panics for capped u64.
 ///
 /// `from_micros` has an internal overflow in `div_ceil` for values near
 /// u64::MAX. We cap at `u64::MAX >> 1` (~292,471 years in microseconds)
 /// which is far beyond any realistic lease/timeout value.
 #[cfg(kani)]
 #[kani::proof]
-fn emb_dur_from_micros_never_panics() {
+fn core_dur_from_micros_never_panics() {
     let micros: u64 = kani::any();
     let capped = micros.min(u64::MAX >> 1);
-    let _dur = embassy_time::Duration::from_micros(capped);
+    let _dur = core::time::Duration::from_micros(capped);
 }
 
 /// Proof 3: Combined conversion pattern used in driver.rs and transport.rs.
@@ -42,7 +42,7 @@ fn duration_conversion_never_panics() {
     kani::assume(nsecs < 1_000_000_000);
     let d = Duration::new(secs, nsecs);
     let micros = (d.as_micros() as u64).min(u64::MAX >> 1);
-    let _emb_dur = embassy_time::Duration::from_micros(micros);
+    let _core_dur = core::time::Duration::from_micros(micros);
 }
 
 /// Proof 4: ResourcesInner::init() exhaustive match is correct.
