@@ -1,9 +1,11 @@
 use std::net::{SocketAddr, TcpListener, TcpStream, UdpSocket};
 use std::sync::Arc;
 
+use native_tls::Identity;
 use tungstenite::client::IntoClientRequest;
 use zenoh_nostd::platform::*;
 
+#[cfg(feature = "bt")]
 mod bt;
 mod mcast;
 mod raw_eth;
@@ -20,6 +22,7 @@ pub struct StdLinkManager;
 #[derive(ZLinkInfo, ZLinkTx, ZLinkRx, ZLink)]
 #[zenoh(ZLink = (StdLinkTx, StdLinkRx))]
 pub enum StdLink {
+    #[cfg(feature = "bt")]
     Bt(bt::BtStream),
     Mcast(mcast::McLink),
     RawEth(raw_eth::StdRawEthLink),
@@ -33,6 +36,7 @@ pub enum StdLink {
 
 #[derive(ZLinkInfo, ZLinkTx)]
 pub enum StdLinkTx {
+    #[cfg(feature = "bt")]
     Bt(bt::BtStreamTx),
     Mcast(mcast::McLinkTx),
     RawEth(raw_eth::RawEthTx),
@@ -46,6 +50,7 @@ pub enum StdLinkTx {
 
 #[derive(ZLinkInfo, ZLinkRx)]
 pub enum StdLinkRx {
+    #[cfg(feature = "bt")]
     Bt(bt::BtStreamRx),
     Mcast(mcast::McLinkRx),
     RawEth(raw_eth::RawEthRx),
@@ -170,6 +175,11 @@ impl ZLinkManager for StdLinkManager {
                 let link = usb_cdc::StdUsbCdcLink::new(path)?;
                 Ok(Self::Link::UsbCdc(link))
             }
+            #[cfg(feature = "bt")]
+            "bt" => {
+                let link = bt::BtStream::new();
+                Ok(Self::Link::Bt(link))
+            }
             "udp-mcast" => {
                 let dst_addr = SocketAddr::try_from(address)?;
                 let bind_addr = "0.0.0.0:0".parse::<SocketAddr>()
@@ -231,6 +241,22 @@ impl ZLinkManager for StdLinkManager {
 
                 Ok(Self::Link::Tcp(tcp::StdTcpLink::new(socket, mtu)))
             }
+            "tls" => {
+                let src_addr = SocketAddr::try_from(address)?;
+                let identity_pem = std::env::var("ZENOH_TLS_IDENTITY")
+                    .map_err(|_| LinkError::CouldNotListen)?;
+                let password = std::env::var("ZENOH_TLS_PASSWORD")
+                    .unwrap_or_default();
+                let identity = Identity::from_pkcs12(identity_pem.as_bytes(), &password)
+                    .map_err(|_| LinkError::CouldNotListen)?;
+                let listener = TcpListener::bind(src_addr)
+                    .map_err(|_| LinkError::CouldNotConnect)?;
+                let (socket, _) = listener
+                    .accept()
+                    .map_err(|_| LinkError::CouldNotConnect)?;
+                let link = tls::StdTlsLink::accept(socket, &identity)?;
+                Ok(Self::Link::Tls(link))
+            }
             "udp" => {
                 let src_addr = SocketAddr::try_from(address)?;
                 let socket = UdpSocket::bind(src_addr)
@@ -246,6 +272,16 @@ impl ZLinkManager for StdLinkManager {
                     .map_err(|_| LinkError::CouldNotConnect)?;
 
                 Ok(Self::Link::Udp(udp::StdUdpLink::new(socket, 8192)))
+            }
+            "ws" => {
+                let src_addr = SocketAddr::try_from(address)?;
+                let listener = TcpListener::bind(src_addr)
+                    .map_err(|_| LinkError::CouldNotConnect)?;
+                let (socket, _) = listener
+                    .accept()
+                    .map_err(|_| LinkError::CouldNotConnect)?;
+                let link = ws::StdWsLink::accept(socket)?;
+                Ok(Self::Link::Ws(link))
             }
             "serial" => {
                 let path = address.as_str();

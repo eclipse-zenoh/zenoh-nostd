@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use tungstenite::{Message, WebSocket};
+use tungstenite::{accept, Message, WebSocket};
 use zenoh_nostd::platform::*;
 
 pub struct StdWsLink {
@@ -9,6 +9,11 @@ pub struct StdWsLink {
 }
 
 impl StdWsLink {
+    pub fn accept(tcp: std::net::TcpStream) -> Result<Self, LinkError> {
+        let stream = accept(tcp).map_err(|_| LinkError::CouldNotListen)?;
+        Ok(Self::new(stream, u16::MAX))
+    }
+
     pub fn new(stream: WebSocket<std::net::TcpStream>, mtu: u16) -> Self {
         Self { stream: Arc::new(Mutex::new(stream)), mtu }
     }

@@ -2,7 +2,7 @@ use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::sync::{Arc, Mutex};
 
-use native_tls::{Identity, TlsConnector, TlsStream};
+use native_tls::{Identity, TlsAcceptor, TlsConnector, TlsStream};
 use zenoh_nostd::platform::*;
 
 pub struct StdTlsLink {
@@ -11,6 +11,16 @@ pub struct StdTlsLink {
 }
 
 impl StdTlsLink {
+    pub fn accept(tcp: TcpStream, identity: &Identity) -> Result<Self, LinkError> {
+        let acceptor = TlsAcceptor::builder(identity.clone())
+            .build()
+            .map_err(|_| LinkError::CouldNotListen)?;
+        let stream = acceptor
+            .accept(tcp)
+            .map_err(|_| LinkError::CouldNotListen)?;
+        Ok(Self { stream: Arc::new(Mutex::new(stream)), mtu: u16::MAX - 60 })
+    }
+
     pub fn connect(addr: SocketAddr, domain: &str) -> Result<Self, LinkError> {
         let tcp = TcpStream::connect(addr)
             .map_err(|_| LinkError::CouldNotConnect)?;
