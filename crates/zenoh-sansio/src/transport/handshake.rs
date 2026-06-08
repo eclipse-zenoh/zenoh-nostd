@@ -15,6 +15,11 @@ pub enum Handshake<Buff, T, Read, Write> {
         init: InitSyn<'static>,
         prefixed: bool,
 
+        /// Owned auth bytes kept alive for the `InitSyn`'s auth reference.
+        /// Both are dropped together when transitioning to PendingRecv.
+        #[cfg(feature = "auth")]
+        auth_bytes: Option<heapless::Vec<u8, 256>>,
+
         tx: TransportTx<Buff>,
         rx: TransportRx<Buff>,
 

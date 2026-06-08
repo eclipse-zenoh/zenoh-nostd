@@ -30,6 +30,9 @@ cancellation_token = []
 scouting = ["zenoh-proto/scouting"]
 serialization = []
 bytes = []
+peer-mode = []
+session-check = []
+multicast-declarations = []
 
 log = ["std", "zenoh-proto/log", "zenoh-sansio/log"]
 web_console = ["std", "zenoh-proto/web_console", "zenoh-sansio/web_console"]
@@ -39,6 +42,8 @@ kani = ["zenoh-sansio/kani"]
 proptest = ["zenoh-sansio/proptest"]
 creusot = ["zenoh-sansio/creusot"]
 verus = ["zenoh-sansio/verus"]
+
+auth = ["zenoh-sansio/auth"]
 
 [dependencies]
 zenoh-derive.workspace = true

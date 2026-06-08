@@ -15,6 +15,8 @@ fn transport_state_handshake() {
         mine_batch_size: 512,
         mine_resolution: Resolution::default(),
         mine_lease: Duration::from_secs(30),
+        #[cfg(feature = "auth")]
+        mine_auth: None,
     };
 
     let b_zid = ZenohIdProto::default();
@@ -24,6 +26,8 @@ fn transport_state_handshake() {
         mine_batch_size: 1025,
         mine_resolution: Resolution::default(),
         mine_lease: Duration::from_secs(37),
+        #[cfg(feature = "auth")]
+        mine_auth: None,
     };
 
     let init = InitSyn {
@@ -375,6 +379,8 @@ fn transport_peer_simultaneous_connect_equal_zid_errors() {
         mine_batch_size: 512,
         mine_resolution: Resolution::default(),
         mine_lease: Duration::from_secs(30),
+        #[cfg(feature = "auth")]
+        mine_auth: None,
     };
 
     let init = InitSyn {
@@ -408,6 +414,8 @@ fn transport_peer_simultaneous_connect_lower_zid_wins() {
         mine_batch_size: 512,
         mine_resolution: Resolution::default(),
         mine_lease: Duration::from_secs(30),
+        #[cfg(feature = "auth")]
+        mine_auth: None,
     };
 
     let init = InitSyn {
@@ -441,6 +449,8 @@ fn transport_peer_simultaneous_connect_higher_zid_yields() {
         mine_batch_size: 512,
         mine_resolution: Resolution::default(),
         mine_lease: Duration::from_secs(30),
+        #[cfg(feature = "auth")]
+        mine_auth: None,
     };
 
     let init = InitSyn {
@@ -773,6 +783,8 @@ fn transport_state_machine_happy_path() {
         mine_batch_size: 512,
         mine_resolution: Resolution::default(),
         mine_lease: Duration::from_secs(30),
+        #[cfg(feature = "auth")]
+        mine_auth: None,
     };
 
     let b_zid = ZenohIdProto::try_from(&2u128.to_le_bytes()[..]).unwrap();
@@ -782,6 +794,8 @@ fn transport_state_machine_happy_path() {
         mine_batch_size: 1025,
         mine_resolution: Resolution::default(),
         mine_lease: Duration::from_secs(37),
+        #[cfg(feature = "auth")]
+        mine_auth: None,
     };
 
     let mut buff = [0u8; 256];
@@ -865,6 +879,8 @@ fn transport_state_machine_invalid_transitions() {
             mine_batch_size: 512,
             mine_resolution: Resolution::default(),
             mine_lease: Duration::from_secs(30),
+            #[cfg(feature = "auth")]
+            mine_auth: None,
         };
         let (resp, desc) =
             state.poll((TransportMessage::InitAck(InitAck::default()), &[] as &[u8]));
@@ -877,6 +893,8 @@ fn transport_state_machine_invalid_transitions() {
             mine_batch_size: 512,
             mine_resolution: Resolution::default(),
             mine_lease: Duration::from_secs(30),
+            #[cfg(feature = "auth")]
+            mine_auth: None,
         };
         let (resp, desc) =
             state.poll((TransportMessage::OpenSyn(OpenSyn::default()), &[] as &[u8]));
@@ -889,6 +907,8 @@ fn transport_state_machine_invalid_transitions() {
             mine_batch_size: 512,
             mine_resolution: Resolution::default(),
             mine_lease: Duration::from_secs(30),
+            #[cfg(feature = "auth")]
+            mine_auth: None,
         };
         let (resp, desc) =
             state.poll((TransportMessage::OpenAck(OpenAck::default()), &[] as &[u8]));
@@ -903,6 +923,8 @@ fn transport_state_machine_invalid_transitions() {
             mine_batch_size: 512,
             mine_resolution: Resolution::default(),
             mine_lease: Duration::from_secs(30),
+            #[cfg(feature = "auth")]
+            mine_auth: None,
         };
         let (resp, desc) =
             state.poll((TransportMessage::OpenSyn(OpenSyn::default()), &[] as &[u8]));
@@ -915,6 +937,8 @@ fn transport_state_machine_invalid_transitions() {
             mine_batch_size: 512,
             mine_resolution: Resolution::default(),
             mine_lease: Duration::from_secs(30),
+            #[cfg(feature = "auth")]
+            mine_auth: None,
         };
         let (resp, desc) =
             state.poll((TransportMessage::OpenAck(OpenAck::default()), &[] as &[u8]));
@@ -1186,6 +1210,56 @@ fn max_sn_before_wrap() {
     assert_eq!(count, 8, "all messages must survive SN wrap from u32::MAX-3");
 }
 
+#[cfg(feature = "auth")]
+#[cfg(test)]
+mod auth_tests {
+    use core::time::Duration;
+    use crate::transport::establishment::State;
+    use zenoh_proto::{fields::*, msgs::*};
+
+    fn zid(val: u128) -> ZenohIdProto {
+        ZenohIdProto::try_from(&val.to_le_bytes()[..]).unwrap()
+    }
+
+    #[test]
+    fn state_waitinginitsyn_with_auth_produces_initack_with_auth() {
+        let z = zid(42);
+        let mut payload = heapless::Vec::<u8, 256>::new();
+        payload.extend_from_slice(&[0x01, b'u', b's', b'e', b'r', 0x00, b'p', b'a', b's', b's']).unwrap();
+
+        let mut state = State::WaitingInitSyn {
+            mine_zid: z,
+            mine_whatami: WhatAmI::Client,
+            mine_batch_size: 512,
+            mine_resolution: Resolution::default(),
+            mine_lease: Duration::from_secs(30),
+            #[cfg(feature = "auth")]
+            mine_auth: Some(payload),
+        };
+
+        let init = InitSyn {
+            identifier: InitIdentifier { zid: z, ..Default::default() },
+            resolution: InitResolution {
+                resolution: Resolution::default(),
+                batch_size: BatchSize(512),
+            },
+            ..Default::default()
+        };
+
+        let encoded = &[0u8; 0];
+        let (response, _) = state.poll((TransportMessage::InitSyn(init), encoded));
+
+        let ack = match response {
+            Some(TransportMessage::InitAck(ack)) => ack,
+            other => panic!("Expected InitAck, got {:?}", other),
+        };
+
+        assert!(ack.auth.is_some(), "InitAck must carry auth");
+        let auth = ack.auth.unwrap();
+        assert_eq!(auth.payload, &[0x01, b'u', b's', b'e', b'r', 0x00, b'p', b'a', b's', b's']);
+    }
+}
+
 #[cfg(feature = "proptest")]
 #[cfg(test)]
 mod proptests {
@@ -1222,6 +1296,8 @@ mod proptests {
                 mine_batch_size: 512,
                 mine_resolution: Resolution::default(),
                 mine_lease: Duration::from_secs(30),
+                #[cfg(feature = "auth")]
+                mine_auth: None,
             };
             let init_b = InitSyn {
                 identifier: InitIdentifier { zid: zid_b, whatami: WhatAmI::Peer },
@@ -1237,6 +1313,8 @@ mod proptests {
                 mine_batch_size: 512,
                 mine_resolution: Resolution::default(),
                 mine_lease: Duration::from_secs(30),
+                #[cfg(feature = "auth")]
+                mine_auth: None,
             };
             let init_a = InitSyn {
                 identifier: InitIdentifier { zid: zid_a, whatami: WhatAmI::Peer },
@@ -1260,6 +1338,8 @@ mod proptests {
                         mine_batch_size: 512,
                         mine_resolution: Resolution::default(),
                         mine_lease: Duration::from_secs(30),
+                        #[cfg(feature = "auth")]
+                        mine_auth: None,
                     };
                     let init_b2 = InitSyn {
                         identifier: InitIdentifier { zid: zid_b, whatami: WhatAmI::Peer },

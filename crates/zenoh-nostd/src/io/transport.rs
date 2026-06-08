@@ -84,6 +84,9 @@ pub struct TransportLinkManager<LinkManager> {
     whatami: WhatAmI,
     lease: Duration,
     resolution: Resolution,
+
+    #[cfg(feature = "auth")]
+    auth_payload: Option<heapless::Vec<u8, 256>>,
 }
 
 impl<LinkManager> From<LinkManager> for TransportLinkManager<LinkManager> {
@@ -115,11 +118,29 @@ impl<LinkManager> TransportLinkManager<LinkManager> {
             whatami,
             lease,
             resolution,
+
+            #[cfg(feature = "auth")]
+            auth_payload: None,
         }
     }
 
     pub fn with_whatami(mut self, whatami: WhatAmI) -> Self {
         self.whatami = whatami;
+        self
+    }
+
+    #[cfg(feature = "auth")]
+    pub fn with_auth(mut self, username: &str, password: &str) -> Self {
+        let mut payload = heapless::Vec::new();
+        let _ = payload.push(0x01);
+        for b in username.bytes() {
+            let _ = payload.push(b);
+        }
+        let _ = payload.push(0x00);
+        for b in password.bytes() {
+            let _ = payload.push(b);
+        }
+        self.auth_payload = Some(payload);
         self
     }
 
@@ -132,12 +153,19 @@ impl<LinkManager> TransportLinkManager<LinkManager> {
         Buff: AsMut<[u8]> + AsRef<[u8]> + Clone,
     {
         let streamed = link.is_streamed();
-        let transport = Transport::builder(buff)
-            .with_zid(self.zid)
-            .with_whatami(self.whatami)
-            .with_lease(self.lease)
-            .with_resolution(self.resolution)
-            .connect(
+        let transport = {
+            #[cfg_attr(not(feature = "auth"), allow(unused_mut))]
+            let mut builder = Transport::builder(buff)
+                .with_zid(self.zid)
+                .with_whatami(self.whatami)
+                .with_lease(self.lease)
+                .with_resolution(self.resolution);
+            #[cfg(feature = "auth")]
+            if let Some(ref p) = self.auth_payload {
+                builder = builder.with_auth_payload(p.clone());
+            }
+            builder
+                .connect(
                 &mut link,
                 |link, bytes| {
                     if link.is_streamed() {
@@ -150,7 +178,8 @@ impl<LinkManager> TransportLinkManager<LinkManager> {
             )
             .with_prefixed(streamed)
             .finish()
-            .map_err(|e| e.flatten_map::<TransportLinkError>())?;
+            .map_err(|e| e.flatten_map::<TransportLinkError>())?
+        };
 
         Ok(TransportLink::new(link, transport))
     }
@@ -164,12 +193,19 @@ impl<LinkManager> TransportLinkManager<LinkManager> {
         Buff: AsMut<[u8]> + AsRef<[u8]> + Clone,
     {
         let streamed = link.is_streamed();
-        let transport = Transport::builder(buff)
-            .with_zid(self.zid)
-            .with_whatami(self.whatami)
-            .with_lease(self.lease)
-            .with_resolution(self.resolution)
-            .listen(
+        let transport = {
+            #[cfg_attr(not(feature = "auth"), allow(unused_mut))]
+            let mut builder = Transport::builder(buff)
+                .with_zid(self.zid)
+                .with_whatami(self.whatami)
+                .with_lease(self.lease)
+                .with_resolution(self.resolution);
+            #[cfg(feature = "auth")]
+            if let Some(ref p) = self.auth_payload {
+                builder = builder.with_auth_payload(p.clone());
+            }
+            builder
+                .listen(
                 &mut link,
                 |link, bytes| {
                     if link.is_streamed() {
@@ -182,7 +218,92 @@ impl<LinkManager> TransportLinkManager<LinkManager> {
             )
             .with_prefixed(streamed)
             .finish()
-            .map_err(|e| e.flatten_map::<TransportLinkError>())?;
+            .map_err(|e| e.flatten_map::<TransportLinkError>())?
+        };
+
+        Ok(TransportLink::new(link, transport))
+    }
+
+    pub fn peer_connect<Buff>(
+        &self,
+        endpoint: Endpoint<'_>,
+        buff: Buff,
+    ) -> core::result::Result<TransportLink<LinkManager::Link<'_>, Buff>, TransportLinkError>
+    where
+        LinkManager: ZLinkManager,
+        Buff: AsMut<[u8]> + AsRef<[u8]> + Clone,
+    {
+        let mut link = self.link_manager.connect(endpoint)?;
+        let streamed = link.is_streamed();
+        let transport = {
+            #[cfg_attr(not(feature = "auth"), allow(unused_mut))]
+            let mut builder = Transport::builder(buff)
+                .with_zid(self.zid)
+                .with_whatami(WhatAmI::Peer)
+                .with_lease(self.lease)
+                .with_resolution(self.resolution);
+            #[cfg(feature = "auth")]
+            if let Some(ref p) = self.auth_payload {
+                builder = builder.with_auth_payload(p.clone());
+            }
+            builder
+                .peer_connect(
+                &mut link,
+                |link, bytes| {
+                    if link.is_streamed() {
+                        link.read_exact(bytes).map(|_| bytes.len())
+                    } else {
+                        link.read(bytes)
+                    }
+                },
+                |link, bytes| link.write_all(bytes),
+            )
+            .with_prefixed(streamed)
+            .finish()
+            .map_err(|e| e.flatten_map::<TransportLinkError>())?
+        };
+
+        Ok(TransportLink::new(link, transport))
+    }
+
+    pub fn peer_listen<Buff>(
+        &self,
+        endpoint: Endpoint<'_>,
+        buff: Buff,
+    ) -> core::result::Result<TransportLink<LinkManager::Link<'_>, Buff>, TransportLinkError>
+    where
+        LinkManager: ZLinkManager,
+        Buff: AsMut<[u8]> + AsRef<[u8]> + Clone,
+    {
+        let mut link = self.link_manager.listen(endpoint)?;
+        let streamed = link.is_streamed();
+        let transport = {
+            #[cfg_attr(not(feature = "auth"), allow(unused_mut))]
+            let mut builder = Transport::builder(buff)
+                .with_zid(self.zid)
+                .with_whatami(WhatAmI::Peer)
+                .with_lease(self.lease)
+                .with_resolution(self.resolution);
+            #[cfg(feature = "auth")]
+            if let Some(ref p) = self.auth_payload {
+                builder = builder.with_auth_payload(p.clone());
+            }
+            builder
+                .peer_listen(
+                &mut link,
+                |link, bytes| {
+                    if link.is_streamed() {
+                        link.read_exact(bytes).map(|_| bytes.len())
+                    } else {
+                        link.read(bytes)
+                    }
+                },
+                |link, bytes| link.write_all(bytes),
+            )
+            .with_prefixed(streamed)
+            .finish()
+            .map_err(|e| e.flatten_map::<TransportLinkError>())?
+        };
 
         Ok(TransportLink::new(link, transport))
     }
@@ -198,12 +319,19 @@ impl<LinkManager> TransportLinkManager<LinkManager> {
     {
         let mut link = self.link_manager.connect(endpoint)?;
         let streamed = link.is_streamed();
-        let transport = Transport::builder(buff)
-            .with_zid(self.zid)
-            .with_whatami(self.whatami)
-            .with_lease(self.lease)
-            .with_resolution(self.resolution)
-            .connect(
+        let transport = {
+            #[cfg_attr(not(feature = "auth"), allow(unused_mut))]
+            let mut builder = Transport::builder(buff)
+                .with_zid(self.zid)
+                .with_whatami(self.whatami)
+                .with_lease(self.lease)
+                .with_resolution(self.resolution);
+            #[cfg(feature = "auth")]
+            if let Some(ref p) = self.auth_payload {
+                builder = builder.with_auth_payload(p.clone());
+            }
+            builder
+                .connect(
                 &mut link,
                 |link, bytes| {
                     if link.is_streamed() {
@@ -216,7 +344,8 @@ impl<LinkManager> TransportLinkManager<LinkManager> {
             )
             .with_prefixed(streamed)
             .finish()
-            .map_err(|e| e.flatten_map::<TransportLinkError>())?;
+            .map_err(|e| e.flatten_map::<TransportLinkError>())?
+        };
 
         Ok(TransportLink::new(link, transport))
     }
@@ -232,12 +361,19 @@ impl<LinkManager> TransportLinkManager<LinkManager> {
     {
         let mut link = self.link_manager.listen(endpoint)?;
         let streamed = link.is_streamed();
-        let transport = Transport::builder(buff)
-            .with_zid(self.zid)
-            .with_whatami(self.whatami)
-            .with_lease(self.lease)
-            .with_resolution(self.resolution)
-            .listen(
+        let transport = {
+            #[cfg_attr(not(feature = "auth"), allow(unused_mut))]
+            let mut builder = Transport::builder(buff)
+                .with_zid(self.zid)
+                .with_whatami(self.whatami)
+                .with_lease(self.lease)
+                .with_resolution(self.resolution);
+            #[cfg(feature = "auth")]
+            if let Some(ref p) = self.auth_payload {
+                builder = builder.with_auth_payload(p.clone());
+            }
+            builder
+                .listen(
                 &mut link,
                 |link, bytes| {
                     if link.is_streamed() {
@@ -250,7 +386,8 @@ impl<LinkManager> TransportLinkManager<LinkManager> {
             )
             .with_prefixed(streamed)
             .finish()
-            .map_err(|e| e.flatten_map::<TransportLinkError>())?;
+            .map_err(|e| e.flatten_map::<TransportLinkError>())?
+        };
 
         Ok(TransportLink::new(link, transport))
     }

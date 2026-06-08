@@ -20,6 +20,8 @@ log = ["std", "zenoh-proto/log"]
 web_console = ["std", "zenoh-proto/web_console"]
 defmt = ["zenoh-proto/defmt"]
 
+auth = ["dep:heapless"]
+
 kani = []
 proptest = []
 creusot = ["dep:creusot-contracts"]
@@ -29,6 +31,8 @@ verus = []
 zenoh-proto.workspace = true
 sha3.workspace = true
 creusot-contracts = { version = "0.8", optional = true }
+
+heapless = { workspace = true, optional = true }
 
 [dev-dependencies]
 proptest = "1.6"

@@ -24,7 +24,7 @@ pub(crate) struct Description {
     pub other_zid: ZenohIdProto,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) enum State {
     WaitingInitSyn {
         /// Mine zid
@@ -37,6 +37,9 @@ pub(crate) enum State {
         mine_resolution: Resolution,
         /// Mine lease,
         mine_lease: Duration,
+        /// Mine auth payload
+        #[cfg(feature = "auth")]
+        mine_auth: Option<heapless::Vec<u8, 256>>,
     },
     WaitingOpenSyn {
         /// Mine zid
@@ -61,6 +64,9 @@ pub(crate) enum State {
         mine_resolution: Resolution,
         /// Mine lease,
         mine_lease: Duration,
+        /// Mine auth payload
+        #[cfg(feature = "auth")]
+        mine_auth: Option<heapless::Vec<u8, 256>>,
     },
     WaitingOpenAck {
         /// Mine zid
@@ -100,6 +106,8 @@ impl State {
                     mine_batch_size,
                     mine_resolution,
                     mine_lease,
+                    #[cfg(feature = "auth")]
+                    ref mine_auth,
                 } => {
                     zenoh_proto::debug!(
                         "Received InitSyn on transport {:?} -> NEW!({:?})",
@@ -111,6 +119,17 @@ impl State {
                     let batch_size = mine_batch_size.min(syn.resolution.batch_size.0);
                     let resolution = mine_resolution;
 
+                    #[cfg(feature = "auth")]
+                    let ack_auth = mine_auth.as_ref().map(|bytes| {
+                        // SAFETY: auth_bytes lives in the State which is borrowed for &mut self.
+                        // The returned Auth reference is used immediately in tx.transport()
+                        // (in handshake.rs) before the borrow is released.
+                        let payload: &'static [u8] =
+                            unsafe { core::mem::transmute(bytes.as_slice()) };
+                        zenoh_proto::exts::Auth { payload }
+                    });
+                    #[cfg(not(feature = "auth"))]
+                    let ack_auth: Option<zenoh_proto::exts::Auth<'_>> = None;
                     *self = Self::WaitingOpenSyn {
                         mine_zid,
                         mine_whatami,
@@ -133,7 +152,7 @@ impl State {
                             version: zenoh_proto::VERSION,
                             qos: None,
                             qos_link: None,
-                            auth: None,
+                            auth: ack_auth,
                             mlink: None,
                             lowlatency: None,
                             compression: None,
@@ -148,6 +167,8 @@ impl State {
                     mine_batch_size,
                     mine_resolution,
                     mine_lease,
+                    #[cfg(feature = "auth")]
+                    ref mine_auth,
                 } => {
                     if mine_whatami == WhatAmI::Peer
                         && syn.identifier.whatami == WhatAmI::Peer
@@ -161,6 +182,15 @@ impl State {
 
                         let batch_size = mine_batch_size.min(syn.resolution.batch_size.0);
                         let resolution = mine_resolution;
+
+                        #[cfg(feature = "auth")]
+                        let ack_auth = mine_auth.as_ref().map(|bytes| {
+                            let payload: &'static [u8] =
+                                unsafe { core::mem::transmute(bytes.as_slice()) };
+                            zenoh_proto::exts::Auth { payload }
+                        });
+                        #[cfg(not(feature = "auth"))]
+                        let ack_auth: Option<zenoh_proto::exts::Auth<'_>> = None;
 
                         *self = Self::WaitingOpenSyn {
                             mine_zid,
@@ -184,7 +214,7 @@ impl State {
                                 version: zenoh_proto::VERSION,
                                 qos: None,
                                 qos_link: None,
-                                auth: None,
+                                auth: ack_auth,
                                 mlink: None,
                                 lowlatency: None,
                                 compression: None,
@@ -201,7 +231,7 @@ impl State {
 
                         (None, None)
                     } else {
-                        zenoh_proto::zbail!(@ret (None, None), TransportError::InvalidAttribute)
+                         zenoh_proto::zbail!(@ret (None, None), TransportError::InvalidAttribute)
                     }
                     } else {
                         zenoh_proto::zbail!(@ret (None, None), TransportError::InvalidState)
@@ -217,6 +247,7 @@ impl State {
                     mine_batch_size,
                     mine_resolution,
                     mine_lease,
+                    ..
                 } => {
                     zenoh_proto::debug!(
                         "Received InitAck on transport {:?} -> ({:?})",

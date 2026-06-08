@@ -33,6 +33,9 @@ pub struct TransportBuilder<Buff> {
     max_fragments: usize,
 
     buff: Buff,
+
+    #[cfg(feature = "auth")]
+    auth_payload: Option<heapless::Vec<u8, 256>>,
 }
 
 impl<Buff> TransportBuilder<Buff> {
@@ -48,6 +51,9 @@ impl<Buff> TransportBuilder<Buff> {
             resolution: Resolution::default(),
             max_fragments: 1,
             buff,
+
+            #[cfg(feature = "auth")]
+            auth_payload: None,
         }
     }
     pub fn with_zid(mut self, zid: ZenohIdProto) -> Self {
@@ -80,6 +86,27 @@ impl<Buff> TransportBuilder<Buff> {
         self
     }
 
+    #[cfg(feature = "auth")]
+    pub fn with_auth(mut self, username: &str, password: &str) -> Self {
+        let mut payload = heapless::Vec::new();
+        let _ = payload.push(0x01);
+        for b in username.bytes() {
+            let _ = payload.push(b);
+        }
+        let _ = payload.push(0x00);
+        for b in password.bytes() {
+            let _ = payload.push(b);
+        }
+        self.auth_payload = Some(payload);
+        self
+    }
+
+    #[cfg(feature = "auth")]
+    pub fn with_auth_payload(mut self, payload: heapless::Vec<u8, 256>) -> Self {
+        self.auth_payload = Some(payload);
+        self
+    }
+
     pub fn with_buff<NewBuff>(self, buff: NewBuff) -> TransportBuilder<NewBuff> {
         TransportBuilder {
             zid: self.zid,
@@ -89,6 +116,9 @@ impl<Buff> TransportBuilder<Buff> {
             resolution: self.resolution,
             max_fragments: self.max_fragments,
             buff,
+
+            #[cfg(feature = "auth")]
+            auth_payload: self.auth_payload,
         }
     }
 
@@ -130,12 +160,16 @@ impl<Buff> TransportBuilder<Buff> {
         Read: FnMut(&mut T, &mut [u8]) -> core::result::Result<usize, E>,
         Write: FnMut(&mut T, &[u8]) -> core::result::Result<(), E>,
     {
+        #[cfg(feature = "auth")]
+        let auth_payload = self.auth_payload;
         let state = State::WaitingInitSyn {
             mine_zid: self.zid,
             mine_whatami: self.whatami,
             mine_batch_size: self.batch_size,
             mine_resolution: self.resolution,
             mine_lease: self.lease,
+            #[cfg(feature = "auth")]
+            mine_auth: auth_payload,
         };
 
         let tx = TransportTx::new(
@@ -179,12 +213,16 @@ impl<Buff> TransportBuilder<Buff> {
         Read: AsyncFnMut(&mut T, &mut [u8]) -> core::result::Result<usize, E>,
         Write: AsyncFnMut(&mut T, &[u8]) -> core::result::Result<(), E>,
     {
+        #[cfg(feature = "auth")]
+        let auth_payload = self.auth_payload;
         let state = State::WaitingInitSyn {
             mine_zid: self.zid,
             mine_whatami: self.whatami,
             mine_batch_size: self.batch_size,
             mine_resolution: self.resolution,
             mine_lease: self.lease,
+            #[cfg(feature = "auth")]
+            mine_auth: auth_payload,
         };
 
         let tx = TransportTx::new(
@@ -228,12 +266,16 @@ impl<Buff> TransportBuilder<Buff> {
         Read: FnMut(&mut T, &mut [u8]) -> core::result::Result<usize, E>,
         Write: FnMut(&mut T, &[u8]) -> core::result::Result<(), E>,
     {
+        #[cfg(feature = "auth")]
+        let auth_payload = self.auth_payload;
         let state = State::WaitingInitAck {
             mine_zid: self.zid,
             mine_whatami: self.whatami,
             mine_batch_size: self.batch_size,
             mine_resolution: self.resolution,
             mine_lease: self.lease,
+            #[cfg(feature = "auth")]
+            mine_auth: auth_payload.clone(),
         };
 
         let tx = TransportTx::new(
@@ -254,19 +296,40 @@ impl<Buff> TransportBuilder<Buff> {
         )
         .with_max_fragments(self.max_fragments);
 
+        #[cfg(feature = "auth")]
+        let auth_bytes = auth_payload;
+        
+
+        #[cfg_attr(not(feature = "auth"), allow(unused_mut))]
+        let mut init = InitSyn {
+            identifier: InitIdentifier {
+                zid: self.zid,
+                whatami: self.whatami,
+            },
+            resolution: InitResolution {
+                resolution: self.resolution,
+                batch_size: BatchSize(self.batch_size),
+            },
+            ..Default::default()
+        };
+
+        // SAFETY: auth_bytes and init live in the same PendingInit variant.
+        // The reference from auth_bytes.as_slice() is valid for 'static because
+        // both fields are in the same enum variant and are dropped together.
+        #[cfg(feature = "auth")]
+        if let Some(ref bytes) = auth_bytes {
+            init.auth = Some(zenoh_proto::exts::Auth {
+                payload: unsafe {
+                    core::mem::transmute::<&[u8], &'static [u8]>(bytes.as_slice())
+                },
+            });
+        }
+
         Handshake::PendingInit {
             state,
-            init: InitSyn {
-                identifier: InitIdentifier {
-                    zid: self.zid,
-                    whatami: self.whatami,
-                },
-                resolution: InitResolution {
-                    resolution: self.resolution,
-                    batch_size: BatchSize(self.batch_size),
-                },
-                ..Default::default()
-            },
+            init,
+            #[cfg(feature = "auth")]
+            auth_bytes,
             prefixed: false,
             tx,
             rx,
@@ -274,6 +337,38 @@ impl<Buff> TransportBuilder<Buff> {
             read,
             write,
         }
+    }
+
+    pub fn peer_connect<T, E, Read, Write>(
+        self,
+        handle: T,
+        read: Read,
+        write: Write,
+    ) -> Handshake<Buff, T, Read, Write>
+    where
+        E: Display,
+        Buff: Clone + AsMut<[u8]> + AsRef<[u8]>,
+        Read: FnMut(&mut T, &mut [u8]) -> core::result::Result<usize, E>,
+        Write: FnMut(&mut T, &[u8]) -> core::result::Result<(), E>,
+    {
+        self.with_whatami(WhatAmI::Peer)
+            .connect(handle, read, write)
+    }
+
+    pub fn peer_listen<T, E, Read, Write>(
+        self,
+        handle: T,
+        read: Read,
+        write: Write,
+    ) -> Handshake<Buff, T, Read, Write>
+    where
+        E: Display,
+        Buff: Clone + AsMut<[u8]> + AsRef<[u8]>,
+        Read: FnMut(&mut T, &mut [u8]) -> core::result::Result<usize, E>,
+        Write: FnMut(&mut T, &[u8]) -> core::result::Result<(), E>,
+    {
+        self.with_whatami(WhatAmI::Peer)
+            .listen(handle, read, write)
     }
 
     pub fn connect_async<T, E, Read, Write>(
@@ -288,12 +383,16 @@ impl<Buff> TransportBuilder<Buff> {
         Read: AsyncFnMut(&mut T, &mut [u8]) -> core::result::Result<usize, E>,
         Write: AsyncFnMut(&mut T, &[u8]) -> core::result::Result<(), E>,
     {
+        #[cfg(feature = "auth")]
+        let auth_payload = self.auth_payload;
         let state = State::WaitingInitAck {
             mine_zid: self.zid,
             mine_whatami: self.whatami,
             mine_batch_size: self.batch_size,
             mine_resolution: self.resolution,
             mine_lease: self.lease,
+            #[cfg(feature = "auth")]
+            mine_auth: auth_payload.clone(),
         };
 
         let tx = TransportTx::new(
@@ -314,19 +413,37 @@ impl<Buff> TransportBuilder<Buff> {
         )
         .with_max_fragments(self.max_fragments);
 
+        #[cfg(feature = "auth")]
+        let auth_bytes = auth_payload;
+        
+
+        #[cfg_attr(not(feature = "auth"), allow(unused_mut))]
+        let mut init = InitSyn {
+            identifier: InitIdentifier {
+                zid: self.zid,
+                whatami: self.whatami,
+            },
+            resolution: InitResolution {
+                resolution: self.resolution,
+                batch_size: BatchSize(self.batch_size),
+            },
+            ..Default::default()
+        };
+
+        #[cfg(feature = "auth")]
+        if let Some(ref bytes) = auth_bytes {
+            init.auth = Some(zenoh_proto::exts::Auth {
+                payload: unsafe {
+                    core::mem::transmute::<&[u8], &'static [u8]>(bytes.as_slice())
+                },
+            });
+        }
+
         Handshake::PendingInit {
             state,
-            init: InitSyn {
-                identifier: InitIdentifier {
-                    zid: self.zid,
-                    whatami: self.whatami,
-                },
-                resolution: InitResolution {
-                    resolution: self.resolution,
-                    batch_size: BatchSize(self.batch_size),
-                },
-                ..Default::default()
-            },
+            init,
+            #[cfg(feature = "auth")]
+            auth_bytes,
             prefixed: false,
             tx,
             rx,

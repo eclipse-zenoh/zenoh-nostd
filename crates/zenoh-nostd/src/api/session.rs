@@ -92,6 +92,28 @@ where
         self.liveliness_callbacks.for_each_keyexpr(f);
     }
 
+    #[allow(dead_code)]
+    pub fn has_subscription(&self, ke: &keyexpr) -> bool {
+        let mut found = false;
+        self.sub_callbacks.for_each_keyexpr(|_id, registered_ke| {
+            if !found && ke.intersects(registered_ke) {
+                found = true;
+            }
+        });
+        found
+    }
+
+    #[allow(dead_code)]
+    pub fn has_queryable(&self, ke: &keyexpr) -> bool {
+        let mut found = false;
+        self.queryable_callbacks.for_each_keyexpr(|_id, registered_ke| {
+            if !found && ke.intersects(registered_ke) {
+                found = true;
+            }
+        });
+        found
+    }
+
 pub(crate) fn resolve_keyexpr<'a>(&self, wire_expr: &WireExpr<'a>) -> Option<heapless::String<64>> {
     if !wire_expr.suffix.is_empty() {
         let mut s = heapless::String::new();
@@ -323,6 +345,16 @@ where
     ) -> core::result::Result<(), SessionError> {
         Ok(())
     }
+
+    #[cfg(feature = "session-check")]
+    pub fn has_subscriber(&self, ke: &keyexpr) -> bool {
+        self.state().has_subscription(ke)
+    }
+
+    #[cfg(feature = "session-check")]
+    pub fn has_queryable(&self, ke: &keyexpr) -> bool {
+        self.state().has_queryable(ke)
+    }
 }
 
 pub fn session_connect<'res, Config>(
@@ -424,4 +456,80 @@ where
     let mut transport = config.transports().listen(endpoint, config.buff())?;
     transport.transport_mut().rx.ignore_invalid_sn();
     Ok(Session::new(resources.init(transport)))
+}
+
+#[cfg(feature = "peer-mode")]
+pub fn session_peer_connect<'res, Config>(
+    resources: &'res mut Resources<'res, Config>,
+    config: &'res Config,
+    endpoint: Endpoint<'_>,
+) -> core::result::Result<Session<'res, Config>, TransportLinkError>
+where
+    Config: ZSessionConfig,
+{
+    Ok(Session::new(resources.init(
+        config.transports().peer_connect(endpoint, config.buff())?,
+    )))
+}
+
+#[cfg(feature = "peer-mode")]
+pub fn session_peer_listen<'res, Config>(
+    resources: &'res mut Resources<'res, Config>,
+    config: &'res Config,
+    endpoint: Endpoint<'_>,
+) -> core::result::Result<Session<'res, Config>, TransportLinkError>
+where
+    Config: ZSessionConfig,
+{
+    Ok(Session::new(resources.init(
+        config.transports().peer_listen(endpoint, config.buff())?,
+    )))
+}
+
+#[cfg(feature = "peer-mode")]
+#[macro_export]
+macro_rules! __session_peer_connect {
+    (
+        $CONFIG:ty: $config:expr,
+        $endpoint:expr
+    ) => {{
+        static CONFIG: static_cell::StaticCell<$CONFIG> = static_cell::StaticCell::new();
+        let config = CONFIG.init($config);
+
+        static RESOURCES: static_cell::StaticCell<$crate::session::Resources<'static, $CONFIG>> =
+            static_cell::StaticCell::new();
+
+        static SESSION: static_cell::StaticCell<$crate::session::Session<'static, $CONFIG>> =
+            static_cell::StaticCell::new();
+
+        SESSION.init($crate::session::Session::new(
+            RESOURCES.init($crate::session::Resources::default()).init(
+                config.transports().peer_connect($endpoint, config.buff())?,
+            ),
+        )) as &$crate::session::Session<'static, $CONFIG>
+    }};
+}
+
+#[cfg(feature = "peer-mode")]
+#[macro_export]
+macro_rules! __session_peer_listen {
+    (
+        $CONFIG:ty: $config:expr,
+        $endpoint:expr
+    ) => {{
+        static CONFIG: static_cell::StaticCell<$CONFIG> = static_cell::StaticCell::new();
+        let config = CONFIG.init($config);
+
+        static RESOURCES: static_cell::StaticCell<$crate::session::Resources<'static, $CONFIG>> =
+            static_cell::StaticCell::new();
+
+        static SESSION: static_cell::StaticCell<$crate::session::Session<'static, $CONFIG>> =
+            static_cell::StaticCell::new();
+
+        SESSION.init($crate::session::Session::new(
+            RESOURCES.init($crate::session::Resources::default()).init(
+                config.transports().peer_listen($endpoint, config.buff())?,
+            ),
+        )) as &$crate::session::Session<'static, $CONFIG>
+    }};
 }

@@ -47,6 +47,8 @@ pub mod session {
     pub use super::api::serialization::*;
     #[cfg(feature = "scouting")]
     pub use super::api::session::scout::*;
+    #[cfg(feature = "peer-mode")]
+    pub use super::api::session::{session_peer_connect, session_peer_listen};
 
     pub use zenoh_proto::msgs::exts::QoS;
     pub use zenoh_proto::msgs::exts::QueryTarget;
@@ -61,7 +63,16 @@ pub mod session {
             session_listen as listen, session_listen_ignore_invalid_sn as listen_ignore_invalid_sn,
         };
 
+        #[cfg(feature = "peer-mode")]
+        pub use super::super::api::session::{
+            session_peer_connect as peer_connect,
+            session_peer_listen as peer_listen,
+        };
+
         pub use crate::{__session_connect as connect, __session_listen as listen};
+
+        #[cfg(feature = "peer-mode")]
+        pub use crate::{__session_peer_connect as peer_connect, __session_peer_listen as peer_listen};
 
         pub use zenoh_proto::{debug, error, info, keyexpr, trace, warn, zbail};
 
