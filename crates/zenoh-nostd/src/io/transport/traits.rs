@@ -50,6 +50,7 @@ pub trait ZTransportLinkTx {
         }
     }
 
+    #[allow(dead_code)]
     fn keepalive(&mut self) -> core::result::Result<(), zenoh_proto::TransportLinkError> {
         let (link, transport) = self.tx();
         transport.keepalive();
@@ -63,6 +64,7 @@ pub trait ZTransportLinkTx {
 
     /// Send a Close message and flush it to the transport link.
     /// This gracefully terminates the transport session.
+    #[allow(dead_code)]
     fn close(&mut self) -> core::result::Result<(), zenoh_proto::TransportLinkError> {
         let (link, transport) = self.tx();
         transport.close();
@@ -78,6 +80,7 @@ pub trait ZTransportLinkTx {
 pub trait ZTransportLinkRx {
     fn rx(&mut self) -> (&mut impl ZLinkRx, &mut impl ZTransportRx);
 
+    #[allow(dead_code)]
     fn recv(
         &mut self,
     ) -> core::result::Result<

@@ -4,6 +4,7 @@ pub enum TransportEvent {
     Disconnected,
 }
 
+#[allow(clippy::type_complexity)]
 pub struct ConnectivityState<'ch> {
     pub transport_senders: heapless::Vec<core::cell::Cell<Option<&'ch dyn Fn(TransportEvent)>>, 4>,
 }
@@ -15,6 +16,7 @@ impl<'ch> ConnectivityState<'ch> {
         }
     }
 
+    #[allow(clippy::result_unit_err)]
     pub fn on_event(&mut self, f: &'ch dyn Fn(TransportEvent)) -> core::result::Result<(), ()> {
         self.transport_senders
             .push(core::cell::Cell::new(Some(f)))

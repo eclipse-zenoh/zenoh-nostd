@@ -156,11 +156,13 @@ where
         }
     }
 
+    #[allow(clippy::mut_from_ref)]
     pub(crate) fn driver(&self) -> &mut Driver<'res, <Config::LinkManager as ZLinkManager>::Link<'res>, Config::Buff> {
         // SAFETY: Single-threaded execution. Callers guarantee exclusive access.
         unsafe { &mut *self.driver.get() }
     }
 
+    #[allow(clippy::mut_from_ref)]
     pub(crate) fn state(&self) -> &mut SessionState<'res, Config> {
         // SAFETY: Single-threaded execution. Callers guarantee exclusive access.
         unsafe { &mut *self.state.get() }

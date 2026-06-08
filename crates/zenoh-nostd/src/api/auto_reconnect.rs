@@ -68,7 +68,7 @@ where
     let mut attempt = 0u32;
 
     loop {
-        let mut session = factory()?;
+        let session = factory()?;
 
         match session.run() {
             Ok(()) => return Ok(()),

@@ -340,8 +340,10 @@ where
     }
 }
 
+#[allow(dead_code)]
 pub struct AsyncCallback<Arg, F>(F, PhantomData<Arg>);
 
+#[allow(dead_code)]
 impl<Arg, F> AsyncCallback<Arg, F> {
     pub fn new(f: F) -> Self {
         Self(f, PhantomData)

@@ -85,7 +85,7 @@ where
             let streamed = link.is_streamed();
             if let Some(bytes) = transport.flush(streamed) {
                 link.write_all(bytes)
-                    .map_err(|e| TransportLinkError::from(e))?;
+                    .map_err(TransportLinkError::from)?;
             }
             did_work = true;
         }
@@ -127,7 +127,7 @@ where
             let streamed = link.is_streamed();
             if let Some(bytes) = transport.flush(streamed) {
                 link.write_all(bytes)
-                    .map_err(|e| TransportLinkError::from(e))?;
+                    .map_err(TransportLinkError::from)?;
             }
             connectivity.emit(TransportEvent::Disconnected);
             return Err(EitherError::A(TransportLinkError::TransportClosed));

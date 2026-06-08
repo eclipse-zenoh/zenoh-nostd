@@ -78,6 +78,7 @@ where
 pub struct TransportLinkManager<LinkManager> {
     link_manager: LinkManager,
 
+    #[allow(dead_code)]
     open_timeout: Duration,
     zid: ZenohIdProto,
     whatami: WhatAmI,
