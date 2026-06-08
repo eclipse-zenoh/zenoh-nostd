@@ -1,0 +1,60 @@
+[package]
+name = "zenoh-sansio-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.zenoh-sansio]
+path = ".."
+features = ["std"]
+
+[dependencies.zenoh-proto]
+path = "../../zenoh-proto"
+
+[[bin]]
+name = "transport_decode"
+path = "fuzz_targets/transport_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "establishment"
+path = "fuzz_targets/establishment.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "establishment_client"
+path = "fuzz_targets/establishment_client.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "keyexpr"
+path = "fuzz_targets/keyexpr.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "decode_frame"
+path = "fuzz_targets/decode_frame.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "decode_message"
+path = "fuzz_targets/decode_message.rs"
+test = false
+doc = false
+bench = false
