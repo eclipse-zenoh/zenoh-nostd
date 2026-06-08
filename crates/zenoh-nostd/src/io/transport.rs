@@ -1,6 +1,7 @@
 use core::time::Duration;
 
-use zenoh_sansio::AuthVerifierFn;
+#[cfg(feature = "auth")]
+use alloc::boxed::Box;
 
 use zenoh_proto::{
     Endpoint, TransportLinkError,

@@ -1,7 +1,10 @@
 use core::fmt::Display;
 
-use zenoh_proto::{EitherError, TransportError, msgs::{Close, CloseBehaviour, InitSyn, TransportMessage}};
+use zenoh_proto::{EitherError, TransportError, msgs::InitSyn};
 
+#[cfg(feature = "auth")]
+use zenoh_proto::msgs::{Close, CloseBehaviour, TransportMessage};
+#[cfg(feature = "auth")]
 use crate::transport::AuthVerifierFn;
 
 use crate::{

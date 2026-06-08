@@ -1569,28 +1569,28 @@ mod auth_tests {
             .unwrap();
     }
 
+    static AUTH_CALLED: AtomicBool = AtomicBool::new(false);
+    static AUTH_EXPECTED: &[u8] = &[0x01, b'u', b's', b'e', b'r', 0x00, b'p', b'a', b's', b's'];
+
+    fn auth_verifier_fn(payload: &[u8]) -> bool {
+        AUTH_CALLED.store(true, Ordering::SeqCst);
+        assert_eq!(payload, AUTH_EXPECTED, "verifier received wrong payload");
+        true
+    }
+
     #[test]
     fn verifier_called_with_auth_payload() {
         let socket = ([0u8; 2048], 0usize, 0usize);
         let socket_ref = core::cell::RefCell::new(socket);
 
-        static CALLED: AtomicBool = AtomicBool::new(false);
-        let expected_payload: &[u8] = &[0x01, b'u', b's', b'e', b'r', 0x00, b'p', b'a', b's', b's'];
-
-        let verifier = move |payload: &[u8]| {
-            CALLED.store(true, Ordering::SeqCst);
-            assert_eq!(payload, expected_payload, "verifier received wrong payload");
-            true
-        };
-
         let mut auth_payload = heapless::Vec::<u8, 256>::new();
-        auth_payload.extend_from_slice(expected_payload).unwrap();
+        auth_payload.extend_from_slice(AUTH_EXPECTED).unwrap();
 
         let client = crate::Transport::builder([0u8; 2048])
             .with_auth_payload(auth_payload);
 
         let server = crate::Transport::builder([0u8; 2048])
-            .with_auth_verifier(verifier);
+            .with_auth_verifier(auth_verifier_fn);
 
         let read = |socket: &mut &core::cell::RefCell<([u8; 2048], usize, usize)>,
                      bytes: &mut [u8]|
@@ -1635,7 +1635,7 @@ mod auth_tests {
             .open()
             .unwrap();
 
-        assert!(CALLED.load(Ordering::SeqCst), "verifier was called");
+        assert!(AUTH_CALLED.load(Ordering::SeqCst), "verifier was called");
     }
 }
 
