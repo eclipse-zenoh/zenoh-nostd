@@ -6,7 +6,18 @@ members = [
 
     "crates/zenoh-nostd"
 ]
-exclude = ["platforms/zenoh-std", "platforms/zenoh-wasm", "platforms/zenoh-stm32"]
+exclude = [
+    "platforms/zenoh-std",
+    "platforms/zenoh-wasm",
+    "platforms/zenoh-stm32",
+    "platforms/zenoh-zephyr",
+    "platforms/zenoh-arduino",
+    "platforms/zenoh-mbedos",
+    "platforms/zenoh-freertos",
+    "platforms/zenoh-rp2040",
+    "platforms/zenoh-opencr",
+    "platforms/zenoh-flipper",
+]
 resolver = "3"
 
 [workspace.package]

@@ -1,0 +1,14 @@
+[package]
+name = "zenoh-flipper"
+authors = []
+categories = ["embedded", "network-programming"]
+description = "Zenoh platform support for Flipper Zero"
+edition = "2024"
+homepage = "http://zenoh.io"
+license = "EPL-2.0 OR Apache-2.0"
+repository = "https://github.com/ZettaScaleLabs/zenoh-nostd"
+rust-version = "1.91.0"
+version = "0.1.0"
+
+[dependencies]
+zenoh-nostd = { version = "0.1.0", path = "../../crates/zenoh-nostd" }
