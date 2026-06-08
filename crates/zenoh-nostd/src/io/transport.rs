@@ -1,6 +1,5 @@
 use core::time::Duration;
 
-use embassy_time::with_timeout;
 use zenoh_proto::{
     Endpoint, TransportLinkError,
     fields::{Resolution, WhatAmI, ZenohIdProto},
@@ -123,87 +122,71 @@ impl<LinkManager> TransportLinkManager<LinkManager> {
         self
     }
 
-    pub async fn bridge_connect<Tx: embedded_io_async::Write, Rx: embedded_io_async::Read, Buff>(
+    pub fn bridge_connect<Tx: embedded_io::Write, Rx: embedded_io::Read, Buff>(
         &self,
         mut link: EmbeddedIOLink<Tx, Rx>,
         buff: Buff,
     ) -> core::result::Result<TransportLink<EmbeddedIOLink<Tx, Rx>, Buff>, TransportLinkError>
     where
-        LinkManager: ZLinkManager,
         Buff: AsMut<[u8]> + AsRef<[u8]> + Clone,
     {
-        let connect = async || {
-            let streamed = link.is_streamed();
-            Transport::builder(buff)
-                .with_zid(self.zid)
-                .with_whatami(self.whatami)
-                .with_lease(self.lease)
-                .with_resolution(self.resolution)
-                .connect_async(
-                    &mut link,
-                    async |link, bytes| {
-                        if link.is_streamed() {
-                            link.read_exact(bytes).await.map(|_| bytes.len())
-                        } else {
-                            link.read(bytes).await
-                        }
-                    },
-                    async |link, bytes| link.write_all(bytes).await,
-                )
-                .with_prefixed(streamed)
-                .finish_async()
-                .await
-        };
-
-        let transport = with_timeout(self.open_timeout.try_into().unwrap(), connect())
-            .await
-            .map_err(|_| TransportLinkError::OpenTimeout)?
+        let streamed = link.is_streamed();
+        let transport = Transport::builder(buff)
+            .with_zid(self.zid)
+            .with_whatami(self.whatami)
+            .with_lease(self.lease)
+            .with_resolution(self.resolution)
+            .connect(
+                &mut link,
+                |link, bytes| {
+                    if link.is_streamed() {
+                        link.read_exact(bytes).map(|_| bytes.len())
+                    } else {
+                        link.read(bytes)
+                    }
+                },
+                |link, bytes| link.write_all(bytes),
+            )
+            .with_prefixed(streamed)
+            .finish()
             .map_err(|e| e.flatten_map::<TransportLinkError>())?;
 
         Ok(TransportLink::new(link, transport))
     }
 
-    pub async fn bridge_listen<Tx: embedded_io_async::Write, Rx: embedded_io_async::Read, Buff>(
+    pub fn bridge_listen<Tx: embedded_io::Write, Rx: embedded_io::Read, Buff>(
         &self,
         mut link: EmbeddedIOLink<Tx, Rx>,
         buff: Buff,
     ) -> core::result::Result<TransportLink<EmbeddedIOLink<Tx, Rx>, Buff>, TransportLinkError>
     where
-        LinkManager: ZLinkManager,
         Buff: AsMut<[u8]> + AsRef<[u8]> + Clone,
     {
-        let connect = async || {
-            let streamed = link.is_streamed();
-            Transport::builder(buff)
-                .with_zid(self.zid)
-                .with_whatami(self.whatami)
-                .with_lease(self.lease)
-                .with_resolution(self.resolution)
-                .listen_async(
-                    &mut link,
-                    async |link, bytes| {
-                        if link.is_streamed() {
-                            link.read_exact(bytes).await.map(|_| bytes.len())
-                        } else {
-                            link.read(bytes).await
-                        }
-                    },
-                    async |link, bytes| link.write_all(bytes).await,
-                )
-                .with_prefixed(streamed)
-                .finish_async()
-                .await
-        };
-
-        let transport = with_timeout(self.open_timeout.try_into().unwrap(), connect())
-            .await
-            .map_err(|_| TransportLinkError::OpenTimeout)?
+        let streamed = link.is_streamed();
+        let transport = Transport::builder(buff)
+            .with_zid(self.zid)
+            .with_whatami(self.whatami)
+            .with_lease(self.lease)
+            .with_resolution(self.resolution)
+            .listen(
+                &mut link,
+                |link, bytes| {
+                    if link.is_streamed() {
+                        link.read_exact(bytes).map(|_| bytes.len())
+                    } else {
+                        link.read(bytes)
+                    }
+                },
+                |link, bytes| link.write_all(bytes),
+            )
+            .with_prefixed(streamed)
+            .finish()
             .map_err(|e| e.flatten_map::<TransportLinkError>())?;
 
         Ok(TransportLink::new(link, transport))
     }
 
-    pub async fn connect<Buff>(
+    pub fn connect<Buff>(
         &self,
         endpoint: Endpoint<'_>,
         buff: Buff,
@@ -212,40 +195,32 @@ impl<LinkManager> TransportLinkManager<LinkManager> {
         LinkManager: ZLinkManager,
         Buff: AsMut<[u8]> + AsRef<[u8]> + Clone,
     {
-        let mut link = self.link_manager.connect(endpoint).await?;
-
-        let connect = async || {
-            let streamed = link.is_streamed();
-            Transport::builder(buff)
-                .with_zid(self.zid)
-                .with_whatami(self.whatami)
-                .with_lease(self.lease)
-                .with_resolution(self.resolution)
-                .connect_async(
-                    &mut link,
-                    async |link, bytes| {
-                        if link.is_streamed() {
-                            link.read_exact(bytes).await.map(|_| bytes.len())
-                        } else {
-                            link.read(bytes).await
-                        }
-                    },
-                    async |link, bytes| link.write_all(bytes).await,
-                )
-                .with_prefixed(streamed)
-                .finish_async()
-                .await
-        };
-
-        let transport = with_timeout(self.open_timeout.try_into().unwrap(), connect())
-            .await
-            .map_err(|_| TransportLinkError::OpenTimeout)?
+        let mut link = self.link_manager.connect(endpoint)?;
+        let streamed = link.is_streamed();
+        let transport = Transport::builder(buff)
+            .with_zid(self.zid)
+            .with_whatami(self.whatami)
+            .with_lease(self.lease)
+            .with_resolution(self.resolution)
+            .connect(
+                &mut link,
+                |link, bytes| {
+                    if link.is_streamed() {
+                        link.read_exact(bytes).map(|_| bytes.len())
+                    } else {
+                        link.read(bytes)
+                    }
+                },
+                |link, bytes| link.write_all(bytes),
+            )
+            .with_prefixed(streamed)
+            .finish()
             .map_err(|e| e.flatten_map::<TransportLinkError>())?;
 
         Ok(TransportLink::new(link, transport))
     }
 
-    pub async fn listen<Buff>(
+    pub fn listen<Buff>(
         &self,
         endpoint: Endpoint<'_>,
         buff: Buff,
@@ -254,33 +229,26 @@ impl<LinkManager> TransportLinkManager<LinkManager> {
         LinkManager: ZLinkManager,
         Buff: AsMut<[u8]> + AsRef<[u8]> + Clone,
     {
-        let mut link = self.link_manager.listen(endpoint).await?;
-        let listen = async || {
-            let streamed = link.is_streamed();
-            Transport::builder(buff)
-                .with_zid(self.zid)
-                .with_whatami(self.whatami)
-                .with_lease(self.lease)
-                .with_resolution(self.resolution)
-                .listen_async(
-                    &mut link,
-                    async |link, bytes| {
-                        if link.is_streamed() {
-                            link.read_exact(bytes).await.map(|_| bytes.len())
-                        } else {
-                            link.read(bytes).await
-                        }
-                    },
-                    async |link, bytes| link.write_all(bytes).await,
-                )
-                .with_prefixed(streamed)
-                .finish_async()
-                .await
-        };
-
-        let transport = with_timeout(self.open_timeout.try_into().unwrap(), listen())
-            .await
-            .map_err(|_| TransportLinkError::OpenTimeout)?
+        let mut link = self.link_manager.listen(endpoint)?;
+        let streamed = link.is_streamed();
+        let transport = Transport::builder(buff)
+            .with_zid(self.zid)
+            .with_whatami(self.whatami)
+            .with_lease(self.lease)
+            .with_resolution(self.resolution)
+            .listen(
+                &mut link,
+                |link, bytes| {
+                    if link.is_streamed() {
+                        link.read_exact(bytes).map(|_| bytes.len())
+                    } else {
+                        link.read(bytes)
+                    }
+                },
+                |link, bytes| link.write_all(bytes),
+            )
+            .with_prefixed(streamed)
+            .finish()
             .map_err(|e| e.flatten_map::<TransportLinkError>())?;
 
         Ok(TransportLink::new(link, transport))
