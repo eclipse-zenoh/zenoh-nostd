@@ -53,3 +53,4 @@ embassy-time.workspace = true
 embassy-sync.workspace = true
 
 embedded-io-async.workspace = true
+embedded-io.workspace = true

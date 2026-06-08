@@ -1,3 +1,4 @@
+use embedded_io::{Read, Write};
 use zenoh_proto::{Endpoint, LinkError};
 
 pub trait ZLinkInfo {
@@ -6,22 +7,13 @@ pub trait ZLinkInfo {
 }
 
 pub trait ZLinkTx: ZLinkInfo {
-    fn write_all(
-        &mut self,
-        buffer: &[u8],
-    ) -> impl Future<Output = core::result::Result<(), zenoh_proto::LinkError>>;
+    fn write_all(&mut self, buffer: &[u8]) -> core::result::Result<(), zenoh_proto::LinkError>;
 }
 
 pub trait ZLinkRx: ZLinkInfo {
-    fn read(
-        &mut self,
-        buffer: &mut [u8],
-    ) -> impl Future<Output = core::result::Result<usize, zenoh_proto::LinkError>>;
+    fn read(&mut self, buffer: &mut [u8]) -> core::result::Result<usize, zenoh_proto::LinkError>;
 
-    fn read_exact(
-        &mut self,
-        buffer: &mut [u8],
-    ) -> impl Future<Output = core::result::Result<(), zenoh_proto::LinkError>>;
+    fn read_exact(&mut self, buffer: &mut [u8]) -> core::result::Result<(), zenoh_proto::LinkError>;
 }
 
 pub trait ZLink: ZLinkInfo + ZLinkTx + ZLinkRx {
@@ -44,15 +36,15 @@ pub trait ZLinkManager {
     fn connect(
         &self,
         endpoint: Endpoint<'_>,
-    ) -> impl Future<Output = core::result::Result<Self::Link<'_>, LinkError>>;
+    ) -> core::result::Result<Self::Link<'_>, LinkError>;
 
     fn listen(
         &self,
         endpoint: Endpoint<'_>,
-    ) -> impl Future<Output = core::result::Result<Self::Link<'_>, LinkError>>;
+    ) -> core::result::Result<Self::Link<'_>, LinkError>;
 }
 
-pub struct EmbeddedIOLink<Tx: embedded_io_async::Write, Rx: embedded_io_async::Read> {
+pub struct EmbeddedIOLink<Tx: Write, Rx: Read> {
     tx: Tx,
     rx: Rx,
 
@@ -60,7 +52,7 @@ pub struct EmbeddedIOLink<Tx: embedded_io_async::Write, Rx: embedded_io_async::R
     is_streamed: bool,
 }
 
-impl<Tx: embedded_io_async::Write, Rx: embedded_io_async::Read> EmbeddedIOLink<Tx, Rx> {
+impl<Tx: Write, Rx: Read> EmbeddedIOLink<Tx, Rx> {
     pub fn new(tx: Tx, rx: Rx, mtu: u16, is_streamed: bool) -> Self {
         Self {
             tx,
@@ -71,23 +63,21 @@ impl<Tx: embedded_io_async::Write, Rx: embedded_io_async::Read> EmbeddedIOLink<T
     }
 }
 
-pub struct EmbeddedIOLinkTx<'a, Tx: embedded_io_async::Write> {
+pub struct EmbeddedIOLinkTx<'a, Tx: Write> {
     tx: &'a mut Tx,
 
     mtu: u16,
     is_streamed: bool,
 }
 
-pub struct EmbeddedIOLinkRx<'a, Rx: embedded_io_async::Read> {
+pub struct EmbeddedIOLinkRx<'a, Rx: Read> {
     rx: &'a mut Rx,
 
     mtu: u16,
     is_streamed: bool,
 }
 
-impl<Tx: embedded_io_async::Write, Rx: embedded_io_async::Read> ZLinkInfo
-    for EmbeddedIOLink<Tx, Rx>
-{
+impl<Tx: Write, Rx: Read> ZLinkInfo for EmbeddedIOLink<Tx, Rx> {
     fn mtu(&self) -> u16 {
         self.mtu
     }
@@ -97,7 +87,7 @@ impl<Tx: embedded_io_async::Write, Rx: embedded_io_async::Read> ZLinkInfo
     }
 }
 
-impl<Tx: embedded_io_async::Write> ZLinkInfo for EmbeddedIOLinkTx<'_, Tx> {
+impl<Tx: Write> ZLinkInfo for EmbeddedIOLinkTx<'_, Tx> {
     fn mtu(&self) -> u16 {
         self.mtu
     }
@@ -107,7 +97,7 @@ impl<Tx: embedded_io_async::Write> ZLinkInfo for EmbeddedIOLinkTx<'_, Tx> {
     }
 }
 
-impl<Rx: embedded_io_async::Read> ZLinkInfo for EmbeddedIOLinkRx<'_, Rx> {
+impl<Rx: Read> ZLinkInfo for EmbeddedIOLinkRx<'_, Rx> {
     fn mtu(&self) -> u16 {
         self.mtu
     }
@@ -117,75 +107,47 @@ impl<Rx: embedded_io_async::Read> ZLinkInfo for EmbeddedIOLinkRx<'_, Rx> {
     }
 }
 
-impl<Tx: embedded_io_async::Write, Rx: embedded_io_async::Read> ZLinkTx for EmbeddedIOLink<Tx, Rx> {
-    async fn write_all(
-        &mut self,
-        buffer: &[u8],
-    ) -> core::result::Result<(), zenoh_proto::LinkError> {
+impl<Tx: Write, Rx: Read> ZLinkTx for EmbeddedIOLink<Tx, Rx> {
+    fn write_all(&mut self, buffer: &[u8]) -> core::result::Result<(), zenoh_proto::LinkError> {
         self.tx
             .write_all(buffer)
-            .await
             .map_err(|_| LinkError::LinkTxFailed)
     }
 }
 
-impl<Tx: embedded_io_async::Write> ZLinkTx for EmbeddedIOLinkTx<'_, Tx> {
-    async fn write_all(
-        &mut self,
-        buffer: &[u8],
-    ) -> core::result::Result<(), zenoh_proto::LinkError> {
+impl<Tx: Write> ZLinkTx for EmbeddedIOLinkTx<'_, Tx> {
+    fn write_all(&mut self, buffer: &[u8]) -> core::result::Result<(), zenoh_proto::LinkError> {
         self.tx
             .write_all(buffer)
-            .await
             .map_err(|_| LinkError::LinkTxFailed)
     }
 }
 
-impl<Tx: embedded_io_async::Write, Rx: embedded_io_async::Read> ZLinkRx for EmbeddedIOLink<Tx, Rx> {
-    async fn read(
-        &mut self,
-        buffer: &mut [u8],
-    ) -> core::result::Result<usize, zenoh_proto::LinkError> {
-        self.rx
-            .read(buffer)
-            .await
-            .map_err(|_| LinkError::LinkRxFailed)
+impl<Tx: Write, Rx: Read> ZLinkRx for EmbeddedIOLink<Tx, Rx> {
+    fn read(&mut self, buffer: &mut [u8]) -> core::result::Result<usize, zenoh_proto::LinkError> {
+        self.rx.read(buffer).map_err(|_| LinkError::LinkRxFailed)
     }
 
-    async fn read_exact(
-        &mut self,
-        buffer: &mut [u8],
-    ) -> core::result::Result<(), zenoh_proto::LinkError> {
+    fn read_exact(&mut self, buffer: &mut [u8]) -> core::result::Result<(), zenoh_proto::LinkError> {
         self.rx
             .read_exact(buffer)
-            .await
             .map_err(|_| LinkError::LinkRxFailed)
     }
 }
 
-impl<Rx: embedded_io_async::Read> ZLinkRx for EmbeddedIOLinkRx<'_, Rx> {
-    async fn read(
-        &mut self,
-        buffer: &mut [u8],
-    ) -> core::result::Result<usize, zenoh_proto::LinkError> {
-        self.rx
-            .read(buffer)
-            .await
-            .map_err(|_| LinkError::LinkRxFailed)
+impl<Rx: Read> ZLinkRx for EmbeddedIOLinkRx<'_, Rx> {
+    fn read(&mut self, buffer: &mut [u8]) -> core::result::Result<usize, zenoh_proto::LinkError> {
+        self.rx.read(buffer).map_err(|_| LinkError::LinkRxFailed)
     }
 
-    async fn read_exact(
-        &mut self,
-        buffer: &mut [u8],
-    ) -> core::result::Result<(), zenoh_proto::LinkError> {
+    fn read_exact(&mut self, buffer: &mut [u8]) -> core::result::Result<(), zenoh_proto::LinkError> {
         self.rx
             .read_exact(buffer)
-            .await
             .map_err(|_| LinkError::LinkRxFailed)
     }
 }
 
-impl<Tx: embedded_io_async::Write, Rx: embedded_io_async::Read> ZLink for EmbeddedIOLink<Tx, Rx> {
+impl<Tx: Write, Rx: Read> ZLink for EmbeddedIOLink<Tx, Rx> {
     type Tx<'link>
         = EmbeddedIOLinkTx<'link, Tx>
     where
