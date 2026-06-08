@@ -6,88 +6,60 @@ use zenoh_examples::*;
 use zenoh_nostd::session::*;
 
 struct Stats {
-    round_count: usize,
+    count: usize,
     round_size: usize,
-    finished_rounds: usize,
-    round_start: embassy_time::Instant,
-    global_start: Option<embassy_time::Instant>,
+    #[cfg(feature = "std")]
+    start: std::time::Instant,
 }
 
-impl Stats {
-    fn increment(&mut self) {
-        if self.round_count == 0 {
-            self.round_start = embassy_time::Instant::now();
-            if self.global_start.is_none() {
-                self.global_start = Some(self.round_start)
-            }
-            self.round_count += 1;
-        } else if self.round_count < self.round_size {
-            self.round_count += 1;
-        } else {
-            self.print_round();
-            self.finished_rounds += 1;
-            self.round_count = 0;
-        }
-    }
-
-    fn print_round(&self) {
-        let elapsed = self.round_start.elapsed().as_micros() as f64 / 1_000_000.0;
-        let throughput = (self.round_size as f64) / elapsed;
-        zenoh::info!("{} msg/s", throughput);
-    }
-}
-
-async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
+fn entry() -> zenoh::ZResult<()> {
     #[cfg(feature = "log")]
     env_logger::init();
 
     zenoh::info!("zenoh-nostd z_sub_thr example");
 
-    let close =
-        embassy_sync::signal::Signal::<embassy_sync::blocking_mutex::raw::NoopRawMutex, ()>::new();
-
-    let config = init_session_example(&spawner).await;
+    let config = init_session_example();
     let mut resources = Resources::default();
     let session = if LISTEN {
-        zenoh::listen_ignore_invalid_sn(&mut resources, &config, Endpoint::try_from(ENDPOINT)?)
-            .await?
+        zenoh::listen_ignore_invalid_sn(&mut resources, &config, Endpoint::try_from(ENDPOINT)?)?
     } else {
-        zenoh::connect_ignore_invalid_sn(&mut resources, &config, Endpoint::try_from(ENDPOINT)?)
-            .await?
+        zenoh::connect_ignore_invalid_sn(&mut resources, &config, Endpoint::try_from(ENDPOINT)?)?
     };
 
     let mut stats = Stats {
-        round_count: 0,
+        count: 0,
         round_size: 100_000,
-        finished_rounds: 0,
-        round_start: embassy_time::Instant::now(),
-        global_start: None,
+        #[cfg(feature = "std")]
+        start: std::time::Instant::now(),
     };
 
-    let send = &close;
-    session
+    let _subscriber = session
         .declare_subscriber(zenoh::keyexpr::new("test/thr")?)
         .callback_sync(move |_| {
-            if stats.finished_rounds >= 10000 {
-                send.signal(());
-                return;
+            stats.count += 1;
+            if stats.count >= stats.round_size {
+                #[cfg(feature = "std")]
+                {
+                    let elapsed = stats.start.elapsed().as_secs_f64();
+                    let throughput = stats.round_size as f64 / elapsed;
+                    zenoh::info!("{} msg/s", throughput);
+                }
+                stats.count = 0;
+                #[cfg(feature = "std")]
+                {
+                    stats.start = std::time::Instant::now();
+                }
             }
-
-            stats.increment();
         })
-        .finish()
-        .await?;
+        .finish()?;
 
-    embassy_futures::select::select(session.run(), close.wait()).await;
+    session.run()?;
 
     Ok(())
 }
 
-#[cfg_attr(feature = "std", embassy_executor::main)]
-#[cfg_attr(feature = "esp32s3", esp_rtos::main)]
-#[cfg_attr(feature = "wasm", embassy_executor::main)]
-async fn main(spawner: embassy_executor::Spawner) {
-    if let Err(e) = entry(spawner).await {
+fn main() {
+    if let Err(e) = entry() {
         zenoh::error!("Error in main: {}", e);
     }
 

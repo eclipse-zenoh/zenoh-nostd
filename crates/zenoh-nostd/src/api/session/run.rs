@@ -14,10 +14,10 @@ impl<'res, Config> Session<'res, Config>
 where
     Config: ZSessionConfig,
 {
-    pub fn run(&mut self) -> core::result::Result<(), SessionError> {
+    pub fn run(&self) -> core::result::Result<(), SessionError> {
         // SAFETY: We hold &mut self, guaranteeing exclusive access.
         // Raw pointers allow us to pass self reference into the poll closure.
-        let self_ptr: *mut Session<'res, Config> = self;
+        let self_ptr: *const Session<'res, Config> = self;
         let state_ptr = self.state.get();
         let driver_ptr = self.driver.get();
 
@@ -127,7 +127,7 @@ where
                                 Ok(k) => k,
                                 Err(_) => return Ok(()),
                             };
-                            // SAFETY: self_ptr is valid and non-aliasing (we're in run() which holds &mut self).
+                            // SAFETY: self_ptr is a valid shared reference (we're in run() which holds &self).
                             let session = unsafe { &*self_ptr };
                             let query = QueryableQuery::new(
                                 session,

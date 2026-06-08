@@ -5,10 +5,6 @@
 use zenoh_examples::*;
 use zenoh_nostd::session::*;
 
-async fn response_callback(resp: &GetResponse<'_>) {
-    response_callback_sync(resp);
-}
-
 fn response_callback_sync(resp: &GetResponse<'_>) {
     match resp {
         GetResponse::Ok(reply) => {
@@ -28,46 +24,32 @@ fn response_callback_sync(resp: &GetResponse<'_>) {
     }
 }
 
-async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
+fn entry() -> zenoh::ZResult<()> {
     #[cfg(feature = "log")]
     env_logger::init();
 
     zenoh::info!("zenoh-nostd z_get example");
 
-    let config = init_session_example(&spawner).await;
+    let config = init_session_example();
     let mut resources = Resources::default();
     let session = if LISTEN {
-        zenoh::listen(&mut resources, &config, Endpoint::try_from(ENDPOINT)?).await?
+        zenoh::listen(&mut resources, &config, Endpoint::try_from(ENDPOINT)?)?
     } else {
-        zenoh::connect(&mut resources, &config, Endpoint::try_from(ENDPOINT)?).await?
+        zenoh::connect(&mut resources, &config, Endpoint::try_from(ENDPOINT)?)?
     };
-
-    // In the following code we use the direct `callback` API. `zenoh` lets you provide either `sync` or `async` callbacks for your convenience.
-    // **Be careful**, in both case the callback should resolve almost instantly as it will `stop` the `reading` task of the session!
-    //
-    // This means that if you want to do high computation you may prefer to use the `channel` API, or to delegate into your own channels.
-    // See the `z_sub` example to see how the `channel` API works.
-
-    session
-        .get(zenoh::keyexpr::new("demo/example/**")?)
-        .callback(async |resp| response_callback(resp).await)
-        .finish()
-        .await?;
 
     session
         .get(zenoh::keyexpr::new("demo/example/**")?)
         .callback_sync(response_callback_sync)
-        .finish()
-        .await?;
+        .finish()?;
 
-    Ok(session.run().await?)
+    session.run()?;
+
+    Ok(())
 }
 
-#[cfg_attr(feature = "std", embassy_executor::main)]
-#[cfg_attr(feature = "wasm", embassy_executor::main)]
-#[cfg_attr(feature = "esp32s3", esp_rtos::main)]
-async fn main(spawner: embassy_executor::Spawner) {
-    if let Err(e) = entry(spawner).await {
+fn main() {
+    if let Err(e) = entry() {
         zenoh::error!("Error in main: {}", e);
     }
 

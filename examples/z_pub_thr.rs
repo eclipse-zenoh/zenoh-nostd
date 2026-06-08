@@ -5,59 +5,53 @@
 use zenoh_examples::*;
 use zenoh_nostd::session::*;
 
-async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
+fn entry() -> zenoh::ZResult<()> {
     #[cfg(feature = "log")]
     env_logger::init();
 
     zenoh::info!("zenoh-nostd z_pub_thr example");
 
-    let config = init_session_example(&spawner).await;
+    let config = init_session_example();
     let mut resources = Resources::default();
     let session = if LISTEN {
-        zenoh::listen_ignore_invalid_sn(&mut resources, &config, Endpoint::try_from(ENDPOINT)?)
-            .await?
+        zenoh::listen_ignore_invalid_sn(&mut resources, &config, Endpoint::try_from(ENDPOINT)?)?
     } else {
-        zenoh::connect_ignore_invalid_sn(&mut resources, &config, Endpoint::try_from(ENDPOINT)?)
-            .await?
+        zenoh::connect_ignore_invalid_sn(&mut resources, &config, Endpoint::try_from(ENDPOINT)?)?
     };
 
     let payload: [u8; PAYLOAD] = core::array::from_fn(|i| (i % 10) as u8);
     let publisher = session
         .declare_publisher(zenoh::keyexpr::new("test/thr")?)
-        .finish()
-        .await?;
+        .finish()?;
 
+    #[cfg(feature = "std")]
+    let start = std::time::Instant::now();
     let mut count: usize = 0;
-    let mut start = embassy_time::Instant::now();
-    embassy_futures::select::select(session.run(), async {
-        loop {
-            if let Err(e) = publisher.put(&payload).finish().await {
-                zenoh::error!("Error publishing message: {}", e);
-                break;
-            }
 
-            if count < 100_000 {
-                count += 1;
-            } else {
-                let thpt = count as f64 / (start.elapsed().as_micros() as f64 / 1_000_000.0);
-                zenoh::info!("{} msgs/s", thpt);
-                count = 0;
-                start = embassy_time::Instant::now();
-            }
+    for _ in 0..100_000 {
+        if let Err(e) = publisher.put(&payload).finish() {
+            zenoh::error!("Error publishing message: {}", e);
+            break;
         }
+        count += 1;
+    }
 
-        Ok::<(), Error>(())
-    })
-    .await;
+    #[cfg(feature = "std")]
+    {
+        let elapsed = start.elapsed().as_secs_f64();
+        let thpt = count as f64 / elapsed;
+        zenoh::info!("{} msgs/s ({} msgs in {:.2}s)", thpt, count, elapsed);
+    }
+
+    zenoh::info!("Published {} messages", count);
+
+    session.run()?;
 
     Ok(())
 }
 
-#[cfg_attr(feature = "std", embassy_executor::main)]
-#[cfg_attr(feature = "esp32s3", esp_rtos::main)]
-#[cfg_attr(feature = "wasm", embassy_executor::main)]
-async fn main(spawner: embassy_executor::Spawner) {
-    if let Err(e) = entry(spawner).await {
+fn main() {
+    if let Err(e) = entry() {
         zenoh::error!("Error in main: {}", e);
     }
 

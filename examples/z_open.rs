@@ -5,43 +5,26 @@
 use zenoh_examples::*;
 use zenoh_nostd::session::*;
 
-#[embassy_executor::task]
-async fn session_task(session: &'static Session<'static, ExampleConfig>) {
-    if let Err(e) = session.run().await {
-        zenoh::error!("Error in session task: {}", e);
-    }
-}
-
-async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
+fn entry() -> zenoh::ZResult<()> {
     #[cfg(feature = "log")]
     env_logger::init();
 
     zenoh::info!("zenoh-nostd z_open example");
 
-    let config = init_session_example(&spawner).await;
+    let config = init_session_example();
     let session = if LISTEN {
         zenoh::listen!(ExampleConfig: config, Endpoint::try_from(ENDPOINT)?)
     } else {
         zenoh::connect!(ExampleConfig: config, Endpoint::try_from(ENDPOINT)?)
     };
 
-    // In this example we care about maintaining the session alive, we then have two choices:
-    //  1) Spawn a new task to run the `session.run()` in background, but it requires the `session` to be `'static`.
-    //  2) Use `select` or `join` to run both the session and the subscriber in the same task.
-    // Here we use the first approach. For a demonstration of the second approach, see the `z_put` example.
+    session.run()?;
 
-    spawner.spawn(session_task(session)).unwrap();
-
-    loop {
-        embassy_time::Timer::after(embassy_time::Duration::from_secs(1)).await;
-    }
+    Ok(())
 }
 
-#[cfg_attr(feature = "std", embassy_executor::main)]
-#[cfg_attr(feature = "wasm", embassy_executor::main)]
-#[cfg_attr(feature = "esp32s3", esp_rtos::main)]
-async fn main(spawner: embassy_executor::Spawner) {
-    if let Err(e) = entry(spawner).await {
+fn main() {
+    if let Err(e) = entry() {
         zenoh::error!("Error in main: {}", e);
     }
 

@@ -5,62 +5,47 @@
 use zenoh_examples::*;
 use zenoh_nostd::session::*;
 
-#[embassy_executor::task]
-async fn session_task(session: &'static Session<'static, ExampleConfig>) {
-    if let Err(e) = session.run().await {
-        zenoh::error!("Error in session task: {}", e);
-    }
-}
-
-async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
+fn entry() -> zenoh::ZResult<()> {
     #[cfg(feature = "log")]
     env_logger::init();
 
     zenoh::info!("zenoh-nostd z_delete example");
 
-    let config = init_session_example(&spawner).await;
+    let config = init_session_example();
     let session = if LISTEN {
         zenoh::listen!(ExampleConfig: config, Endpoint::try_from(ENDPOINT)?)
     } else {
         zenoh::connect!(ExampleConfig: config, Endpoint::try_from(ENDPOINT)?)
     };
 
-    spawner.spawn(session_task(session)).unwrap();
-
     let publisher = session
         .declare_publisher(zenoh::keyexpr::new("demo/example")?)
-        .finish()
-        .await?;
+        .finish()?;
 
     let payload = b"Hello, from no-std!";
 
-    loop {
-        if publisher.put(payload).finish().await.is_ok() {
-            zenoh::info!(
-                "[Delete example] Sent PUT ('{}': '{}')",
-                publisher.keyexpr().as_str(),
-                core::str::from_utf8(payload).unwrap()
-            );
-        }
-
-        embassy_time::Timer::after(embassy_time::Duration::from_secs(1)).await;
-
-        if publisher.delete(None, None).await.is_ok() {
-            zenoh::info!(
-                "[Delete example] Sent DELETE ('{}')",
-                publisher.keyexpr().as_str(),
-            );
-        }
-
-        embassy_time::Timer::after(embassy_time::Duration::from_secs(2)).await;
+    if publisher.put(payload).finish().is_ok() {
+        zenoh::info!(
+            "[Delete example] Sent PUT ('{}': '{}')",
+            publisher.keyexpr().as_str(),
+            core::str::from_utf8(payload).unwrap()
+        );
     }
+
+    if publisher.delete(None, None).is_ok() {
+        zenoh::info!(
+            "[Delete example] Sent DELETE ('{}')",
+            publisher.keyexpr().as_str(),
+        );
+    }
+
+    session.run()?;
+
+    Ok(())
 }
 
-#[cfg_attr(feature = "std", embassy_executor::main)]
-#[cfg_attr(feature = "wasm", embassy_executor::main)]
-#[cfg_attr(feature = "esp32s3", esp_rtos::main)]
-async fn main(spawner: embassy_executor::Spawner) {
-    if let Err(e) = entry(spawner).await {
+fn main() {
+    if let Err(e) = entry() {
         zenoh::error!("Error in main: {}", e);
     }
 

@@ -147,7 +147,7 @@ impl ZSessionConfig for ExampleConfig {
     }
 }
 
-pub async fn init_broker_example() -> ExampleConfig {
+pub fn init_broker_example() -> ExampleConfig {
     match () {
         #[cfg(feature = "std")]
         () => ExampleConfig {
@@ -164,7 +164,7 @@ pub async fn init_broker_example() -> ExampleConfig {
     }
 }
 
-pub async fn init_session_example() -> ExampleConfig {
+pub fn init_session_example() -> ExampleConfig {
     match () {
         #[cfg(feature = "std")]
         () => ExampleConfig {

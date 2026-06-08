@@ -5,20 +5,13 @@
 use zenoh_examples::*;
 use zenoh_nostd::session::*;
 
-#[embassy_executor::task]
-async fn session_task(session: &'static Session<'static, ExampleConfig>) {
-    if let Err(e) = session.run().await {
-        zenoh::error!("Error in session task: {}", e);
-    }
-}
-
-async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
+fn entry() -> zenoh::ZResult<()> {
     #[cfg(feature = "log")]
     env_logger::init();
 
     zenoh::info!("zenoh-nostd z_peer example");
 
-    let config = init_session_example(&spawner).await
+    let config = init_session_example()
         .with_transports(
             TransportLinkManager::from(LinkManager)
                 .with_whatami(WhatAmI::Peer),
@@ -30,8 +23,6 @@ async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
         zenoh::connect!(ExampleConfig: config, Endpoint::try_from(ENDPOINT)?)
     };
 
-    spawner.spawn(session_task(session)).unwrap();
-
     if LISTEN {
         let _subscriber = session
             .declare_subscriber(zenoh::keyexpr::new("demo/example")?)
@@ -41,37 +32,37 @@ async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
                     core::str::from_utf8(sample.payload()).unwrap()
                 );
             })
-            .finish()
-            .await?;
+            .finish()?;
 
-        loop {
-            embassy_time::Timer::after(embassy_time::Duration::from_secs(1)).await;
-        }
+        session.run()?;
     } else {
         let publisher = session
             .declare_publisher(zenoh::keyexpr::new("demo/example")?)
-            .finish()
-            .await?;
+            .finish()?;
 
         let payload = b"Hello from peer!";
-        loop {
-            if publisher.put(payload).finish().await.is_ok() {
+
+        for _ in 0..5 {
+            if publisher.put(payload).finish().is_ok() {
                 zenoh::info!(
                     "[Peer connector] Sent PUT ('{}': '{}')",
                     publisher.keyexpr().as_str(),
                     core::str::from_utf8(payload).unwrap()
                 );
             }
-            embassy_time::Timer::after(embassy_time::Duration::from_secs(1)).await;
+
+            #[cfg(feature = "std")]
+            std::thread::sleep(std::time::Duration::from_secs(1));
         }
+
+        session.run()?;
     }
+
+    Ok(())
 }
 
-#[cfg_attr(feature = "std", embassy_executor::main)]
-#[cfg_attr(feature = "wasm", embassy_executor::main)]
-#[cfg_attr(feature = "esp32s3", esp_rtos::main)]
-async fn main(spawner: embassy_executor::Spawner) {
-    if let Err(e) = entry(spawner).await {
+fn main() {
+    if let Err(e) = entry() {
         zenoh::error!("Error in main: {}", e);
     }
 

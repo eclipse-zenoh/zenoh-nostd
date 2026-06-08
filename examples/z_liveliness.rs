@@ -5,23 +5,22 @@
 use zenoh_examples::*;
 use zenoh_nostd::session::*;
 
-async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
+fn entry() -> zenoh::ZResult<()> {
     #[cfg(feature = "log")]
     env_logger::init();
 
     zenoh::info!("zenoh-nostd z_liveliness example");
 
-    let config = init_session_example(&spawner).await;
+    let config = init_session_example();
     let mut resources = Resources::default();
     let session = if LISTEN {
-        zenoh::listen(&mut resources, &config, Endpoint::try_from(ENDPOINT)?).await?
+        zenoh::listen(&mut resources, &config, Endpoint::try_from(ENDPOINT)?)?
     } else {
-        zenoh::connect(&mut resources, &config, Endpoint::try_from(ENDPOINT)?).await?
+        zenoh::connect(&mut resources, &config, Endpoint::try_from(ENDPOINT)?)?
     };
 
     let _token = session
-        .declare_liveliness_token(zenoh::keyexpr::new("demo/example")?)
-        .await?;
+        .declare_liveliness_token(zenoh::keyexpr::new("demo/example")?)?;
 
     let _subscriber = session
         .declare_liveliness_subscriber(zenoh::keyexpr::new("demo/**")?)
@@ -32,19 +31,15 @@ async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
                 sample.payload()
             );
         })
-        .finish()
-        .await?;
+        .finish()?;
 
-    session.run().await?;
+    session.run()?;
 
     Ok(())
 }
 
-#[cfg_attr(feature = "std", embassy_executor::main)]
-#[cfg_attr(feature = "wasm", embassy_executor::main)]
-#[cfg_attr(feature = "esp32s3", esp_rtos::main)]
-async fn main(spawner: embassy_executor::Spawner) {
-    if let Err(e) = entry(spawner).await {
+fn main() {
+    if let Err(e) = entry() {
         zenoh::error!("Error in main: {}", e);
     }
 

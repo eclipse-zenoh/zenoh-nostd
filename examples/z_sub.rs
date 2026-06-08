@@ -5,56 +5,38 @@
 use zenoh_examples::*;
 use zenoh_nostd::session::*;
 
-async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
+fn entry() -> zenoh::ZResult<()> {
     #[cfg(feature = "log")]
     env_logger::init();
 
     zenoh::info!("zenoh-nostd z_sub example");
 
-    // All channels that will be used must outlive `Resources`.
-    // **Note**: as a direct implication, you may need to make static channels
-    // if you want a `'static` session.
-    let channel = embassy_sync::channel::Channel::<
-        embassy_sync::blocking_mutex::raw::NoopRawMutex,
-        FixedCapacitySample<128, 128, 64>,
-        8,
-    >::new();
-
-    let config = init_session_example(&spawner).await;
+    let config = init_session_example();
     let mut resources = Resources::default();
     let session = if LISTEN {
-        zenoh::listen(&mut resources, &config, Endpoint::try_from(ENDPOINT)?).await?
+        zenoh::listen(&mut resources, &config, Endpoint::try_from(ENDPOINT)?)?
     } else {
-        zenoh::connect(&mut resources, &config, Endpoint::try_from(ENDPOINT)?).await?
+        zenoh::connect(&mut resources, &config, Endpoint::try_from(ENDPOINT)?)?
     };
 
-    let subscriber = session
+    let _subscriber = session
         .declare_subscriber(zenoh::keyexpr::new("demo/example/**")?)
-        .channel(channel.dyn_sender(), channel.dyn_receiver())
-        .finish()
-        .await?;
-
-    embassy_futures::select::select(session.run(), async {
-        while let Some(sample) = subscriber.recv().await {
+        .callback_sync(|sample| {
             zenoh::info!(
                 "[Subscriber] Received sample ('{}': '{}')",
                 sample.keyexpr().as_str(),
                 core::str::from_utf8(sample.payload()).unwrap()
             );
-        }
+        })
+        .finish()?;
 
-        Ok::<(), Error>(())
-    })
-    .await;
+    session.run()?;
 
     Ok(())
 }
 
-#[cfg_attr(feature = "std", embassy_executor::main)]
-#[cfg_attr(feature = "wasm", embassy_executor::main)]
-#[cfg_attr(feature = "esp32s3", esp_rtos::main)]
-async fn main(spawner: embassy_executor::Spawner) {
-    if let Err(e) = entry(spawner).await {
+fn main() {
+    if let Err(e) = entry() {
         zenoh::error!("Error in main: {}", e);
     }
 

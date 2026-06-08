@@ -16,6 +16,20 @@ This means they can be used in embedded environments (Cortex-M, RISC-V, etc.) wh
 
 ---
 
+## Synchronous Architecture
+
+zenoh-nostd is fully synchronous. No async runtime is required. IO is driven by `Session::run()` or `Session::poll()` (via `Driver`) in the application's main loop. This makes it suitable for bare-metal embedded systems where async runtimes are unavailable or undesirable.
+
+Key design principles:
+
+- All IO is non-blocking poll-driven
+- `Session::run()` processes available messages and returns when idle
+- Callbacks are invoked synchronously during `run()`
+- No hidden threads, tasks, or coroutines
+- Deterministic execution model
+
+---
+
 ## Allowed Dependencies
 
 ### Always available (no feature gate)
@@ -51,9 +65,16 @@ This means they can be used in embedded environments (Cortex-M, RISC-V, etc.) wh
 ❌ `std::vec::Vec` → use `heapless::Vec`
 ❌ `std::string::String` → use `heapless::String`
 ❌ `std::net::TcpStream` → behind `std` feature in platform crates
-❌ `std::time::Instant` → use `embassy-time` or platform abstraction
+❌ `std::time::Instant` → use `core::time::Duration` with platform-specific timer abstraction
 ❌ `Box::new()` → use fixed-capacity buffers or `heapless`
 ❌ `format!()` → use manual `write!` or `defmt`
+
+### Async patterns
+
+❌ `async fn` / `.await` → use synchronous `fn` calls and `Session::run()` / `Session::poll()`
+❌ `async` runtimes (tokio, embassy) → not required; IO is poll-driven from the application's main loop
+❌ `embassy_time` → use `core::time::Duration` and platform-specific timer peripherals
+❌ `embassy_sync::channel` → use callback-based API (`.callback_sync()`) for subscription handlers
 
 ### Unconditional panics
 

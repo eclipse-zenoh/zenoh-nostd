@@ -26,50 +26,36 @@ fn response_callback(resp: &GetResponse<'_>) {
     }
 }
 
-#[embassy_executor::task]
-async fn session_task(session: &'static Session<'static, ExampleConfig>) {
-    if let Err(e) = session.run().await {
-        zenoh::error!("Error in session task: {}", e);
-    }
-}
-
-async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
+fn entry() -> zenoh::ZResult<()> {
     #[cfg(feature = "log")]
     env_logger::init();
 
     zenoh::info!("zenoh-nostd z_querier example");
 
-    let config = init_session_example(&spawner).await;
+    let config = init_session_example();
     let session = if LISTEN {
         zenoh::listen!(ExampleConfig: config, Endpoint::try_from(ENDPOINT)?)
     } else {
         zenoh::connect!(ExampleConfig: config, Endpoint::try_from(ENDPOINT)?)
     };
 
-    spawner.spawn(session_task(session)).unwrap();
-
-    let querier = session
+    let _querier = session
         .declare_querier(zenoh::keyexpr::new("demo/example/**")?)
         .timeout(Duration::from_secs(1))
-        .finish()
-        .await?;
+        .finish()?;
 
-    loop {
-        querier
-            .get()
-            .callback_sync(response_callback)
-            .finish()
-            .await?;
+    session
+        .get(zenoh::keyexpr::new("demo/example/**")?)
+        .callback_sync(response_callback)
+        .finish()?;
 
-        embassy_time::Timer::after(embassy_time::Duration::from_secs(1)).await;
-    }
+    session.run()?;
+
+    Ok(())
 }
 
-#[cfg_attr(feature = "std", embassy_executor::main)]
-#[cfg_attr(feature = "wasm", embassy_executor::main)]
-#[cfg_attr(feature = "esp32s3", esp_rtos::main)]
-async fn main(spawner: embassy_executor::Spawner) {
-    if let Err(e) = entry(spawner).await {
+fn main() {
+    if let Err(e) = entry() {
         zenoh::error!("Error in main: {}", e);
     }
 

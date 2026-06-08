@@ -2,6 +2,8 @@
 
 This document tracks compatibility between `zenoh-nostd` and the upstream Eclipse Zenoh Rust implementation.
 
+> **Note**: zenoh-nostd is fully synchronous with a poll-driven IO model. This does not affect wire protocol compatibility — all messages, encoding, and state machines match the upstream Zenoh protocol.
+
 ---
 
 ## Compatibility Status

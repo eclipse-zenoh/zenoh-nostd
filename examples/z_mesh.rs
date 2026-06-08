@@ -5,12 +5,7 @@
 use zenoh_examples::*;
 use zenoh_nostd::session::*;
 
-#[embassy_executor::task]
-async fn session_task(session: &'static Session<'static, ExampleConfig>) {
-    let _ = session.run().await;
-}
-
-async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
+fn entry() -> zenoh::ZResult<()> {
     #[cfg(feature = "log")]
     env_logger::init();
 
@@ -18,8 +13,7 @@ async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
 
     let ke = zenoh::keyexpr::new("demo/mesh")?;
 
-    // Peer A: listen with WhatAmI::Peer, subscribe
-    let cfg_a = init_session_example(&spawner).await.with_transports(
+    let cfg_a = init_session_example().with_transports(
         TransportLinkManager::from(LinkManager)
             .with_whatami(zenoh_nostd::session::WhatAmI::Peer),
     );
@@ -27,9 +21,6 @@ async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
         ExampleConfig: cfg_a,
         Endpoint::try_from("tcp/127.0.0.1:7444")?
     );
-    spawner.must_spawn(session_task(session_a));
-
-    embassy_time::Timer::after(embassy_time::Duration::from_millis(200)).await;
 
     let _sub_a = session_a
         .declare_subscriber(ke)
@@ -39,11 +30,9 @@ async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
                 core::str::from_utf8(sample.payload()).unwrap_or("")
             );
         })
-        .finish()
-        .await?;
+        .finish()?;
 
-    // Peer B: connect with WhatAmI::Peer, publish
-    let cfg_b = init_session_example(&spawner).await.with_transports(
+    let cfg_b = init_session_example().with_transports(
         TransportLinkManager::from(LinkManager)
             .with_whatami(zenoh_nostd::session::WhatAmI::Peer),
     );
@@ -51,29 +40,23 @@ async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
         ExampleConfig: cfg_b,
         Endpoint::try_from("tcp/127.0.0.1:7444")?
     );
-    spawner.must_spawn(session_task(session_b));
 
     let publisher = session_b
         .declare_publisher(ke)
-        .finish()
-        .await?;
+        .finish()?;
 
     for i in 0..5 {
         let payload = b"Hello from peer B";
-        publisher.put(payload).finish().await?;
+        publisher.put(payload).finish()?;
         zenoh::info!("[Peer B] Sent #{}", i);
-        embassy_time::Timer::after(embassy_time::Duration::from_secs(1)).await;
     }
 
     zenoh::info!("Mesh example done");
     Ok(())
 }
 
-#[cfg_attr(feature = "std", embassy_executor::main)]
-#[cfg_attr(feature = "wasm", embassy_executor::main)]
-#[cfg_attr(feature = "esp32s3", esp_rtos::main)]
-async fn main(spawner: embassy_executor::Spawner) {
-    if let Err(e) = entry(spawner).await {
+fn main() {
+    if let Err(e) = entry() {
         zenoh::error!("Error in main: {}", e);
     }
     zenoh::info!("Exiting main");

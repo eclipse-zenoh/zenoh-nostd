@@ -2,6 +2,8 @@
 
 This document tracks which upstream Eclipse Zenoh features are supported by `zenoh-nostd`.
 
+> **Note**: As of June 2026, all async removed — zenoh-nostd is fully synchronous, poll-driven IO. No async runtime required.
+
 ---
 
 ## Legend
@@ -104,8 +106,7 @@ This document tracks which upstream Eclipse Zenoh features are supported by `zen
 
 | Platform | nostd | Status | Notes |
 |----------|-------|--------|-------|
-| std (Linux/Mac/Windows) | ✅ | Working | TCP/UDP via wtx, async-net |
-| Embassy (no_std async) | ✅ | Working | embassy-net |
+| std (Linux/Mac/Windows) | ✅ | Working | TCP/UDP via wtx |
 | STM32 (thumbv7m) | ✅ | Verified | QEMU + hardware |
 | ESP32 (riscv32) | ✅ | Verified | ESP-IDF + esp-wifi |
 | WASM | ✅ | Working | WebSocket via yawc |
