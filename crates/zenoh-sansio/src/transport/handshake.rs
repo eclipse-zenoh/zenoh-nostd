@@ -58,16 +58,16 @@ pub struct HandshakeReady<'a, Buff, T, Read, Write> {
 }
 
 impl<'a, Buff, T, Read, Write> HandshakeReady<'a, Buff, T, Read, Write> {
-    pub fn open(self) -> Transport<Buff> {
+    pub fn open(self) -> core::result::Result<Transport<Buff>, TransportError> {
         if let Handshake::Ready {
             description,
             tx,
             rx,
         } = core::mem::replace(self.handshake, Handshake::Opened)
         {
-            Transport::new(description, tx.into_inner(), rx.into_inner())
+            Ok(Transport::new(description, tx.into_inner(), rx.into_inner()))
         } else {
-            unreachable!()
+            Err(TransportError::InvalidState)
         }
     }
 }
@@ -140,7 +140,7 @@ impl<Buff, T, Read, Write> Handshake<Buff, T, Read, Write> {
                         write,
                     };
                 } else {
-                    unreachable!()
+                    return Err(EitherError::A(TransportError::InvalidState));
                 }
 
                 Ok(None)
@@ -165,7 +165,7 @@ impl<Buff, T, Read, Write> Handshake<Buff, T, Read, Write> {
 
                         return Ok(Some(HandshakeReady { handshake: self }));
                     } else {
-                        unreachable!()
+                        return Err(EitherError::A(TransportError::InvalidState));
                     }
                 }
 
@@ -238,7 +238,7 @@ impl<Buff, T, Read, Write> Handshake<Buff, T, Read, Write> {
                         write,
                     };
                 } else {
-                    unreachable!()
+                    return Err(EitherError::A(TransportError::InvalidState));
                 }
 
                 Ok(None)
@@ -263,7 +263,7 @@ impl<Buff, T, Read, Write> Handshake<Buff, T, Read, Write> {
 
                         return Ok(Some(HandshakeReady { handshake: self }));
                     } else {
-                        unreachable!()
+                        return Err(EitherError::A(TransportError::InvalidState));
                     }
                 }
 
@@ -298,7 +298,7 @@ impl<Buff, T, Read, Write> Handshake<Buff, T, Read, Write> {
     {
         loop {
             if let Some(ready) = self.poll()? {
-                break Ok(ready.open());
+                break Ok(ready.open().map_err(EitherError::A)?);
             }
         }
     }
@@ -314,7 +314,7 @@ impl<Buff, T, Read, Write> Handshake<Buff, T, Read, Write> {
     {
         loop {
             if let Some(ready) = self.poll_async().await? {
-                break Ok(ready.open());
+                break Ok(ready.open().map_err(EitherError::A)?);
             }
         }
     }

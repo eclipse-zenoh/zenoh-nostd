@@ -129,13 +129,13 @@ fn transport_peer_handshake() {
         .poll()
         .expect("Unexpected Error")
         .expect("Transport A is not opened yet")
-        .open();
+        .open().unwrap();
 
     let tb = hb
         .poll()
         .expect("Unexpected Error")
         .expect("Transport B is not opened yet")
-        .open();
+        .open().unwrap();
 
     assert_eq!(ta.mine_zid, tb.other_zid);
     assert_eq!(ta.other_zid, tb.mine_zid);
@@ -193,13 +193,13 @@ fn transport_peer_simultaneous_connect_lower_wins() {
         .poll()
         .expect("Unexpected Error")
         .expect("Transport A is not opened yet")
-        .open();
+        .open().unwrap();
 
     let tb = hb
         .poll()
         .expect("Unexpected Error")
         .expect("Transport B is not opened yet")
-        .open();
+        .open().unwrap();
 
     assert_eq!(ta.mine_zid, tb.other_zid);
     assert_eq!(ta.other_zid, tb.mine_zid);
@@ -250,12 +250,12 @@ fn transport_handshake() {
     ha.poll()
         .expect("Unexpected Error")
         .expect("Transport A is not opened yet")
-        .open();
+        .open().unwrap();
 
     hb.poll()
         .expect("Unexpected Error")
         .expect("Transport B is not opened yet")
-        .open();
+        .open().unwrap();
 }
 
 #[test]
@@ -303,12 +303,12 @@ fn transport_handshake_streamed() {
     ha.poll()
         .expect("Unexpected Error")
         .expect("Transport A is not opened yet")
-        .open();
+        .open().unwrap();
 
     hb.poll()
         .expect("Unexpected Error")
         .expect("Transport B is not opened yet")
-        .open();
+        .open().unwrap();
 }
 
 #[test]
