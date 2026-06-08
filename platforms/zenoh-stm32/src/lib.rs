@@ -25,21 +25,21 @@ pub struct Stm32LinkManager;
 pub enum Stm32Link {
     Tcp(tcp::PlatformTcpLink),
     Udp(udp::PlatformUdpLink),
-    Serial(serial::PlatformSerialLink),
+    Serial(serial::Stm32SerialLink),
 }
 
 #[derive(ZLinkInfo, ZLinkTx)]
 pub enum Stm32LinkTx {
     Tcp(tcp::PlatformTcpTx),
     Udp(udp::PlatformUdpTx),
-    Serial(serial::PlatformSerialTx),
+    Serial(serial::Stm32SerialTx),
 }
 
 #[derive(ZLinkInfo, ZLinkRx)]
 pub enum Stm32LinkRx {
     Tcp(tcp::PlatformTcpRx),
     Udp(udp::PlatformUdpRx),
-    Serial(serial::PlatformSerialRx),
+    Serial(serial::Stm32SerialRx),
 }
 
 impl ZLinkManager for Stm32LinkManager {
@@ -58,7 +58,11 @@ impl ZLinkManager for Stm32LinkManager {
         match protocol.as_str() {
             "tcp" => Ok(Self::Link::Tcp(tcp::PlatformTcpLink::connect(address.as_str())?)),
             "udp" => Ok(Self::Link::Udp(udp::PlatformUdpLink::connect(address.as_str())?)),
-            "serial" => Ok(Self::Link::Serial(serial::PlatformSerialLink)),
+            "serial" => {
+                let path = address.as_str();
+                let baud = 115200u32;
+                Ok(Self::Link::Serial(serial::Stm32SerialLink::new(path, baud)?))
+            }
             _ => zenoh::zbail!(LinkError::CouldNotParseProtocol),
         }
     }
@@ -76,7 +80,11 @@ impl ZLinkManager for Stm32LinkManager {
                 let _ = address;
                 Err(LinkError::CouldNotListen)
             }
-            "serial" => Ok(Self::Link::Serial(serial::PlatformSerialLink)),
+            "serial" => {
+                let path = address.as_str();
+                let baud = 115200u32;
+                Ok(Self::Link::Serial(serial::Stm32SerialLink::new(path, baud)?))
+            }
             _ => zenoh::zbail!(LinkError::CouldNotParseProtocol),
         }
     }

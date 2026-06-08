@@ -10,9 +10,9 @@ mod bt;
 mod mcast;
 mod raw_eth;
 mod serial;
-mod tcp;
+pub mod tcp;
 mod tls;
-mod udp;
+pub mod udp;
 mod usb_cdc;
 mod ws;
 
