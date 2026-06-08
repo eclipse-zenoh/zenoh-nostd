@@ -1,0 +1,4 @@
+# cargo-audit configuration for zenoh-nostd
+
+[advisories]
+ignore = []

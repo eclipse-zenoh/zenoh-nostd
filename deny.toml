@@ -1,0 +1,77 @@
+# cargo-deny configuration for zenoh-nostd
+
+[graph]
+all-features = false
+no-default-features = false
+
+[output]
+feature-depth = 1
+
+[advisories]
+ignore = [
+    { id = "RUSTSEC-2024-0436", reason = "paste is a dev-dependency via zenoh-proto, unmaintained but no viable replacement needed yet" },
+    { id = "RUSTSEC-2026-0173", reason = "proc-macro-error2 is transitive via defmt-macros, unmaintained but defmt has no migration path yet" },
+]
+yanked = "warn"
+
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "CC0-1.0",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "MPL-2.0",
+    "0BSD",
+]
+confidence-threshold = 0.8
+
+exceptions = []
+
+[[licenses.clarify]]
+crate = "dyn-utils@0.1.0"
+expression = "MIT"
+license-files = [
+    { path = "LICENSE-MIT", hash = 0 },
+]
+
+[[licenses.clarify]]
+crate = "dyn-utils-macros@0.1.0"
+expression = "MIT"
+license-files = [
+    { path = "../LICENSE-MIT", hash = 0 },
+]
+
+[licenses.private]
+ignore = false
+registries = []
+
+[bans]
+multiple-versions = "warn"
+wildcards = "allow"
+highlight = "all"
+skip = []
+skip-tree = [
+    { name = "embassy-net", version = "0.8" },
+    { name = "embassy-sync", version = "0.7" },
+    { name = "esp-*", version = "*" },
+    { name = "defmt", version = "1" },
+    { name = "proptest", version = "1" },
+    { name = "serialport", version = "4" },
+    { name = "wtx", version = "0.39" },
+    { name = "wasip2", version = "1" },
+    { name = "wasip3", version = "0.4" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-git = [
+    "https://github.com/infinitefield/yawc",
+    "https://github.com/Hennzau/async-net",
+    "https://github.com/wyfo/dyn-utils",
+]
