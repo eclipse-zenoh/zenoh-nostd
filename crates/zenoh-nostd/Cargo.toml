@@ -32,7 +32,7 @@ serialization = []
 bytes = []
 peer-mode = []
 session-check = []
-multicast-declarations = []
+multicast-declarations = ["zenoh-proto/multicast-declarations"]
 
 log = ["std", "zenoh-proto/log", "zenoh-sansio/log"]
 web_console = ["std", "zenoh-proto/web_console", "zenoh-sansio/web_console"]

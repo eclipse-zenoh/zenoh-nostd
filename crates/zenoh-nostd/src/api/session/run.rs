@@ -2,6 +2,7 @@ use zenoh_proto::{exts::Value, msgs::*, *};
 
 use crate::{
     api::{
+        auto_reconnect::{is_retryable, AutoReconnectConfig},
         callbacks::{ZCallbacks, ZDynCallback},
         query::QueryableQuery,
         session::{KeMapping, Session},
@@ -15,6 +16,13 @@ where
     Config: ZSessionConfig,
 {
     pub fn run(&self) -> core::result::Result<(), SessionError> {
+        self.run_with_reconnect(&AutoReconnectConfig::default())
+    }
+
+    pub fn run_with_reconnect(
+        &self,
+        reconnect: &AutoReconnectConfig,
+    ) -> core::result::Result<(), SessionError> {
         // SAFETY: We hold &mut self, guaranteeing exclusive access.
         // Raw pointers allow us to pass self reference into the poll closure.
         let self_ptr: *const Session<'res, Config> = self;
@@ -22,6 +30,8 @@ where
         let driver_ptr = self.driver.get();
 
         let connectivity = &self.connectivity;
+
+        let mut poll_attempt = 0u32;
 
         loop {
             let state = unsafe { &mut *state_ptr };
@@ -231,7 +241,30 @@ where
             });
 
             match result {
-                Err(e) => return Err(e.flatten_map()),
+                Err(e) => {
+                    let flat = e.flatten_map();
+                    if is_retryable(&flat) && poll_attempt < reconnect.max_retries {
+                        poll_attempt += 1;
+                        let exponent = (poll_attempt - 1).min(16);
+                        let mut delay_ms = reconnect
+                            .base_delay_ms
+                            .saturating_mul(1u64 << exponent)
+                            .min(reconnect.max_delay_ms);
+                        if reconnect.jitter && delay_ms > 0 {
+                            let half = delay_ms / 4;
+                            let x = poll_attempt as u64;
+                            let offset = (1103515245u64.wrapping_mul(x).wrapping_add(12345))
+                                % 1_000_000;
+                            delay_ms = delay_ms + (half * 2 + 1) * offset / 1_000_000 - half;
+                        }
+                        let iterations = delay_ms * 10_000;
+                        for _ in 0..iterations {
+                            core::hint::spin_loop();
+                        }
+                        continue;
+                    }
+                    return Err(flat);
+                }
                 Ok(false) => break,
                 Ok(true) => {}
             }

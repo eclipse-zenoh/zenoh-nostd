@@ -1,9 +1,11 @@
 use std::net::{SocketAddr, TcpListener, TcpStream, UdpSocket};
+use std::sync::Arc;
 
 use tungstenite::client::IntoClientRequest;
 use zenoh_nostd::platform::*;
 
 mod bt;
+mod mcast;
 mod raw_eth;
 mod serial;
 mod tcp;
@@ -19,6 +21,7 @@ pub struct StdLinkManager;
 #[zenoh(ZLink = (StdLinkTx, StdLinkRx))]
 pub enum StdLink {
     Bt(bt::BtStream),
+    Mcast(mcast::McLink),
     RawEth(raw_eth::StdRawEthLink),
     Serial(serial::StdSerialLink),
     Tcp(tcp::StdTcpLink),
@@ -31,6 +34,7 @@ pub enum StdLink {
 #[derive(ZLinkInfo, ZLinkTx)]
 pub enum StdLinkTx {
     Bt(bt::BtStreamTx),
+    Mcast(mcast::McLinkTx),
     RawEth(raw_eth::RawEthTx),
     Serial(serial::SerialTx),
     Tcp(tcp::StdTcpLinkTx),
@@ -43,6 +47,7 @@ pub enum StdLinkTx {
 #[derive(ZLinkInfo, ZLinkRx)]
 pub enum StdLinkRx {
     Bt(bt::BtStreamRx),
+    Mcast(mcast::McLinkRx),
     RawEth(raw_eth::RawEthRx),
     Serial(serial::SerialRx),
     Tcp(tcp::StdTcpLinkRx),
@@ -165,6 +170,17 @@ impl ZLinkManager for StdLinkManager {
                 let link = usb_cdc::StdUsbCdcLink::new(path)?;
                 Ok(Self::Link::UsbCdc(link))
             }
+            "udp-mcast" => {
+                let dst_addr = SocketAddr::try_from(address)?;
+                let bind_addr = "0.0.0.0:0".parse::<SocketAddr>()
+                    .map_err(|_| LinkError::CouldNotConnect)?;
+                let std_socket = std::net::UdpSocket::bind(bind_addr)
+                    .map_err(|_| LinkError::CouldNotConnect)?;
+                std_socket.connect(dst_addr)
+                    .map_err(|_| LinkError::CouldNotConnect)?;
+                let socket = Arc::new(std_socket);
+                Ok(Self::Link::Mcast(mcast::McLink { socket, mtu: 8192, multicast_addr: dst_addr }))
+            }
             _ => zenoh::zbail!(LinkError::CouldNotParseProtocol),
         }
     }
@@ -246,6 +262,18 @@ impl ZLinkManager for StdLinkManager {
                 let path = address.as_str();
                 let link = usb_cdc::StdUsbCdcLink::new(path)?;
                 Ok(Self::Link::UsbCdc(link))
+            }
+            "udp-mcast" => {
+                let dst_addr = SocketAddr::try_from(address)?;
+                let std_socket = std::net::UdpSocket::bind(dst_addr)
+                    .map_err(|_| LinkError::CouldNotConnect)?;
+                let mut peek_buf = [0u8; 2];
+                let (_, src_addr) = std_socket.peek_from(&mut peek_buf)
+                    .map_err(|_| LinkError::CouldNotConnect)?;
+                std_socket.connect(src_addr)
+                    .map_err(|_| LinkError::CouldNotConnect)?;
+                let socket = Arc::new(std_socket);
+                Ok(Self::Link::Mcast(mcast::McLink { socket, mtu: 8192, multicast_addr: dst_addr }))
             }
             _ => zenoh::zbail!(LinkError::CouldNotParseProtocol),
         }

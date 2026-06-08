@@ -35,17 +35,17 @@ pub struct UsbCdcRx {
 
 impl ZLinkInfo for StdUsbCdcLink {
     fn mtu(&self) -> u16 { self.mtu }
-    fn is_streamed(&self) -> bool { false }
+    fn is_streamed(&self) -> bool { true }
 }
 
 impl ZLinkInfo for UsbCdcTx {
     fn mtu(&self) -> u16 { self.mtu }
-    fn is_streamed(&self) -> bool { false }
+    fn is_streamed(&self) -> bool { true }
 }
 
 impl ZLinkInfo for UsbCdcRx {
     fn mtu(&self) -> u16 { self.mtu }
-    fn is_streamed(&self) -> bool { false }
+    fn is_streamed(&self) -> bool { true }
 }
 
 impl ZLinkTx for StdUsbCdcLink {

@@ -16,6 +16,7 @@ default = []
 std = []
 
 scouting = ["dep:heapless"]
+multicast-declarations = []
 
 log = ["std", "dep:log"]
 defmt = ["dep:defmt"]
@@ -35,3 +36,5 @@ web-sys = { workspace = true, optional = true }
 rand.workspace = true
 paste.workspace = true
 criterion.workspace = true
+serde.workspace = true
+serde_json.workspace = true

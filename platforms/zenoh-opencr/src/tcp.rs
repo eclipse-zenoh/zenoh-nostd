@@ -100,6 +100,17 @@ impl PlatformTcpLink {
             return Err(LinkError::CouldNotConnect);
         }
 
+        let nodelay: u32 = 1;
+        unsafe {
+            sockets::setsockopt(
+                fd,
+                sockets::IPPROTO_TCP,
+                sockets::TCP_NODELAY,
+                &nodelay as *const _ as *const u8,
+                core::mem::size_of::<u32>() as u32,
+            );
+        }
+
         let timeout_ms = 10u32;
         unsafe {
             sockets::setsockopt(

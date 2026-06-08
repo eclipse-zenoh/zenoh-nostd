@@ -47,6 +47,8 @@ pub const SOL_SOCKET: c_int = 1;
 pub const SO_REUSEADDR: c_int = 2;
 pub const SO_RCVTIMEO: c_int = 20;
 pub const SO_SNDTIMEO: c_int = 21;
+pub const IPPROTO_TCP: c_int = 6;
+pub const TCP_NODELAY: c_int = 1;
 
 // LWIP provides standard POSIX socket API
 unsafe extern "C" {
@@ -65,6 +67,7 @@ unsafe extern "C" {
 pub fn to_sockaddr(addr: &str) -> Option<(sockaddr_in, sockaddr_in6, bool)> {
     let (ip_str, port_str) = addr.rsplit_once(':')?;
     let port: u16 = port_str.parse().ok()?;
+    let ip_str = ip_str.trim_start_matches('[').trim_end_matches(']');
 
     if let Ok(v4) = ip_str.parse::<core::net::Ipv4Addr>() {
         let sin = sockaddr_in {

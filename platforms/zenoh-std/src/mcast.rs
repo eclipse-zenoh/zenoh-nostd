@@ -1,7 +1,6 @@
-use std::net::SocketAddr;
+use std::net::{SocketAddr, UdpSocket};
 use std::sync::Arc;
 
-use async_net::UdpSocket;
 use zenoh_nostd::platform::*;
 
 /// A UDP multicast link for sending and receiving datagrams.
@@ -9,40 +8,9 @@ use zenoh_nostd::platform::*;
 /// Used for SCOUT/HELLO peer discovery. Not streamed — each read/write
 /// is a discrete datagram.
 pub struct McLink {
-    socket: Arc<UdpSocket>,
-    mtu: u16,
-    multicast_addr: SocketAddr,
-}
-
-impl McLink {
-    pub async fn new(
-        multicast_addr: SocketAddr,
-        bind_addr: SocketAddr,
-    ) -> core::result::Result<Self, LinkError> {
-        let socket = Arc::new(
-            UdpSocket::bind(bind_addr)
-                .await
-                .map_err(|_| LinkError::CouldNotConnect)?,
-        );
-
-        let multi_ip = match multicast_addr.ip() {
-            std::net::IpAddr::V4(ip) => ip,
-            _ => return Err(LinkError::CouldNotConnect),
-        };
-        let bind_ip = match bind_addr.ip() {
-            std::net::IpAddr::V4(ip) => ip,
-            _ => return Err(LinkError::CouldNotConnect),
-        };
-        socket
-            .join_multicast_v4(multi_ip, bind_ip)
-            .map_err(|_| LinkError::CouldNotConnect)?;
-
-        Ok(Self {
-            socket,
-            mtu: 8192,
-            multicast_addr,
-        })
-    }
+    pub(crate) socket: Arc<UdpSocket>,
+    pub(crate) mtu: u16,
+    pub(crate) multicast_addr: SocketAddr,
 }
 
 pub struct McLinkTx {
@@ -87,51 +55,47 @@ impl ZLinkInfo for McLinkRx {
 }
 
 impl ZLinkTx for McLink {
-    async fn write_all(&mut self, buffer: &[u8]) -> core::result::Result<(), LinkError> {
+    fn write_all(&mut self, buffer: &[u8]) -> core::result::Result<(), LinkError> {
         self.socket
             .send_to(buffer, self.multicast_addr)
-            .await
             .map_err(|_| LinkError::LinkTxFailed)?;
         Ok(())
     }
 }
 
 impl ZLinkTx for McLinkTx {
-    async fn write_all(&mut self, buffer: &[u8]) -> core::result::Result<(), LinkError> {
+    fn write_all(&mut self, buffer: &[u8]) -> core::result::Result<(), LinkError> {
         self.socket
             .send_to(buffer, self.multicast_addr)
-            .await
             .map_err(|_| LinkError::LinkTxFailed)?;
         Ok(())
     }
 }
 
 impl ZLinkRx for McLink {
-    async fn read(&mut self, buffer: &mut [u8]) -> core::result::Result<usize, LinkError> {
+    fn read(&mut self, buffer: &mut [u8]) -> core::result::Result<usize, LinkError> {
         let (len, _) = self
             .socket
             .recv_from(buffer)
-            .await
             .map_err(|_| LinkError::LinkRxFailed)?;
         Ok(len)
     }
 
-    async fn read_exact(&mut self, _: &mut [u8]) -> core::result::Result<(), LinkError> {
+    fn read_exact(&mut self, _: &mut [u8]) -> core::result::Result<(), LinkError> {
         Err(LinkError::LinkRxFailed)
     }
 }
 
 impl ZLinkRx for McLinkRx {
-    async fn read(&mut self, buffer: &mut [u8]) -> core::result::Result<usize, LinkError> {
+    fn read(&mut self, buffer: &mut [u8]) -> core::result::Result<usize, LinkError> {
         let (len, _) = self
             .socket
             .recv_from(buffer)
-            .await
             .map_err(|_| LinkError::LinkRxFailed)?;
         Ok(len)
     }
 
-    async fn read_exact(&mut self, _: &mut [u8]) -> core::result::Result<(), LinkError> {
+    fn read_exact(&mut self, _: &mut [u8]) -> core::result::Result<(), LinkError> {
         Err(LinkError::LinkRxFailed)
     }
 }

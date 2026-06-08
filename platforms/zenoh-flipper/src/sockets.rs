@@ -48,6 +48,8 @@ pub const SOL_SOCKET: c_int = 1;
 pub const SO_REUSEADDR: c_int = 2;
 pub const SO_RCVTIMEO: c_int = 20;
 pub const SO_SNDTIMEO: c_int = 21;
+pub const IPPROTO_TCP: c_int = 6;
+pub const TCP_NODELAY: c_int = 1;
 
 unsafe extern "C" {
     pub fn socket(domain: c_int, type_: c_int, protocol: c_int) -> c_int;

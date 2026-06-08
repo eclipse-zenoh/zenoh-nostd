@@ -67,6 +67,8 @@ web-sys = { version = "0.3.82", features = ["console"] }
 # Tests
 rand = "0.8"
 criterion = "0.7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
 [package]
 name = "zenoh-examples"

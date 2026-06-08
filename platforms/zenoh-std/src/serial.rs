@@ -35,17 +35,17 @@ pub struct SerialRx {
 
 impl ZLinkInfo for StdSerialLink {
     fn mtu(&self) -> u16 { self.mtu }
-    fn is_streamed(&self) -> bool { false }
+    fn is_streamed(&self) -> bool { true }
 }
 
 impl ZLinkInfo for SerialTx {
     fn mtu(&self) -> u16 { self.mtu }
-    fn is_streamed(&self) -> bool { false }
+    fn is_streamed(&self) -> bool { true }
 }
 
 impl ZLinkInfo for SerialRx {
     fn mtu(&self) -> u16 { self.mtu }
-    fn is_streamed(&self) -> bool { false }
+    fn is_streamed(&self) -> bool { true }
 }
 
 impl ZLinkTx for StdSerialLink {
