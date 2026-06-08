@@ -168,10 +168,12 @@ impl<Buff> TransportTx<Buff> {
                     };
 
                     let mut buff = &mut self.buff.as_mut()[self.cursor..max];
+                    let before = buff.len();
                     if header.z_encode(&mut buff).is_err() {
                         zenoh_proto::error!("Failed to encode frame header - dropping message");
                         return None;
                     }
+                    self.cursor += before - buff.len();
 
                     let _ = self.resolution;
                     self.sn = self.sn.wrapping_add(1);
