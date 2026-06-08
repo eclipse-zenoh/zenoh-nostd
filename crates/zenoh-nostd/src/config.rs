@@ -21,6 +21,16 @@ pub trait ZSessionConfig: Sized {
 
     fn transports(&self) -> &TransportLinkManager<Self::LinkManager>;
     fn buff(&self) -> Self::Buff;
+
+    #[cfg(feature = "auth")]
+    fn auth_username(&self) -> Option<&str> {
+        None
+    }
+
+    #[cfg(feature = "auth")]
+    fn auth_password(&self) -> Option<&str> {
+        None
+    }
 }
 
 #[allow(dead_code)]
