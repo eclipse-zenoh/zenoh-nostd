@@ -195,6 +195,21 @@ pub struct Encoding<'a> {
     pub schema: Option<&'a [u8]>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum EncodingError {
+    UnknownEncoding,
+    SchemaTooLong,
+}
+
+impl core::fmt::Display for EncodingError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            EncodingError::UnknownEncoding => write!(f, "unknown encoding"),
+            EncodingError::SchemaTooLong => write!(f, "schema too long (max 255 bytes)"),
+        }
+    }
+}
+
 impl Encoding<'_> {
     const FLAG_S: u8 = 0b0000_0001;
 
@@ -598,7 +613,7 @@ impl Encoding<'_> {
         }
     }
 
-    pub fn to_string(&self) -> &str {
+    pub fn as_str(&self) -> &str {
         match self.schema {
             Some(s) => core::str::from_utf8(s).unwrap_or("zenoh/bytes"),
             None => ENCODING_NAMES
@@ -606,6 +621,40 @@ impl Encoding<'_> {
                 .copied()
                 .unwrap_or("zenoh/bytes"),
         }
+    }
+
+    /// Create an Encoding from a known encoding name string.
+    /// Returns Err if the name is not a known encoding.
+    pub fn from_substr(s: &str) -> Result<Encoding<'static>, EncodingError> {
+        for (i, name) in ENCODING_NAMES.iter().enumerate() {
+            if *name == s {
+                return Ok(Encoding {
+                    id: i as u16,
+                    schema: None,
+                });
+            }
+        }
+        Err(EncodingError::UnknownEncoding)
+    }
+
+    pub fn to_string(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl<'a> Encoding<'a> {
+    /// Set the schema string on this encoding.
+    pub fn set_schema(&mut self, schema: &'a str) -> Result<(), EncodingError> {
+        if schema.len() > 255 {
+            return Err(EncodingError::SchemaTooLong);
+        }
+        self.schema = Some(schema.as_bytes());
+        Ok(())
+    }
+
+    /// Get the schema string, if any.
+    pub fn schema_str(&self) -> Option<&str> {
+        self.schema.and_then(|s| core::str::from_utf8(s).ok())
     }
 }
 
@@ -861,6 +910,47 @@ mod encoding_tests {
             schema: Some(b"my/encoding"),
         };
         assert_eq!(e.to_string(), "my/encoding");
+    }
+
+    #[test]
+    fn encoding_as_str_preserves_semantics() {
+        let e = Encoding::parse_str("text/plain");
+        assert_eq!(e.as_str(), e.to_string());
+    }
+
+    #[test]
+    fn encoding_from_substr_known() {
+        let e = Encoding::from_substr("text/plain").unwrap();
+        assert_eq!(e.id, 4);
+        assert!(e.schema.is_none());
+    }
+
+    #[test]
+    fn encoding_from_substr_unknown() {
+        let e = Encoding::from_substr("not/a/known/encoding");
+        assert_eq!(e, Err(EncodingError::UnknownEncoding));
+    }
+
+    #[test]
+    fn encoding_set_schema() {
+        let mut e = Encoding::parse_str("text/plain");
+        assert!(e.schema.is_none());
+        e.set_schema("my/schema").unwrap();
+        assert_eq!(e.schema_str(), Some("my/schema"));
+    }
+
+    #[test]
+    fn encoding_schema_too_long() {
+        let mut e = Encoding::bytes();
+        let long_schema = "a".repeat(256);
+        let result = e.set_schema(&long_schema);
+        assert_eq!(result, Err(EncodingError::SchemaTooLong));
+    }
+
+    #[test]
+    fn encoding_schema_str_none() {
+        let e = Encoding::bytes();
+        assert_eq!(e.schema_str(), None);
     }
 }
 

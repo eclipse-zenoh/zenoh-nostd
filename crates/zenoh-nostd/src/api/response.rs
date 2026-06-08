@@ -1,6 +1,6 @@
 use super::sample::*;
-use zenoh_proto::CollectionError;
 use zenoh_proto::fields::Encoding;
+use zenoh_proto::CollectionError;
 
 #[derive(Debug)]
 pub enum GetResponse<'a> {
