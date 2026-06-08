@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 53742e4f1c106576c809c87898d98fcf79557d997d5f84e5a405ca2ce959de4b # shrinks to op = Put, specific_ke_str = "a", other_ke_str = "**"
