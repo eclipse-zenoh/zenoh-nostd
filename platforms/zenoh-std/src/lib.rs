@@ -4,6 +4,7 @@ use tungstenite::client::IntoClientRequest;
 use zenoh_nostd::platform::*;
 
 mod bt;
+mod raw_eth;
 mod serial;
 mod tcp;
 mod tls;
@@ -18,6 +19,7 @@ pub struct StdLinkManager;
 #[zenoh(ZLink = (StdLinkTx, StdLinkRx))]
 pub enum StdLink {
     Bt(bt::BtStream),
+    RawEth(raw_eth::StdRawEthLink),
     Serial(serial::StdSerialLink),
     Tcp(tcp::StdTcpLink),
     Tls(tls::StdTlsLink),
@@ -29,6 +31,7 @@ pub enum StdLink {
 #[derive(ZLinkInfo, ZLinkTx)]
 pub enum StdLinkTx {
     Bt(bt::BtStream),
+    RawEth(raw_eth::RawEthTx),
     Serial(serial::SerialTx),
     Tcp(tcp::StdTcpLinkTx),
     Tls(tls::StdTlsLinkTx),
@@ -40,6 +43,7 @@ pub enum StdLinkTx {
 #[derive(ZLinkInfo, ZLinkRx)]
 pub enum StdLinkRx {
     Bt(bt::BtStream),
+    RawEth(raw_eth::RawEthRx),
     Serial(serial::SerialRx),
     Tcp(tcp::StdTcpLinkRx),
     Tls(tls::StdTlsLinkRx),
@@ -151,6 +155,11 @@ impl ZLinkManager for StdLinkManager {
                 let link = serial::StdSerialLink::new(path, baud)?;
                 Ok(Self::Link::Serial(link))
             }
+            "raw-eth" => {
+                let iface = address.as_str();
+                let link = raw_eth::StdRawEthLink::new(iface)?;
+                Ok(Self::Link::RawEth(link))
+            }
             "usb-cdc" => {
                 let path = address.as_str();
                 let link = usb_cdc::StdUsbCdcLink::new(path)?;
@@ -227,6 +236,11 @@ impl ZLinkManager for StdLinkManager {
                 let baud = 115200u32;
                 let link = serial::StdSerialLink::new(path, baud)?;
                 Ok(Self::Link::Serial(link))
+            }
+            "raw-eth" => {
+                let iface = address.as_str();
+                let link = raw_eth::StdRawEthLink::new(iface)?;
+                Ok(Self::Link::RawEth(link))
             }
             "usb-cdc" => {
                 let path = address.as_str();

@@ -2,7 +2,7 @@ use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::sync::{Arc, Mutex};
 
-use native_tls::{TlsConnector, TlsStream};
+use native_tls::{Identity, TlsConnector, TlsStream};
 use zenoh_nostd::platform::*;
 
 pub struct StdTlsLink {
@@ -22,6 +22,35 @@ impl StdTlsLink {
         let stream = connector
             .connect(domain, tcp)
             .map_err(|_| LinkError::CouldNotConnect)?;
+        Ok(Self {
+            stream: Arc::new(Mutex::new(stream)),
+            mtu: u16::MAX - 60,
+        })
+    }
+
+    pub fn connect_with_cert(
+        addr: SocketAddr,
+        domain: &str,
+        pkcs12_der: &[u8],
+        password: &str,
+    ) -> Result<Self, LinkError> {
+        let tcp = TcpStream::connect(addr)
+            .map_err(|_| LinkError::CouldNotConnect)?;
+        tcp.set_nodelay(true)
+            .map_err(|_| LinkError::CouldNotConnect)?;
+
+        let identity =
+            Identity::from_pkcs12(pkcs12_der, password).map_err(|_| LinkError::CouldNotConnect)?;
+
+        let connector = TlsConnector::builder()
+            .identity(identity)
+            .build()
+            .map_err(|_| LinkError::CouldNotConnect)?;
+
+        let stream = connector
+            .connect(domain, tcp)
+            .map_err(|_| LinkError::CouldNotConnect)?;
+
         Ok(Self {
             stream: Arc::new(Mutex::new(stream)),
             mtu: u16::MAX - 60,

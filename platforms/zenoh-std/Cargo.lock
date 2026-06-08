@@ -1201,6 +1201,7 @@ dependencies = [
 name = "zenoh-std"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "native-tls",
  "serialport",
  "socket2",
