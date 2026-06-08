@@ -12,7 +12,6 @@ version = 2
 ignore = [
     { id = "RUSTSEC-2024-0436", reason = "paste is a dev-dependency via zenoh-proto, unmaintained but no viable replacement needed yet" },
     { id = "RUSTSEC-2026-0173", reason = "proc-macro-error2 is transitive via defmt-macros, unmaintained but defmt has no migration path yet" },
-    { id = "RUSTSEC-2026-0007", reason = "Integer overflow in BytesMut::reserve - pre-existing, not introduced by this change" },
     { id = "RUSTSEC-2026-0097", reason = "Rand unsound with custom logger - pre-existing, not introduced by this change" },
 ]
 
@@ -43,15 +42,14 @@ registries = ["https://github.com/rust-lang/crates.io-index"]
 multiple-versions = "deny"
 wildcards = "deny"
 highlight = "all"
-skip = []
+skip = [
+    { name = "zenoh-std", version = "*" },
+]
 skip-tree = [
-    { name = "embassy-net", version = "0.8" },
-    { name = "embassy-sync", version = "0.7" },
     { name = "esp-*", version = "*" },
     { name = "defmt", version = "1" },
     { name = "proptest", version = "1" },
     { name = "serialport", version = "4" },
-    { name = "wtx", version = "0.39" },
     { name = "wasip2", version = "1" },
     { name = "wasip3", version = "0.4" },
 ]
@@ -61,6 +59,5 @@ unknown-registry = "deny"
 unknown-git = "deny"
 allow-git = [
     "https://github.com/infinitefield/yawc",
-    "https://github.com/Hennzau/async-net",
     "https://github.com/wyfo/dyn-utils",
 ]
