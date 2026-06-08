@@ -12,6 +12,7 @@ use crate::{
     establishment::{Description, State},
 };
 
+#[allow(clippy::result_large_err, clippy::large_enum_variant)]
 pub enum Handshake<Buff, T, Read, Write> {
     PendingInit {
         #[allow(private_interfaces)]
@@ -101,7 +102,7 @@ impl<Buff, T, Read, Write> Handshake<Buff, T, Read, Write> {
         self
     }
 
-    #[allow(clippy::type_complexity)]
+    #[allow(clippy::type_complexity, clippy::collapsible_if)]
     pub fn poll<E>(
         &mut self,
     ) -> core::result::Result<
@@ -238,6 +239,7 @@ impl<Buff, T, Read, Write> Handshake<Buff, T, Read, Write> {
         }
     }
 
+    #[allow(clippy::type_complexity, clippy::collapsible_if)]
     pub async fn poll_async<E>(
         &mut self,
     ) -> core::result::Result<
