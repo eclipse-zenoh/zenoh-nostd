@@ -1,0 +1,13 @@
+{
+    "name": "keyexpr_valid_simple",
+    "feature": "key-expression",
+    "input_bytes": [100, 101, 109, 111, 47, 101, 120, 97, 109, 112, 108, 101],
+    "expected": {
+        "type": "keyexpr",
+        "value": "demo/example"
+    },
+    "error": null,
+    "source": "zenoh-nostd v0.1.0",
+    "upstream_version": "eclipse-zenoh main 2026-06",
+    "test_class": "roundtrip"
+}

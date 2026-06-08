@@ -1,0 +1,16 @@
+{
+    "name": "response_final",
+    "feature": "query-reply",
+    "test_class": "encode-decode",
+    "input_bytes": [26, 1, 0, 0, 0],
+    "expected": {
+        "type": "ResponseFinal",
+        "rid": 1,
+        "qos": { "reliability": 0, "congestion_control": 0, "priority": 0 },
+        "timestamp": null
+    },
+    "error": null,
+    "source": "zenoh-nostd v0.1.0",
+    "upstream_version": "eclipse-zenoh main 2026-06",
+    "notes": "Generated from manual encode of ResponseFinal { rid: 1 }. Verify and update bytes by running: cargo test -p zenoh-proto --features std proptest_tests::response_final_roundtrip"
+}

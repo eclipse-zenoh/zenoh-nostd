@@ -1,0 +1,13 @@
+{
+    "name": "vle_empty_input",
+    "feature": "variable-length-encoding",
+    "input_bytes": [],
+    "expected": null,
+    "error": {
+        "type": "CodecError::CouldNotRead",
+        "description": "Empty buffer: no bytes to read for VLE"
+    },
+    "source": "zenoh-nostd v0.1.0",
+    "upstream_version": "eclipse-zenoh main 2026-06",
+    "test_class": "invalid"
+}

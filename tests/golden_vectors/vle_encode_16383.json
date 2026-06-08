@@ -1,0 +1,13 @@
+{
+    "name": "vle_encode_16383",
+    "feature": "variable-length-encoding",
+    "input_bytes": [255, 127],
+    "expected": {
+        "type": "u64",
+        "value": 16383
+    },
+    "error": null,
+    "source": "zenoh-nostd v0.1.0",
+    "upstream_version": "eclipse-zenoh main 2026-06",
+    "test_class": "roundtrip"
+}

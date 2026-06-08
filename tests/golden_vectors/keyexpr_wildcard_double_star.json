@@ -1,0 +1,13 @@
+{
+    "name": "keyexpr_wildcard_double_star",
+    "feature": "key-expression",
+    "input_bytes": [100, 101, 109, 111, 47, 42, 42],
+    "expected": {
+        "type": "keyexpr",
+        "value": "demo/**"
+    },
+    "error": null,
+    "source": "zenoh-nostd v0.1.0",
+    "upstream_version": "eclipse-zenoh main 2026-06",
+    "test_class": "roundtrip"
+}

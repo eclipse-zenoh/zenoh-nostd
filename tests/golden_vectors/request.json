@@ -1,0 +1,26 @@
+{
+    "name": "request_simple_query",
+    "feature": "query-reply",
+    "test_class": "encode-decode",
+    "input_bytes": [156, 1, 0, 0, 0, 3, 116, 101, 115, 116, 47, 107, 101, 121, 0, 0, 0],
+    "expected": {
+        "type": "Request",
+        "id": 1,
+        "wire_expr": { "scope": 0, "suffix": "test/key" },
+        "qos": { "reliability": 0, "congestion_control": 0, "priority": 0 },
+        "nodeid": { "node_id": 0 },
+        "target": { "kind": 0 },
+        "timestamp": null,
+        "payload": "RequestBody::Query",
+        "query": {
+            "consolidation": "None",
+            "parameters": "",
+            "body": null,
+            "query_target": "BestMatching"
+        }
+    },
+    "error": null,
+    "source": "zenoh-nostd v0.1.0",
+    "upstream_version": "eclipse-zenoh main 2026-06",
+    "notes": "Generated from manual encode of Request { id: 1, wire_expr: WireExpr { scope: 0, suffix: 'test/key' }, payload: RequestBody::Query(Query { consolidation: None, parameters: '', body: None }) }. Verify and update bytes by running: cargo test -p zenoh-proto --features std proptest_tests::request_roundtrip"
+}

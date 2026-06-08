@@ -1,0 +1,13 @@
+{
+    "name": "vle_truncated_single_byte",
+    "feature": "variable-length-encoding",
+    "input_bytes": [255],
+    "expected": null,
+    "error": {
+        "type": "CodecError::CouldNotParseField",
+        "description": "Truncated VLE input: continuation bit set but no more bytes"
+    },
+    "source": "zenoh-nostd v0.1.0",
+    "upstream_version": "eclipse-zenoh main 2026-06",
+    "test_class": "invalid"
+}
