@@ -68,10 +68,15 @@ This document tracks which upstream Eclipse Zenoh features are supported by `zen
 | Sequence numbers | ✅ | ✅ | ✅ | ✅ | ✅ | Monotonicity, wrap |
 | Fragmentation | ✅ | ✅ | ✅ | ❌ | ✅ | |
 | Reassembly | ✅ | ✅ | ✅ | ❌ | ✅ | |
-| Reliability (NACK) | ✅ | 🔶 | 🔶 | ❌ | ❌ | In progress |
+| Reliability (NACK) | ✅ | ✅ | ✅ | ❌ | ❌ | NACK generation, retransmission |
 | Liveliness probe | ✅ | ✅ | ✅ | ❌ | ❌ | |
 | Keep-alive | ✅ | ✅ | ✅ | ❌ | ❌ | |
 | Close handshake | ✅ | ✅ | ✅ | ✅ | ❌ | |
+| Serial/UART transport | ✅ | ✅ | ✅ | ❌ | ❌ | Framed serial protocol, USB CDC |
+| BLE transport | ✅ | ✅ | ✅ | ❌ | ❌ | BlueZ GATT on Linux |
+| TLS transport | ✅ | ✅ | ✅ | ❌ | ❌ | Encrypted transport, mTLS support |
+| Raw Ethernet transport | ✅ | ✅ | ✅ | ❌ | ❌ | Ethernet II frames, configurable EtherType |
+| Auto-reconnect | ✅ | ✅ | ✅ | ❌ | ❌ | Exponential backoff, max retries |
 
 ---
 
@@ -81,9 +86,11 @@ This document tracks which upstream Eclipse Zenoh features are supported by `zen
 |---------|----------|-------|-------|------|------|-------|
 | Client handshake | ✅ | ✅ | ✅ | ✅ | ❌ | |
 | Server handshake | ✅ | ✅ | ✅ | ✅ | ❌ | |
-| Peer handshake | ✅ | ❌ | ❌ | ❌ | ❌ | Not yet implemented |
+| Peer handshake | ✅ | ✅ | ✅ | ✅ | ❌ | |
 | Session state machine | ✅ | ✅ | ✅ | ❌ | ✅ | Kani on transport SM |
 | Lease management | ✅ | ✅ | ✅ | ❌ | ❌ | |
+| Session check (ping/pong) | ✅ | ✅ | ✅ | ❌ | ❌ | |
+| Multicast declarations | ✅ | ✅ | ✅ | ❌ | ❌ | Declare/undeclare to all peers |
 | Mesh routing | ✅ | ❌ | ❌ | ❌ | ❌ | Not yet implemented |
 
 ---
@@ -93,9 +100,11 @@ This document tracks which upstream Eclipse Zenoh features are supported by `zen
 | Feature | Upstream | nostd | Tests | Fuzz | Kani | Notes |
 |---------|----------|-------|-------|------|------|-------|
 | Access control | ✅ | ✅ | ✅ | ❌ | ❌ | Static rules, FromStr parsing, integration |
-| Authentication | ✅ | ❌ | ❌ | ❌ | ❌ | Not yet implemented |
+| Authentication (user/password) | ✅ | ✅ | ✅ | ❌ | ❌ | Username/password during handshake |
+| Authentication (TLS client cert) | ✅ | ✅ | ✅ | ❌ | ❌ | mTLS certificate authentication |
 | Liveliness API | ✅ | ✅ | ✅ | ✅ | ❌ | Token declare/undeclare, subscriber, lease |
 | Query API | ✅ | ✅ | ✅ | ✅ | ❌ | Request/Response/ResponseFinal, roundtrip |
+| NACK reliability | ✅ | ✅ | ✅ | ❌ | ❌ | NACK generation and retransmission |
 | Admin space | ✅ | ❌ | ❌ | ❌ | ❌ | Not yet implemented |
 | Plugins | ✅ | ❌ | ❌ | ❌ | ❌ | Not applicable (no_std) |
 | EVAL | ✅ | ❌ | ❌ | ❌ | ❌ | Not yet implemented |
@@ -106,16 +115,19 @@ This document tracks which upstream Eclipse Zenoh features are supported by `zen
 
 | Platform | nostd | Status | Notes |
 |----------|-------|--------|-------|
-| std (Linux/Mac/Windows) | ✅ | Working | TCP/UDP via wtx |
-| STM32 (thumbv7m) | ✅ | Verified | QEMU + hardware |
-| ESP32 (riscv32) | ✅ | Verified | ESP-IDF + esp-wifi |
+| std (Linux/Mac/Windows) | ✅ | Working | TCP/UDP, TLS, BLE (BlueZ/Linux), raw Ethernet |
+| Linux embedded (armv7, aarch64) | ✅ | Working | POSIX sockets (TCP/UDP) |
+| STM32 (thumbv7m) | ✅ | Verified | QEMU + hardware; POSIX sockets on supported boards |
+| ESP32 (riscv32) | ✅ | Verified | ESP-IDF + esp-wifi; POSIX sockets via LwIP |
 | WASM | ✅ | Working | WebSocket via yawc |
 
 ## Priority for Next Implementation
 
-1. Query/Reply (Request, Response, ResponseFinal)
-2. Liveliness API
-3. Reliability (NACK-based)
-4. Peer-to-peer handshake
-5. Golden vectors for all message types
-6. Access control
+With all zenoh-pico parity features now implemented, future work should focus on:
+
+1. Golden vectors for all message types
+2. Mesh routing
+3. EVAL (remote procedure evaluation)
+4. Admin space
+5. Additional formal verification (Kani/Creusot/Verus coverage)
+6. Fuzz coverage expansion
