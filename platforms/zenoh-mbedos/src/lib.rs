@@ -58,7 +58,11 @@ impl ZLinkManager for MbedLinkManager {
         match protocol.as_str() {
             "tcp" => Ok(Self::Link::Tcp(tcp::PlatformTcpLink::connect(address.as_str())?)),
             "udp" => Ok(Self::Link::Udp(udp::PlatformUdpLink::connect(address.as_str())?)),
-            "serial" => Ok(Self::Link::Serial(serial::PlatformSerialLink)),
+            "serial" => {
+                let path = address.as_str();
+                let baud = 115200u32;
+                Ok(Self::Link::Serial(serial::PlatformSerialLink::new(path, baud)?))
+            }
             _ => zenoh::zbail!(LinkError::CouldNotParseProtocol),
         }
     }
@@ -76,7 +80,11 @@ impl ZLinkManager for MbedLinkManager {
                 let _ = address;
                 Err(LinkError::CouldNotListen)
             }
-            "serial" => Ok(Self::Link::Serial(serial::PlatformSerialLink)),
+            "serial" => {
+                let path = address.as_str();
+                let baud = 115200u32;
+                Ok(Self::Link::Serial(serial::PlatformSerialLink::new(path, baud)?))
+            }
             _ => zenoh::zbail!(LinkError::CouldNotParseProtocol),
         }
     }

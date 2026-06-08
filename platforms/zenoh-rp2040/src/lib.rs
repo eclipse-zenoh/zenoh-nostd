@@ -62,7 +62,11 @@ impl ZLinkManager for Rp2040LinkManager {
         match protocol.as_str() {
             "tcp" => Ok(Self::Link::Tcp(tcp::Rp2040TcpLink::connect(address.as_str())?)),
             "udp" => Ok(Self::Link::Udp(udp::Rp2040UdpLink::connect(address.as_str())?)),
-            "serial" => Ok(Self::Link::Serial(serial::Rp2040SerialLink)),
+            "serial" => {
+                let path = address.as_str();
+                let baud = 115200u32;
+                Ok(Self::Link::Serial(serial::Rp2040SerialLink::new(path, baud)?))
+            }
             _ => Err(LinkError::CouldNotParseProtocol),
         }
     }
@@ -80,7 +84,11 @@ impl ZLinkManager for Rp2040LinkManager {
                 let _ = address;
                 Err(LinkError::CouldNotListen)
             }
-            "serial" => Ok(Self::Link::Serial(serial::Rp2040SerialLink)),
+            "serial" => {
+                let path = address.as_str();
+                let baud = 115200u32;
+                Ok(Self::Link::Serial(serial::Rp2040SerialLink::new(path, baud)?))
+            }
             _ => Err(LinkError::CouldNotParseProtocol),
         }
     }

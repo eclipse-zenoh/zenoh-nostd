@@ -60,7 +60,11 @@ impl ZLinkManager for ArduinoLinkManager {
         match protocol.as_str() {
             "tcp" => Ok(Self::Link::Tcp(tcp::ArduinoTcpLink::connect(address.as_str())?)),
             "udp" => Ok(Self::Link::Udp(udp::ArduinoUdpLink::connect(address.as_str())?)),
-            "serial" => Ok(Self::Link::Serial(serial::ArduinoSerialLink)),
+            "serial" => {
+                let path = address.as_str();
+                let baud = 115200u32;
+                Ok(Self::Link::Serial(serial::ArduinoSerialLink::new(path, baud)?))
+            }
             _ => Err(LinkError::CouldNotParseProtocol),
         }
     }
@@ -78,7 +82,11 @@ impl ZLinkManager for ArduinoLinkManager {
                 let _ = address;
                 Err(LinkError::CouldNotListen)
             }
-            "serial" => Ok(Self::Link::Serial(serial::ArduinoSerialLink)),
+            "serial" => {
+                let path = address.as_str();
+                let baud = 115200u32;
+                Ok(Self::Link::Serial(serial::ArduinoSerialLink::new(path, baud)?))
+            }
             _ => Err(LinkError::CouldNotParseProtocol),
         }
     }

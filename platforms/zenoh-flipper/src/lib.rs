@@ -68,7 +68,11 @@ impl ZLinkManager for FlipperLinkManager {
         match protocol.as_str() {
             "tcp" => Ok(Self::Link::Tcp(tcp::FlipperTcpLink::connect(address.as_str())?)),
             "udp" => Ok(Self::Link::Udp(udp::FlipperUdpLink::connect(address.as_str())?)),
-            "serial" => Ok(Self::Link::Serial(serial::FlipperSerialLink)),
+            "serial" => {
+                let path = address.as_str();
+                let baud = 115200u32;
+                Ok(Self::Link::Serial(serial::FlipperSerialLink::new(path, baud)?))
+            }
             "ble" => Ok(Self::Link::Ble(ble::FlipperBleLink::new()?)),
             _ => Err(LinkError::CouldNotParseProtocol),
         }
@@ -87,7 +91,11 @@ impl ZLinkManager for FlipperLinkManager {
                 let _ = address;
                 Err(LinkError::CouldNotListen)
             }
-            "serial" => Ok(Self::Link::Serial(serial::FlipperSerialLink)),
+            "serial" => {
+                let path = address.as_str();
+                let baud = 115200u32;
+                Ok(Self::Link::Serial(serial::FlipperSerialLink::new(path, baud)?))
+            }
             "ble" => Ok(Self::Link::Ble(ble::FlipperBleLink::new()?)),
             _ => Err(LinkError::CouldNotParseProtocol),
         }
