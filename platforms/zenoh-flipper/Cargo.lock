@@ -278,6 +278,7 @@ name = "zenoh-flipper"
 version = "0.1.0"
 dependencies = [
  "zenoh-nostd",
+ "zenoh-platform-posix",
 ]
 
 [[package]]
@@ -290,6 +291,13 @@ dependencies = [
  "zenoh-derive",
  "zenoh-proto",
  "zenoh-sansio",
+]
+
+[[package]]
+name = "zenoh-platform-posix"
+version = "0.1.0"
+dependencies = [
+ "zenoh-nostd",
 ]
 
 [[package]]

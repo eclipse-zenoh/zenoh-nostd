@@ -290,6 +290,14 @@ name = "zenoh-opencr"
 version = "0.1.0"
 dependencies = [
  "zenoh-nostd",
+ "zenoh-platform-posix",
+]
+
+[[package]]
+name = "zenoh-platform-posix"
+version = "0.1.0"
+dependencies = [
+ "zenoh-nostd",
 ]
 
 [[package]]

@@ -16,33 +16,32 @@
 #![no_std]
 
 use zenoh_nostd::platform::*;
+use zenoh_platform_posix::tcp::{PosixTcpLink, PosixTcpTx, PosixTcpRx};
+use zenoh_platform_posix::udp::{PosixUdpLink, PosixUdpTx, PosixUdpRx};
 
 mod serial;
-mod sockets;
-mod tcp;
-mod udp;
 
 pub struct Rp2040LinkManager;
 
 #[derive(ZLinkInfo, ZLinkTx, ZLinkRx, ZLink)]
 #[zenoh(ZLink = (Rp2040LinkTx, Rp2040LinkRx))]
 pub enum Rp2040Link {
-    Tcp(tcp::Rp2040TcpLink),
-    Udp(udp::Rp2040UdpLink),
+    Tcp(PosixTcpLink),
+    Udp(PosixUdpLink),
     Serial(serial::Rp2040SerialLink),
 }
 
 #[derive(ZLinkInfo, ZLinkTx)]
 pub enum Rp2040LinkTx {
-    Tcp(tcp::Rp2040TcpTx),
-    Udp(udp::Rp2040UdpTx),
+    Tcp(PosixTcpTx),
+    Udp(PosixUdpTx),
     Serial(serial::Rp2040SerialTx),
 }
 
 #[derive(ZLinkInfo, ZLinkRx)]
 pub enum Rp2040LinkRx {
-    Tcp(tcp::Rp2040TcpRx),
-    Udp(udp::Rp2040UdpRx),
+    Tcp(PosixTcpRx),
+    Udp(PosixUdpRx),
     Serial(serial::Rp2040SerialRx),
 }
 
@@ -60,8 +59,8 @@ impl ZLinkManager for Rp2040LinkManager {
         let address = endpoint.address();
 
         match protocol.as_str() {
-            "tcp" => Ok(Self::Link::Tcp(tcp::Rp2040TcpLink::connect(address.as_str())?)),
-            "udp" => Ok(Self::Link::Udp(udp::Rp2040UdpLink::connect(address.as_str())?)),
+            "tcp" => Ok(Self::Link::Tcp(PosixTcpLink::connect(address.as_str())?)),
+            "udp" => Ok(Self::Link::Udp(PosixUdpLink::connect(address.as_str())?)),
             "serial" => {
                 let path = address.as_str();
                 let baud = 115200u32;
@@ -79,7 +78,7 @@ impl ZLinkManager for Rp2040LinkManager {
         let address = endpoint.address();
 
         match protocol.as_str() {
-            "tcp" => Ok(Self::Link::Tcp(tcp::Rp2040TcpLink::listen(address.as_str())?)),
+            "tcp" => Ok(Self::Link::Tcp(PosixTcpLink::listen(address.as_str())?)),
             "udp" => {
                 let _ = address;
                 Err(LinkError::CouldNotListen)

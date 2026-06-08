@@ -14,33 +14,32 @@
 #![no_std]
 
 use zenoh_nostd::platform::*;
+use zenoh_platform_posix::tcp::{PosixTcpLink, PosixTcpTx, PosixTcpRx};
+use zenoh_platform_posix::udp::{PosixUdpLink, PosixUdpTx, PosixUdpRx};
 
 mod serial;
-mod sockets;
-mod tcp;
-mod udp;
 
 pub struct ArduinoLinkManager;
 
 #[derive(ZLinkInfo, ZLinkTx, ZLinkRx, ZLink)]
 #[zenoh(ZLink = (ArduinoLinkTx, ArduinoLinkRx))]
 pub enum ArduinoLink {
-    Tcp(tcp::ArduinoTcpLink),
-    Udp(udp::ArduinoUdpLink),
+    Tcp(PosixTcpLink),
+    Udp(PosixUdpLink),
     Serial(serial::ArduinoSerialLink),
 }
 
 #[derive(ZLinkInfo, ZLinkTx)]
 pub enum ArduinoLinkTx {
-    Tcp(tcp::ArduinoTcpTx),
-    Udp(udp::ArduinoUdpTx),
+    Tcp(PosixTcpTx),
+    Udp(PosixUdpTx),
     Serial(serial::ArduinoSerialTx),
 }
 
 #[derive(ZLinkInfo, ZLinkRx)]
 pub enum ArduinoLinkRx {
-    Tcp(tcp::ArduinoTcpRx),
-    Udp(udp::ArduinoUdpRx),
+    Tcp(PosixTcpRx),
+    Udp(PosixUdpRx),
     Serial(serial::ArduinoSerialRx),
 }
 
@@ -58,8 +57,8 @@ impl ZLinkManager for ArduinoLinkManager {
         let address = endpoint.address();
 
         match protocol.as_str() {
-            "tcp" => Ok(Self::Link::Tcp(tcp::ArduinoTcpLink::connect(address.as_str())?)),
-            "udp" => Ok(Self::Link::Udp(udp::ArduinoUdpLink::connect(address.as_str())?)),
+            "tcp" => Ok(Self::Link::Tcp(PosixTcpLink::connect(address.as_str())?)),
+            "udp" => Ok(Self::Link::Udp(PosixUdpLink::connect(address.as_str())?)),
             "serial" => {
                 let path = address.as_str();
                 let baud = 115200u32;
@@ -77,7 +76,7 @@ impl ZLinkManager for ArduinoLinkManager {
         let address = endpoint.address();
 
         match protocol.as_str() {
-            "tcp" => Ok(Self::Link::Tcp(tcp::ArduinoTcpLink::listen(address.as_str())?)),
+            "tcp" => Ok(Self::Link::Tcp(PosixTcpLink::listen(address.as_str())?)),
             "udp" => {
                 let _ = address;
                 Err(LinkError::CouldNotListen)

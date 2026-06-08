@@ -1,0 +1,13 @@
+[package]
+name = "zenoh-platform-posix"
+version = "0.1.0"
+edition = "2024"
+description = "Shared POSIX socket-based transport for embedded Zenoh platforms"
+license = "EPL-2.0 OR Apache-2.0"
+
+[features]
+default = []
+freertos = []
+
+[dependencies]
+zenoh-nostd = { version = "0.1.0", path = "../../crates/zenoh-nostd" }

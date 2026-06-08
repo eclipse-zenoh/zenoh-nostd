@@ -1,12 +1,12 @@
 use zenoh_nostd::platform::*;
 use crate::sockets;
 
-pub struct Rp2040UdpLink {
+pub struct PosixUdpLink {
     fd: i32,
     mtu: u16,
 }
 
-impl Rp2040UdpLink {
+impl PosixUdpLink {
     pub fn connect(endpoint: &str) -> Result<Self, LinkError> {
         let (sin4, sin6, is_v4) = sockets::to_sockaddr(endpoint).ok_or(LinkError::CouldNotParseProtocol)?;
 
@@ -54,7 +54,7 @@ impl Rp2040UdpLink {
     }
 }
 
-impl Drop for Rp2040UdpLink {
+impl Drop for PosixUdpLink {
     fn drop(&mut self) {
         if self.fd >= 0 {
             unsafe { sockets::close(self.fd) };
@@ -62,19 +62,19 @@ impl Drop for Rp2040UdpLink {
     }
 }
 
-impl ZLinkInfo for Rp2040UdpLink {
+impl ZLinkInfo for PosixUdpLink {
     fn mtu(&self) -> u16 { self.mtu }
     fn is_streamed(&self) -> bool { false }
 }
 
-impl ZLinkTx for Rp2040UdpLink {
+impl ZLinkTx for PosixUdpLink {
     fn write_all(&mut self, buffer: &[u8]) -> Result<(), LinkError> {
         let n = unsafe { sockets::send(self.fd, buffer.as_ptr(), buffer.len(), 0) };
         if n < 0 { Err(LinkError::LinkTxFailed) } else { Ok(()) }
     }
 }
 
-impl ZLinkRx for Rp2040UdpLink {
+impl ZLinkRx for PosixUdpLink {
     fn read(&mut self, buffer: &mut [u8]) -> Result<usize, LinkError> {
         let n = unsafe { sockets::recv(self.fd, buffer.as_mut_ptr(), buffer.len(), 0) };
         if n < 0 { Err(LinkError::LinkRxFailed) } else { Ok(n as usize) }
@@ -85,44 +85,44 @@ impl ZLinkRx for Rp2040UdpLink {
     }
 }
 
-impl ZLink for Rp2040UdpLink {
-    type Tx<'a> = Rp2040UdpTx where Self: 'a;
-    type Rx<'a> = Rp2040UdpRx where Self: 'a;
+impl ZLink for PosixUdpLink {
+    type Tx<'a> = PosixUdpTx where Self: 'a;
+    type Rx<'a> = PosixUdpRx where Self: 'a;
 
     fn split(&mut self) -> (Self::Tx<'_>, Self::Rx<'_>) {
         let fd = self.fd;
         self.fd = -1;
         (
-            Rp2040UdpTx { fd, mtu: self.mtu },
-            Rp2040UdpRx { fd, mtu: self.mtu },
+            PosixUdpTx { fd, mtu: self.mtu },
+            PosixUdpRx { fd, mtu: self.mtu },
         )
     }
 }
 
-pub struct Rp2040UdpTx { fd: i32, mtu: u16 }
-pub struct Rp2040UdpRx { fd: i32, mtu: u16 }
+pub struct PosixUdpTx { fd: i32, mtu: u16 }
+pub struct PosixUdpRx { fd: i32, mtu: u16 }
 
-impl Drop for Rp2040UdpTx { fn drop(&mut self) {} }
-impl Drop for Rp2040UdpRx { fn drop(&mut self) { if self.fd >= 0 { unsafe { sockets::close(self.fd) }; } } }
+impl Drop for PosixUdpTx { fn drop(&mut self) {} }
+impl Drop for PosixUdpRx { fn drop(&mut self) { if self.fd >= 0 { unsafe { sockets::close(self.fd) }; } } }
 
-impl ZLinkInfo for Rp2040UdpTx {
+impl ZLinkInfo for PosixUdpTx {
     fn mtu(&self) -> u16 { self.mtu }
     fn is_streamed(&self) -> bool { false }
 }
 
-impl ZLinkTx for Rp2040UdpTx {
+impl ZLinkTx for PosixUdpTx {
     fn write_all(&mut self, buffer: &[u8]) -> Result<(), LinkError> {
         let n = unsafe { sockets::send(self.fd, buffer.as_ptr(), buffer.len(), 0) };
         if n < 0 { Err(LinkError::LinkTxFailed) } else { Ok(()) }
     }
 }
 
-impl ZLinkInfo for Rp2040UdpRx {
+impl ZLinkInfo for PosixUdpRx {
     fn mtu(&self) -> u16 { self.mtu }
     fn is_streamed(&self) -> bool { false }
 }
 
-impl ZLinkRx for Rp2040UdpRx {
+impl ZLinkRx for PosixUdpRx {
     fn read(&mut self, buffer: &mut [u8]) -> Result<usize, LinkError> {
         let n = unsafe { sockets::recv(self.fd, buffer.as_mut_ptr(), buffer.len(), 0) };
         if n < 0 { Err(LinkError::LinkRxFailed) } else { Ok(n as usize) }

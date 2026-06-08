@@ -15,33 +15,32 @@
 #![no_std]
 
 use zenoh_nostd::platform::*;
+use zenoh_platform_posix::tcp::{PosixTcpLink, PosixTcpTx, PosixTcpRx};
+use zenoh_platform_posix::udp::{PosixUdpLink, PosixUdpTx, PosixUdpRx};
 
 mod serial;
-mod sockets;
-mod tcp;
-mod udp;
 
 pub struct OpencrLinkManager;
 
 #[derive(ZLinkInfo, ZLinkTx, ZLinkRx, ZLink)]
 #[zenoh(ZLink = (OpencrLinkTx, OpencrLinkRx))]
 pub enum OpencrLink {
-    Tcp(tcp::PlatformTcpLink),
-    Udp(udp::PlatformUdpLink),
+    Tcp(PosixTcpLink),
+    Udp(PosixUdpLink),
     Serial(serial::PlatformSerialLink),
 }
 
 #[derive(ZLinkInfo, ZLinkTx)]
 pub enum OpencrLinkTx {
-    Tcp(tcp::PlatformTcpTx),
-    Udp(udp::PlatformUdpTx),
+    Tcp(PosixTcpTx),
+    Udp(PosixUdpTx),
     Serial(serial::PlatformSerialTx),
 }
 
 #[derive(ZLinkInfo, ZLinkRx)]
 pub enum OpencrLinkRx {
-    Tcp(tcp::PlatformTcpRx),
-    Udp(udp::PlatformUdpRx),
+    Tcp(PosixTcpRx),
+    Udp(PosixUdpRx),
     Serial(serial::PlatformSerialRx),
 }
 
@@ -59,8 +58,8 @@ impl ZLinkManager for OpencrLinkManager {
         let address = endpoint.address();
 
         match protocol.as_str() {
-            "tcp" => Ok(Self::Link::Tcp(tcp::PlatformTcpLink::connect(address.as_str())?)),
-            "udp" => Ok(Self::Link::Udp(udp::PlatformUdpLink::connect(address.as_str())?)),
+            "tcp" => Ok(Self::Link::Tcp(PosixTcpLink::connect(address.as_str())?)),
+            "udp" => Ok(Self::Link::Udp(PosixUdpLink::connect(address.as_str())?)),
             "serial" => {
                 let path = address.as_str();
                 let baud = 115200u32;
@@ -78,7 +77,7 @@ impl ZLinkManager for OpencrLinkManager {
         let address = endpoint.address();
 
         match protocol.as_str() {
-            "tcp" => Ok(Self::Link::Tcp(tcp::PlatformTcpLink::listen(address.as_str())?)),
+            "tcp" => Ok(Self::Link::Tcp(PosixTcpLink::listen(address.as_str())?)),
             "udp" => {
                 let _ = address;
                 Err(LinkError::CouldNotListen)

@@ -18,12 +18,11 @@
 #![no_std]
 
 use zenoh_nostd::platform::*;
+use zenoh_platform_posix::tcp::{PosixTcpLink, PosixTcpTx, PosixTcpRx};
+use zenoh_platform_posix::udp::{PosixUdpLink, PosixUdpTx, PosixUdpRx};
 
 mod ble;
 mod serial;
-mod sockets;
-mod tcp;
-mod udp;
 
 pub struct FlipperLinkManager;
 
@@ -31,24 +30,24 @@ pub struct FlipperLinkManager;
 #[zenoh(ZLink = (FlipperLinkTx, FlipperLinkRx))]
 pub enum FlipperLink {
     Ble(ble::FlipperBleLink),
-    Tcp(tcp::FlipperTcpLink),
-    Udp(udp::FlipperUdpLink),
+    Tcp(PosixTcpLink),
+    Udp(PosixUdpLink),
     Serial(serial::FlipperSerialLink),
 }
 
 #[derive(ZLinkInfo, ZLinkTx)]
 pub enum FlipperLinkTx {
     Ble(ble::FlipperBleTx),
-    Tcp(tcp::FlipperTcpTx),
-    Udp(udp::FlipperUdpTx),
+    Tcp(PosixTcpTx),
+    Udp(PosixUdpTx),
     Serial(serial::FlipperSerialTx),
 }
 
 #[derive(ZLinkInfo, ZLinkRx)]
 pub enum FlipperLinkRx {
     Ble(ble::FlipperBleRx),
-    Tcp(tcp::FlipperTcpRx),
-    Udp(udp::FlipperUdpRx),
+    Tcp(PosixTcpRx),
+    Udp(PosixUdpRx),
     Serial(serial::FlipperSerialRx),
 }
 
@@ -66,8 +65,8 @@ impl ZLinkManager for FlipperLinkManager {
         let address = endpoint.address();
 
         match protocol.as_str() {
-            "tcp" => Ok(Self::Link::Tcp(tcp::FlipperTcpLink::connect(address.as_str())?)),
-            "udp" => Ok(Self::Link::Udp(udp::FlipperUdpLink::connect(address.as_str())?)),
+            "tcp" => Ok(Self::Link::Tcp(PosixTcpLink::connect(address.as_str())?)),
+            "udp" => Ok(Self::Link::Udp(PosixUdpLink::connect(address.as_str())?)),
             "serial" => {
                 let path = address.as_str();
                 let baud = 115200u32;
@@ -86,7 +85,7 @@ impl ZLinkManager for FlipperLinkManager {
         let address = endpoint.address();
 
         match protocol.as_str() {
-            "tcp" => Ok(Self::Link::Tcp(tcp::FlipperTcpLink::listen(address.as_str())?)),
+            "tcp" => Ok(Self::Link::Tcp(PosixTcpLink::listen(address.as_str())?)),
             "udp" => {
                 let _ = address;
                 Err(LinkError::CouldNotListen)

@@ -12,3 +12,4 @@ version = "0.1.0"
 
 [dependencies]
 zenoh-nostd = { version = "0.1.0", path = "../../crates/zenoh-nostd" }
+zenoh-platform-posix = { path = "../zenoh-platform-posix" }

@@ -286,6 +286,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "zenoh-platform-posix"
+version = "0.1.0"
+dependencies = [
+ "zenoh-nostd",
+]
+
+[[package]]
 name = "zenoh-proto"
 version = "0.1.0"
 dependencies = [
@@ -307,4 +314,5 @@ name = "zenoh-zephyr"
 version = "0.1.0"
 dependencies = [
  "zenoh-nostd",
+ "zenoh-platform-posix",
 ]

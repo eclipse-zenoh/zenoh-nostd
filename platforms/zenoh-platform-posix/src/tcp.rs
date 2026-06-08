@@ -1,12 +1,12 @@
 use zenoh_nostd::platform::*;
 use crate::sockets;
 
-pub struct ArduinoTcpLink {
+pub struct PosixTcpLink {
     fd: i32,
     mtu: u16,
 }
 
-impl ArduinoTcpLink {
+impl PosixTcpLink {
     pub fn listen(endpoint: &str) -> Result<Self, LinkError> {
         let (sin4, sin6, is_v4) = sockets::to_sockaddr(endpoint).ok_or(LinkError::CouldNotParseProtocol)?;
 
@@ -126,7 +126,7 @@ impl ArduinoTcpLink {
     }
 }
 
-impl Drop for ArduinoTcpLink {
+impl Drop for PosixTcpLink {
     fn drop(&mut self) {
         if self.fd >= 0 {
             unsafe { sockets::close(self.fd) };
@@ -134,12 +134,12 @@ impl Drop for ArduinoTcpLink {
     }
 }
 
-impl ZLinkInfo for ArduinoTcpLink {
+impl ZLinkInfo for PosixTcpLink {
     fn mtu(&self) -> u16 { self.mtu }
     fn is_streamed(&self) -> bool { true }
 }
 
-impl ZLinkTx for ArduinoTcpLink {
+impl ZLinkTx for PosixTcpLink {
     fn write_all(&mut self, buffer: &[u8]) -> Result<(), LinkError> {
         let mut offset = 0;
         while offset < buffer.len() {
@@ -151,7 +151,7 @@ impl ZLinkTx for ArduinoTcpLink {
     }
 }
 
-impl ZLinkRx for ArduinoTcpLink {
+impl ZLinkRx for PosixTcpLink {
     fn read(&mut self, buffer: &mut [u8]) -> Result<usize, LinkError> {
         let n = unsafe { sockets::recv(self.fd, buffer.as_mut_ptr(), buffer.len(), 0) };
         if n < 0 { Err(LinkError::LinkRxFailed) } else { Ok(n as usize) }
@@ -168,32 +168,32 @@ impl ZLinkRx for ArduinoTcpLink {
     }
 }
 
-impl ZLink for ArduinoTcpLink {
-    type Tx<'a> = ArduinoTcpTx where Self: 'a;
-    type Rx<'a> = ArduinoTcpRx where Self: 'a;
+impl ZLink for PosixTcpLink {
+    type Tx<'a> = PosixTcpTx where Self: 'a;
+    type Rx<'a> = PosixTcpRx where Self: 'a;
 
     fn split(&mut self) -> (Self::Tx<'_>, Self::Rx<'_>) {
         let fd = self.fd;
         self.fd = -1;
         (
-            ArduinoTcpTx { fd, mtu: self.mtu },
-            ArduinoTcpRx { fd, mtu: self.mtu },
+            PosixTcpTx { fd, mtu: self.mtu },
+            PosixTcpRx { fd, mtu: self.mtu },
         )
     }
 }
 
-pub struct ArduinoTcpTx { fd: i32, mtu: u16 }
-pub struct ArduinoTcpRx { fd: i32, mtu: u16 }
+pub struct PosixTcpTx { fd: i32, mtu: u16 }
+pub struct PosixTcpRx { fd: i32, mtu: u16 }
 
-impl Drop for ArduinoTcpTx { fn drop(&mut self) {} }
-impl Drop for ArduinoTcpRx { fn drop(&mut self) { if self.fd >= 0 { unsafe { sockets::close(self.fd) }; } } }
+impl Drop for PosixTcpTx { fn drop(&mut self) {} }
+impl Drop for PosixTcpRx { fn drop(&mut self) { if self.fd >= 0 { unsafe { sockets::close(self.fd) }; } } }
 
-impl ZLinkInfo for ArduinoTcpTx {
+impl ZLinkInfo for PosixTcpTx {
     fn mtu(&self) -> u16 { self.mtu }
     fn is_streamed(&self) -> bool { true }
 }
 
-impl ZLinkTx for ArduinoTcpTx {
+impl ZLinkTx for PosixTcpTx {
     fn write_all(&mut self, buffer: &[u8]) -> Result<(), LinkError> {
         let mut offset = 0;
         while offset < buffer.len() {
@@ -205,12 +205,12 @@ impl ZLinkTx for ArduinoTcpTx {
     }
 }
 
-impl ZLinkInfo for ArduinoTcpRx {
+impl ZLinkInfo for PosixTcpRx {
     fn mtu(&self) -> u16 { self.mtu }
     fn is_streamed(&self) -> bool { true }
 }
 
-impl ZLinkRx for ArduinoTcpRx {
+impl ZLinkRx for PosixTcpRx {
     fn read(&mut self, buffer: &mut [u8]) -> Result<usize, LinkError> {
         let n = unsafe { sockets::recv(self.fd, buffer.as_mut_ptr(), buffer.len(), 0) };
         if n < 0 { Err(LinkError::LinkRxFailed) } else { Ok(n as usize) }
