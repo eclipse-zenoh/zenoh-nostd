@@ -18,13 +18,13 @@ pub fn derive_zlink_tx(input: &DeriveInput) -> syn::Result<TokenStream> {
 
     let variants_write_all = variants.clone().map(|ident| {
         quote::quote! {
-            Self:: #ident (link) => zenoh_nostd::platform::ZLinkTx::write_all(link, buffer).await,
+            Self:: #ident (link) => zenoh_nostd::platform::ZLinkTx::write_all(link, buffer),
         }
     });
 
     Ok(quote::quote! {
         impl #impl_generics zenoh_nostd::platform::ZLinkTx for #ident #ty_generics #where_clause {
-            async fn write_all(&mut self, buffer: &[u8]) -> core::result::Result<(), zenoh_nostd::platform::LinkError> {
+            fn write_all(&mut self, buffer: &[u8]) -> core::result::Result<(), zenoh_nostd::platform::LinkError> {
                 match self {
                     #(#variants_write_all)*
                 }

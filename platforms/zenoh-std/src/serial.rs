@@ -1,8 +1,7 @@
 use std::io::{Read, Write};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use tokio::sync::Mutex;
 use zenoh_nostd::platform::*;
 
 pub struct StdSerialLink {
@@ -35,74 +34,55 @@ pub struct SerialRx {
 }
 
 impl ZLinkInfo for StdSerialLink {
-    fn mtu(&self) -> u16 {
-        self.mtu
-    }
-
-    fn is_streamed(&self) -> bool {
-        false
-    }
+    fn mtu(&self) -> u16 { self.mtu }
+    fn is_streamed(&self) -> bool { false }
 }
 
 impl ZLinkInfo for SerialTx {
-    fn mtu(&self) -> u16 {
-        self.mtu
-    }
-
-    fn is_streamed(&self) -> bool {
-        false
-    }
+    fn mtu(&self) -> u16 { self.mtu }
+    fn is_streamed(&self) -> bool { false }
 }
 
 impl ZLinkInfo for SerialRx {
-    fn mtu(&self) -> u16 {
-        self.mtu
-    }
-
-    fn is_streamed(&self) -> bool {
-        false
-    }
+    fn mtu(&self) -> u16 { self.mtu }
+    fn is_streamed(&self) -> bool { false }
 }
 
 impl ZLinkTx for StdSerialLink {
-    async fn write_all(&mut self, buffer: &[u8]) -> core::result::Result<(), LinkError> {
-        let mut port = self.port.lock().await;
-        port.write_all(buffer)
-            .map_err(|_| LinkError::LinkTxFailed)
+    fn write_all(&mut self, buffer: &[u8]) -> core::result::Result<(), LinkError> {
+        let mut port = self.port.lock().map_err(|_| LinkError::LinkTxFailed)?;
+        port.write_all(buffer).map_err(|_| LinkError::LinkTxFailed)
     }
 }
 
 impl ZLinkTx for SerialTx {
-    async fn write_all(&mut self, buffer: &[u8]) -> core::result::Result<(), LinkError> {
-        let mut port = self.port.lock().await;
-        port.write_all(buffer)
-            .map_err(|_| LinkError::LinkTxFailed)
+    fn write_all(&mut self, buffer: &[u8]) -> core::result::Result<(), LinkError> {
+        let mut port = self.port.lock().map_err(|_| LinkError::LinkTxFailed)?;
+        port.write_all(buffer).map_err(|_| LinkError::LinkTxFailed)
     }
 }
 
 impl ZLinkRx for StdSerialLink {
-    async fn read(&mut self, buffer: &mut [u8]) -> core::result::Result<usize, LinkError> {
-        let mut port = self.port.lock().await;
+    fn read(&mut self, buffer: &mut [u8]) -> core::result::Result<usize, LinkError> {
+        let mut port = self.port.lock().map_err(|_| LinkError::LinkRxFailed)?;
         port.read(buffer).map_err(|_| LinkError::LinkRxFailed)
     }
 
-    async fn read_exact(&mut self, buffer: &mut [u8]) -> core::result::Result<(), LinkError> {
-        let mut port = self.port.lock().await;
-        port.read_exact(buffer)
-            .map_err(|_| LinkError::LinkRxFailed)
+    fn read_exact(&mut self, buffer: &mut [u8]) -> core::result::Result<(), LinkError> {
+        let mut port = self.port.lock().map_err(|_| LinkError::LinkRxFailed)?;
+        port.read_exact(buffer).map_err(|_| LinkError::LinkRxFailed)
     }
 }
 
 impl ZLinkRx for SerialRx {
-    async fn read(&mut self, buffer: &mut [u8]) -> core::result::Result<usize, LinkError> {
-        let mut port = self.port.lock().await;
+    fn read(&mut self, buffer: &mut [u8]) -> core::result::Result<usize, LinkError> {
+        let mut port = self.port.lock().map_err(|_| LinkError::LinkRxFailed)?;
         port.read(buffer).map_err(|_| LinkError::LinkRxFailed)
     }
 
-    async fn read_exact(&mut self, buffer: &mut [u8]) -> core::result::Result<(), LinkError> {
-        let mut port = self.port.lock().await;
-        port.read_exact(buffer)
-            .map_err(|_| LinkError::LinkRxFailed)
+    fn read_exact(&mut self, buffer: &mut [u8]) -> core::result::Result<(), LinkError> {
+        let mut port = self.port.lock().map_err(|_| LinkError::LinkRxFailed)?;
+        port.read_exact(buffer).map_err(|_| LinkError::LinkRxFailed)
     }
 }
 
@@ -111,14 +91,9 @@ impl ZLink for StdSerialLink {
     type Rx<'a> = SerialRx;
 
     fn split(&mut self) -> (Self::Tx<'_>, Self::Rx<'_>) {
-        let tx = SerialTx {
-            port: self.port.clone(),
-            mtu: self.mtu,
-        };
-        let rx = SerialRx {
-            port: self.port.clone(),
-            mtu: self.mtu,
-        };
-        (tx, rx)
+        (
+            SerialTx { port: self.port.clone(), mtu: self.mtu },
+            SerialRx { port: self.port.clone(), mtu: self.mtu },
+        )
     }
 }

@@ -1,10 +1,6 @@
-use std::net::SocketAddr;
+use std::net::{SocketAddr, TcpListener, TcpStream, UdpSocket};
 
-use async_net::{TcpListener, TcpStream, UdpSocket};
-use wtx::{
-    misc::Uri,
-    web_socket::{WebSocketConnector, WebSocketPartsOwned},
-};
+use tungstenite::client::IntoClientRequest;
 use zenoh_nostd::platform::*;
 
 mod bt;
@@ -18,7 +14,7 @@ pub struct StdLinkManager;
 
 #[allow(clippy::large_enum_variant)]
 #[derive(ZLinkInfo, ZLinkTx, ZLinkRx, ZLink)]
-#[zenoh(ZLink = (StdLinkTx<'link>, StdLinkRx<'link>))]
+#[zenoh(ZLink = (StdLinkTx, StdLinkRx))]
 pub enum StdLink {
     Bt(bt::BtStream),
     Serial(serial::StdSerialLink),
@@ -29,23 +25,23 @@ pub enum StdLink {
 }
 
 #[derive(ZLinkInfo, ZLinkTx)]
-pub enum StdLinkTx<'link> {
+pub enum StdLinkTx {
     Bt(bt::BtStream),
     Serial(serial::SerialTx),
     Tcp(tcp::StdTcpLinkTx),
     Tls(tls::StdTlsLinkTx),
     Udp(udp::StdUdpLinkTx),
-    Ws(ws::StdWsLinkTx<'link>),
+    Ws(ws::StdWsLinkTx),
 }
 
 #[derive(ZLinkInfo, ZLinkRx)]
-pub enum StdLinkRx<'link> {
+pub enum StdLinkRx {
     Bt(bt::BtStream),
     Serial(serial::SerialRx),
     Tcp(tcp::StdTcpLinkRx),
     Tls(tls::StdTlsLinkRx),
     Udp(udp::StdUdpLinkRx),
-    Ws(ws::StdWsLinkRx<'link>),
+    Ws(ws::StdWsLinkRx),
 }
 
 impl ZLinkManager for StdLinkManager {
@@ -54,7 +50,7 @@ impl ZLinkManager for StdLinkManager {
     where
         Self: 'a;
 
-    async fn connect(
+    fn connect(
         &self,
         endpoint: Endpoint<'_>,
     ) -> core::result::Result<Self::Link<'_>, LinkError> {
@@ -65,7 +61,6 @@ impl ZLinkManager for StdLinkManager {
             "tcp" => {
                 let dst_addr = SocketAddr::try_from(address)?;
                 let socket = TcpStream::connect(dst_addr)
-                    .await
                     .map_err(|_| LinkError::CouldNotConnect)?;
 
                 socket
@@ -81,16 +76,13 @@ impl ZLinkManager for StdLinkManager {
                     core::net::IpAddr::V6(_) => 60,
                 };
 
-                #[allow(unused_mut)] // mut is not needed when target_family != unix
+                #[allow(unused_mut)]
                 let mut mtu = u16::MAX - header;
 
-                // target limitation of socket2: https://docs.rs/socket2/latest/src/socket2/sys/unix.rs.html#1544
                 #[cfg(target_family = "unix")]
                 {
                     let socket = socket2::SockRef::from(&socket);
-                    // Get the MSS and divide it by 2 to ensure we can at least fill half the MSS
                     let mss = socket.tcp_mss().unwrap_or(mtu as u32) / 2;
-                    // Compute largest multiple of TCP MSS that is smaller of default MTU
                     let mut tgt = mss;
                     while (tgt + mss) < mtu as u32 {
                         tgt += mss;
@@ -107,38 +99,28 @@ impl ZLinkManager for StdLinkManager {
                     .rsplitn(2, ':')
                     .last()
                     .unwrap_or(address.as_str());
-                let link = tls::StdTlsLink::connect(dst_addr, domain).await?;
+                let link = tls::StdTlsLink::connect(dst_addr, domain)?;
                 Ok(Self::Link::Tls(link))
             }
             "udp" => {
                 let dst_addr = SocketAddr::try_from(address)?;
                 let socket = UdpSocket::bind("0.0.0.0:0")
-                    .await
                     .map_err(|_| LinkError::CouldNotConnect)?;
 
                 socket
                     .connect(dst_addr)
-                    .await
                     .map_err(|_| LinkError::CouldNotConnect)?;
 
                 Ok(Self::Link::Udp(udp::StdUdpLink::new(socket, 8192)))
             }
             "ws" => {
                 let dst_addr = SocketAddr::try_from(address)?;
-                let uri = Uri::new(format!("ws://{}", dst_addr));
-
-                let socket = TcpStream::connect(uri.hostname_with_implied_port())
-                    .await
-                    .map_err(|_| {
-                        zenoh::error!("Could not connect to TcpStream");
-                        LinkError::CouldNotConnect
-                    })?;
-
-                socket
-                    .set_nodelay(true)
+                let tcp = TcpStream::connect(dst_addr)
+                    .map_err(|_| LinkError::CouldNotConnect)?;
+                tcp.set_nodelay(true)
                     .map_err(|_| LinkError::CouldNotConnect)?;
 
-                let header = match socket
+                let header = match tcp
                     .local_addr()
                     .map_err(|_| LinkError::CouldNotGetAddrInfo)?
                     .ip()
@@ -147,33 +129,17 @@ impl ZLinkManager for StdLinkManager {
                     core::net::IpAddr::V6(_) => 60,
                 };
 
-                #[allow(unused_mut)] // mut is not needed when target_family != unix
-                let mut mtu = u16::MAX - header;
+                let mtu = u16::MAX - header;
 
-                // target limitation of socket2: https://docs.rs/socket2/latest/src/socket2/sys/unix.rs.html#1544
-                #[cfg(target_family = "unix")]
-                {
-                    let socket = socket2::SockRef::from(&socket);
-                    // Get the MSS and divide it by 2 to ensure we can at least fill half the MSS
-                    let mss = socket.tcp_mss().unwrap_or(mtu as u32) / 2;
-                    // Compute largest multiple of TCP MSS that is smaller of default MTU
-                    let mut tgt = mss;
-                    while (tgt + mss) < mtu as u32 {
-                        tgt += mss;
-                    }
-                    mtu = (mtu as u32).min(tgt) as u16;
-                }
+                let request: tungstenite::http::Request<()> =
+                    format!("ws://{}/", dst_addr)
+                        .into_client_request()
+                        .map_err(|_| LinkError::CouldNotConnect)?;
 
-                let stream = WebSocketConnector::default()
-                    .connect(socket, &uri.to_ref())
-                    .await
+                let (stream, _) = tungstenite::client::client(request, tcp)
                     .map_err(|_| LinkError::CouldNotConnect)?;
 
-                let WebSocketPartsOwned { reader, writer, .. } = stream
-                    .into_parts(|s| (s.clone(), s))
-                    .map_err(|_| LinkError::CouldNotConnect)?;
-
-                Ok(Self::Link::Ws(ws::StdWsLink::new(reader, writer, mtu)))
+                Ok(Self::Link::Ws(ws::StdWsLink::new(stream, mtu)))
             }
             "serial" => {
                 let path = address.as_str();
@@ -185,7 +151,7 @@ impl ZLinkManager for StdLinkManager {
         }
     }
 
-    async fn listen(
+    fn listen(
         &self,
         endpoint: Endpoint<'_>,
     ) -> core::result::Result<Self::Link<'_>, LinkError> {
@@ -195,13 +161,11 @@ impl ZLinkManager for StdLinkManager {
         match protocol.as_str() {
             "tcp" => {
                 let src_addr = SocketAddr::try_from(address)?;
-                let socket = TcpListener::bind(src_addr)
-                    .await
+                let listener = TcpListener::bind(src_addr)
                     .map_err(|_| LinkError::CouldNotConnect)?;
 
-                let (socket, _) = socket
+                let (socket, _) = listener
                     .accept()
-                    .await
                     .map_err(|_| LinkError::CouldNotConnect)?;
 
                 socket
@@ -217,16 +181,13 @@ impl ZLinkManager for StdLinkManager {
                     core::net::IpAddr::V6(_) => 60,
                 };
 
-                #[allow(unused_mut)] // mut is not needed when target_family != unix
+                #[allow(unused_mut)]
                 let mut mtu = u16::MAX - header;
 
-                // target limitation of socket2: https://docs.rs/socket2/latest/src/socket2/sys/unix.rs.html#1544
                 #[cfg(target_family = "unix")]
                 {
                     let socket = socket2::SockRef::from(&socket);
-                    // Get the MSS and divide it by 2 to ensure we can at least fill half the MSS
                     let mss = socket.tcp_mss().unwrap_or(mtu as u32) / 2;
-                    // Compute largest multiple of TCP MSS that is smaller of default MTU
                     let mut tgt = mss;
                     while (tgt + mss) < mtu as u32 {
                         tgt += mss;
@@ -239,17 +200,15 @@ impl ZLinkManager for StdLinkManager {
             "udp" => {
                 let src_addr = SocketAddr::try_from(address)?;
                 let socket = UdpSocket::bind(src_addr)
-                    .await
                     .map_err(|_| LinkError::CouldNotConnect)?;
 
+                let mut peek_buf = [0u8; 2];
                 let (_, dst_addr) = socket
-                    .peek_from(&mut [0u8, 0])
-                    .await
+                    .peek_from(&mut peek_buf)
                     .map_err(|_| LinkError::CouldNotConnect)?;
 
                 socket
                     .connect(dst_addr)
-                    .await
                     .map_err(|_| LinkError::CouldNotConnect)?;
 
                 Ok(Self::Link::Udp(udp::StdUdpLink::new(socket, 8192)))

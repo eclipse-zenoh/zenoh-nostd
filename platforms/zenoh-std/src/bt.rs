@@ -16,16 +16,16 @@ impl ZLinkInfo for BtStream {
 }
 
 impl ZLinkTx for BtStream {
-    async fn write_all(&mut self, _buffer: &[u8]) -> Result<(), LinkError> {
+    fn write_all(&mut self, _buffer: &[u8]) -> Result<(), LinkError> {
         Err(LinkError::LinkTxFailed)
     }
 }
 
 impl ZLinkRx for BtStream {
-    async fn read(&mut self, _buffer: &mut [u8]) -> Result<usize, LinkError> {
+    fn read(&mut self, _buffer: &mut [u8]) -> Result<usize, LinkError> {
         Err(LinkError::LinkRxFailed)
     }
-    async fn read_exact(&mut self, _buffer: &mut [u8]) -> Result<(), LinkError> {
+    fn read_exact(&mut self, _buffer: &mut [u8]) -> Result<(), LinkError> {
         Err(LinkError::LinkRxFailed)
     }
 }
