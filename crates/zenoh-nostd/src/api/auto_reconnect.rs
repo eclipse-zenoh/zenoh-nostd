@@ -24,8 +24,14 @@ pub fn is_retryable(err: &SessionError) -> bool {
     use SessionError::*;
     matches!(
         err,
-        TransportClosed | OpenTimeout | RxLeaseExpired | TxLeaseExpired
-            | CouldNotConnect | LinkTxFailed | LinkRxFailed | CouldNotListen
+        TransportClosed
+            | OpenTimeout
+            | RxLeaseExpired
+            | TxLeaseExpired
+            | CouldNotConnect
+            | LinkTxFailed
+            | LinkRxFailed
+            | CouldNotListen
             | CouldNotGetAddrInfo
     )
 }

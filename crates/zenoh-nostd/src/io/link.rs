@@ -13,7 +13,8 @@ pub trait ZLinkTx: ZLinkInfo {
 pub trait ZLinkRx: ZLinkInfo {
     fn read(&mut self, buffer: &mut [u8]) -> core::result::Result<usize, zenoh_proto::LinkError>;
 
-    fn read_exact(&mut self, buffer: &mut [u8]) -> core::result::Result<(), zenoh_proto::LinkError>;
+    fn read_exact(&mut self, buffer: &mut [u8])
+    -> core::result::Result<(), zenoh_proto::LinkError>;
 }
 
 pub trait ZLink: ZLinkInfo + ZLinkTx + ZLinkRx {
@@ -33,15 +34,9 @@ pub trait ZLinkManager {
     where
         Self: 'a;
 
-    fn connect(
-        &self,
-        endpoint: Endpoint<'_>,
-    ) -> core::result::Result<Self::Link<'_>, LinkError>;
+    fn connect(&self, endpoint: Endpoint<'_>) -> core::result::Result<Self::Link<'_>, LinkError>;
 
-    fn listen(
-        &self,
-        endpoint: Endpoint<'_>,
-    ) -> core::result::Result<Self::Link<'_>, LinkError>;
+    fn listen(&self, endpoint: Endpoint<'_>) -> core::result::Result<Self::Link<'_>, LinkError>;
 }
 
 pub struct EmbeddedIOLink<Tx: Write, Rx: Read> {
@@ -128,7 +123,10 @@ impl<Tx: Write, Rx: Read> ZLinkRx for EmbeddedIOLink<Tx, Rx> {
         self.rx.read(buffer).map_err(|_| LinkError::LinkRxFailed)
     }
 
-    fn read_exact(&mut self, buffer: &mut [u8]) -> core::result::Result<(), zenoh_proto::LinkError> {
+    fn read_exact(
+        &mut self,
+        buffer: &mut [u8],
+    ) -> core::result::Result<(), zenoh_proto::LinkError> {
         self.rx
             .read_exact(buffer)
             .map_err(|_| LinkError::LinkRxFailed)
@@ -140,7 +138,10 @@ impl<Rx: Read> ZLinkRx for EmbeddedIOLinkRx<'_, Rx> {
         self.rx.read(buffer).map_err(|_| LinkError::LinkRxFailed)
     }
 
-    fn read_exact(&mut self, buffer: &mut [u8]) -> core::result::Result<(), zenoh_proto::LinkError> {
+    fn read_exact(
+        &mut self,
+        buffer: &mut [u8],
+    ) -> core::result::Result<(), zenoh_proto::LinkError> {
         self.rx
             .read_exact(buffer)
             .map_err(|_| LinkError::LinkRxFailed)

@@ -1,4 +1,9 @@
-use zenoh_proto::{exts::*, fields::*, msgs::{Del, *}, *};
+use zenoh_proto::{
+    exts::*,
+    fields::*,
+    msgs::{Del, *},
+    *,
+};
 
 use crate::{api::session::Session, config::ZSessionConfig, io::transport::ZTransportLinkTx};
 

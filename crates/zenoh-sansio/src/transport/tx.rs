@@ -11,6 +11,16 @@ use zenoh_proto::{
 
 use crate::{ZTransportTx, transport::TransportRx};
 
+#[cfg(feature = "reliability")]
+const SEND_BUF_CAPACITY: usize = 64;
+
+#[cfg(feature = "reliability")]
+#[derive(Debug, Clone)]
+struct SentFrame {
+    sn: u32,
+    data: heapless::Vec<u8, { SEND_BUF_CAPACITY * 8 }>,
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 enum State {
     Opened,
@@ -41,6 +51,9 @@ pub struct TransportTx<Buff> {
     fragment_qos: zenoh_proto::exts::QoS,
 
     batching: bool,
+
+    #[cfg(feature = "reliability")]
+    send_buf: heapless::Deque<SentFrame, SEND_BUF_CAPACITY>,
 }
 
 impl<Buff> TransportTx<Buff> {
@@ -69,6 +82,9 @@ impl<Buff> TransportTx<Buff> {
             fragment_reliability: zenoh_proto::fields::Reliability::BestEffort,
             fragment_qos: zenoh_proto::exts::QoS::default(),
             batching: false,
+
+            #[cfg(feature = "reliability")]
+            send_buf: heapless::Deque::new(),
         }
     }
 
@@ -135,14 +151,11 @@ impl<Buff> TransportTx<Buff> {
         if self.cursor >= max {
             return None;
         }
-        let mut buff = &mut self.buff.as_mut()[self.cursor..max];
-
-        let start = buff.len();
 
         let reliability = self.last_frame.as_ref().map(|r| &r.reliability);
         let qos = self.last_frame.as_ref().map(|r| &r.qos);
 
-        match msg {
+        let (written, header) = match msg {
             MessageRef::Network(msg) => {
                 let r = msg.reliability;
                 let q = msg.qos;
@@ -154,15 +167,16 @@ impl<Buff> TransportTx<Buff> {
                         qos: q,
                     };
 
-if header.z_encode(&mut buff).is_err() {
-                    zenoh_proto::error!("Failed to encode frame header - dropping message");
-                    return None;
-                }
+                    let mut buff = &mut self.buff.as_mut()[self.cursor..max];
+                    if header.z_encode(&mut buff).is_err() {
+                        zenoh_proto::error!("Failed to encode frame header - dropping message");
+                        return None;
+                    }
 
                     let _ = self.resolution;
                     self.sn = self.sn.wrapping_add(1);
 
-                    Some(header)
+                    Some((header, r, q))
                 } else {
                     None
                 };
@@ -177,21 +191,24 @@ if header.z_encode(&mut buff).is_err() {
                     }
                 };
 
-                if bytes.is_none_or(|b| b.len() <= buff.len()) && self.max_fragments <= 1 {
+                let written = if bytes.is_none_or(|b| b.len() <= (max - self.cursor))
+                    && self.max_fragments <= 1
+                {
+                    let mut buff = &mut self.buff.as_mut()[self.cursor..max];
+                    let start = buff.len();
                     write_body(&mut buff);
+                    start - buff.len()
                 } else if let Some(bytes) = bytes
-                    && bytes.len() > buff.len()
+                    && bytes.len() > (max - self.cursor)
                     && self.max_fragments > 1
                 {
                     let sn = self.sn.wrapping_sub(1);
-                    let chunk = buff.len();
+                    let chunk = max - self.cursor;
+                    let mut buff = &mut self.buff.as_mut()[self.cursor..max];
                     buff.write_exact(&bytes[..chunk]).ok()?;
 
                     let remaining = &bytes[chunk..];
                     let remaining_len = remaining.len();
-                    let written = chunk;
-
-                    let _ = buff;
 
                     let mut tmp = self.buff.clone();
                     tmp.as_mut()[..remaining_len].copy_from_slice(remaining);
@@ -202,29 +219,64 @@ if header.z_encode(&mut buff).is_err() {
                     self.fragment_reliability = r;
                     self.fragment_qos = q;
 
-                    self.cursor += written;
-                    return Some(written);
+                    self.cursor += chunk;
+                    return Some(chunk);
                 } else {
+                    let mut buff = &mut self.buff.as_mut()[self.cursor..max];
+                    let start = buff.len();
                     write_body(&mut buff);
-                }
+                    start - buff.len()
+                };
 
-                if let Some(header) = header {
-                    self.last_frame = Some(header);
-                }
+                (written, header)
             }
             MessageRef::Transport(msg) => {
                 self.last_frame.take();
 
+                let mut buff = &mut self.buff.as_mut()[self.cursor..max];
+                let start = buff.len();
                 if let Some(bytes) = bytes {
                     buff.write_exact(bytes).ok()?;
                 } else {
                     msg.z_encode(&mut buff).ok()?;
                 }
+                let written = start - buff.len();
+
+                self.cursor += written;
+                return Some(written);
             }
         };
 
-        self.cursor += start - buff.len();
-        Some(start - buff.len())
+        self.cursor += written;
+
+        if let Some((header, r, _q)) = header {
+            self.last_frame = Some(header);
+
+            #[cfg(feature = "reliability")]
+            if r == zenoh_proto::fields::Reliability::Reliable {
+                let frame_start = self.cursor - written;
+                let frame_end = self.cursor;
+                if frame_end <= max {
+                    let mut sent = SentFrame {
+                        sn: header.sn,
+                        data: heapless::Vec::new(),
+                    };
+                    let buf_ref = self.buff.as_ref();
+                    let _ = sent
+                        .data
+                        .extend_from_slice(&buf_ref[frame_start..frame_end]);
+                    if self.send_buf.is_full() {
+                        let _ = self.send_buf.pop_front();
+                    }
+                    let _ = self.send_buf.push_back(sent);
+                }
+            }
+
+            #[cfg(not(feature = "reliability"))]
+            let _ = r;
+        }
+
+        Some(written)
     }
 
     fn encode_fragment_continuation(&mut self) -> Option<usize>
@@ -262,6 +314,28 @@ if header.z_encode(&mut buff).is_err() {
 
         self.cursor += start - buff.len();
         Some(start - buff.len())
+    }
+
+    #[cfg(feature = "reliability")]
+    pub fn handle_nack(&mut self, sn: u32) -> bool
+    where
+        Buff: AsMut<[u8]> + AsRef<[u8]>,
+    {
+        let data = {
+            let frame = match self.send_buf.iter().find(|f| f.sn == sn) {
+                Some(f) => f.clone(),
+                None => return false,
+            };
+            frame.data
+        };
+        let max = core::cmp::min(self.buff.as_ref().len(), self.batch_size);
+        if self.cursor + data.len() > max {
+            return false;
+        }
+        self.buff.as_mut()[self.cursor..self.cursor + data.len()].copy_from_slice(&data);
+        self.cursor += data.len();
+        self.last_frame.take();
+        true
     }
 }
 

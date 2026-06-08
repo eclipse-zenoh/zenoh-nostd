@@ -67,9 +67,13 @@ pub struct HeaderDeclaration {
 /// Extension fields must be grouped together in the struct definition,
 /// and this is enforced during parsing.
 pub enum ZenohField {
-    Regular { field: Box<ZenohFieldInner> },
+    Regular {
+        field: Box<ZenohFieldInner>,
+    },
     /// A block of extension fields (must be contiguous)
-    ExtBlock { exts: Vec<ZenohFieldInner> },
+    ExtBlock {
+        exts: Vec<ZenohFieldInner>,
+    },
 }
 
 /// Complete internal representation of a struct for `#[derive(ZStruct)]`.

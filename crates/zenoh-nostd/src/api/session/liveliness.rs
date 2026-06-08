@@ -21,11 +21,8 @@ use crate::{
     io::transport::ZTransportLinkTx,
 };
 
-pub type FixedCapacityLivelinessCallbacks<
-    'a,
-    const CAPACITY: usize,
-    Callback = RawOrBox<16>,
-> = FixedCapacityCallbacks<'a, SampleRef, CAPACITY, Callback>;
+pub type FixedCapacityLivelinessCallbacks<'a, const CAPACITY: usize, Callback = RawOrBox<16>> =
+    FixedCapacityCallbacks<'a, SampleRef, CAPACITY, Callback>;
 
 #[cfg(feature = "alloc")]
 pub type AllocLivelinessCallbacks<'a, Callback = RawOrBox<16>> =
@@ -49,10 +46,7 @@ where
     Config: ZSessionConfig,
 {
     pub fn undeclare(self) -> core::result::Result<(), SessionError> {
-        self.session
-            .state()
-            .liveliness_callbacks
-            .remove(self.id)?;
+        self.session.state().liveliness_callbacks.remove(self.id)?;
 
         self.session
             .driver()
@@ -85,9 +79,7 @@ where
 {
     session: &'a Session<'res, Config>,
     ke: &'static keyexpr,
-    callback: Option<
-        DynCallback<'res, CallbackStorage<'res, Config>, SampleRef>,
-    >,
+    callback: Option<DynCallback<'res, CallbackStorage<'res, Config>, SampleRef>>,
 }
 
 impl<'a, 'res, Config> LivelinessSubscriberBuilder<'a, 'res, Config>
@@ -102,10 +94,7 @@ where
         }
     }
 
-    pub fn callback(
-        self,
-        callback: impl FnMut(&Sample<'_>) + 'res,
-    ) -> Self {
+    pub fn callback(self, callback: impl FnMut(&Sample<'_>) + 'res) -> Self {
         Self {
             session: self.session,
             ke: self.ke,
@@ -113,10 +102,7 @@ where
         }
     }
 
-    pub fn callback_sync(
-        self,
-        callback: impl FnMut(&Sample<'_>) + 'res,
-    ) -> Self {
+    pub fn callback_sync(self, callback: impl FnMut(&Sample<'_>) + 'res) -> Self {
         Self {
             session: self.session,
             ke: self.ke,
@@ -124,7 +110,9 @@ where
         }
     }
 
-    pub fn finish(self) -> core::result::Result<LivelinessSubscriber<'a, 'res, Config>, SessionError> {
+    pub fn finish(
+        self,
+    ) -> core::result::Result<LivelinessSubscriber<'a, 'res, Config>, SessionError> {
         let state = self.session.state();
         let id = state.next();
 

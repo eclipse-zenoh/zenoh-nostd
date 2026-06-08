@@ -21,6 +21,7 @@ mod close;
 mod frame;
 mod init;
 mod keepalive;
+mod nack;
 mod open;
 
 pub use err::*;
@@ -39,6 +40,7 @@ pub use close::*;
 pub use frame::*;
 pub use init::*;
 pub use keepalive::*;
+pub use nack::*;
 pub use open::*;
 
 use zenoh_derive::ZEnum;
@@ -52,6 +54,7 @@ pub enum NetworkBody<'a> {
     Interest(Interest<'a>),
     InterestFinal(InterestFinal),
     Declare(Declare<'a>),
+    Nack(Nack),
 }
 
 impl NetworkBody<'_> {
@@ -64,6 +67,7 @@ impl NetworkBody<'_> {
             NetworkBody::Interest(x) => NetworkBodyRef::Interest(x),
             NetworkBody::InterestFinal(x) => NetworkBodyRef::InterestFinal(x),
             NetworkBody::Declare(x) => NetworkBodyRef::Declare(x),
+            NetworkBody::Nack(x) => NetworkBodyRef::Nack(x),
         }
     }
 }
@@ -77,6 +81,7 @@ pub enum NetworkBodyRef<'a> {
     Interest(&'a Interest<'a>),
     InterestFinal(&'a InterestFinal),
     Declare(&'a Declare<'a>),
+    Nack(&'a Nack),
 }
 
 impl<'a> crate::ZBodyLen for NetworkBodyRef<'a> {
@@ -89,6 +94,7 @@ impl<'a> crate::ZBodyLen for NetworkBodyRef<'a> {
             Self::Interest(x) => <Interest as crate::ZBodyLen>::z_body_len(x),
             Self::InterestFinal(x) => <InterestFinal as crate::ZBodyLen>::z_body_len(x),
             Self::Declare(x) => <Declare as crate::ZBodyLen>::z_body_len(x),
+            Self::Nack(x) => <Nack as crate::ZBodyLen>::z_body_len(x),
         }
     }
 }
@@ -112,6 +118,7 @@ impl<'a> crate::ZBodyEncode for NetworkBodyRef<'a> {
             Self::Interest(x) => <Interest as crate::ZBodyEncode>::z_body_encode(x, w),
             Self::InterestFinal(x) => <InterestFinal as crate::ZBodyEncode>::z_body_encode(x, w),
             Self::Declare(x) => <Declare as crate::ZBodyEncode>::z_body_encode(x, w),
+            Self::Nack(x) => <Nack as crate::ZBodyEncode>::z_body_encode(x, w),
         }
     }
 }
@@ -129,6 +136,7 @@ impl<'a> crate::ZEncode for NetworkBodyRef<'a> {
             Self::Interest(x) => <Interest as crate::ZEncode>::z_encode(x, w),
             Self::InterestFinal(x) => <InterestFinal as crate::ZEncode>::z_encode(x, w),
             Self::Declare(x) => <Declare as crate::ZEncode>::z_encode(x, w),
+            Self::Nack(x) => <Nack as crate::ZEncode>::z_encode(x, w),
         }
     }
 }

@@ -7,6 +7,9 @@ use zenoh_proto::{
 
 use crate::{ZTransportRx, transport::TransportTx};
 
+#[cfg(feature = "reliability")]
+const MAX_PENDING_NACKS: usize = 8;
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 enum State {
     Opened,
@@ -34,6 +37,9 @@ pub struct TransportRx<Buff> {
     max_fragments: usize,
     #[allow(dead_code)]
     fragment_sn: Option<u32>,
+
+    #[cfg(feature = "reliability")]
+    pending_nacks: heapless::Deque<u32, MAX_PENDING_NACKS>,
 }
 
 impl<Buff> TransportRx<Buff> {
@@ -42,8 +48,7 @@ impl<Buff> TransportRx<Buff> {
 
         batch_size: usize,
         sn: u32,
-#[allow(dead_code)]
-    resolution: Resolution,
+        #[allow(dead_code)] resolution: Resolution,
         lease: Duration,
     ) -> Self {
         Self {
@@ -61,6 +66,9 @@ impl<Buff> TransportRx<Buff> {
 
             max_fragments: 1,
             fragment_sn: None,
+
+            #[cfg(feature = "reliability")]
+            pending_nacks: heapless::Deque::new(),
         }
     }
 
@@ -164,8 +172,18 @@ impl<Buff> TransportRx<Buff> {
         let sn = &mut self.sn;
         let ignore = self.ignore_invalid_sn;
 
+        #[cfg(feature = "reliability")]
+        let pending = &mut self.pending_nacks;
+
         core::iter::from_fn(move || {
-            Self::decode(&mut reader, &mut last_frame, sn, ignore)
+            Self::decode(
+                &mut reader,
+                &mut last_frame,
+                sn,
+                ignore,
+                #[cfg(feature = "reliability")]
+                pending,
+            )
         })
         .filter_map(|m| match m.0 {
             Message::Transport(msg) => Some((msg, m.1)),
@@ -217,6 +235,7 @@ impl<Buff> TransportRx<Buff> {
         last_frame: &mut Option<FrameHeader>,
         sn: &mut u32,
         ignore: bool,
+        #[cfg(feature = "reliability")] pending_nacks: &mut heapless::Deque<u32, MAX_PENDING_NACKS>,
     ) -> Option<(Message<'a>, &'a [u8])>
     where
         Buff: AsRef<[u8]>,
@@ -287,14 +306,20 @@ impl<Buff> TransportRx<Buff> {
                 *sn = sn.wrapping_add(1);
 
                 if !ignore {
-                    // Wrapping-aware SN comparison using signed difference.
-                    // diff = 0: exact match (no missed messages)
-                    // diff in 1..2^31: received SN is ahead → missed `diff` messages
-                    // diff in 2^31..2^32-1: received SN is behind → inconsistent
                     let diff = header.sn.wrapping_sub(old_expected);
                     if diff != 0 {
                         if diff < (1u32 << 31) {
                             zenoh_proto::debug!("Transport missed {} messages", diff);
+                            #[cfg(feature = "reliability")]
+                            {
+                                let mut missing = old_expected;
+                                while missing != header.sn {
+                                    if !pending_nacks.is_full() {
+                                        let _ = pending_nacks.push_back(missing);
+                                    }
+                                    missing = missing.wrapping_add(1);
+                                }
+                            }
                         } else {
                             zenoh_proto::error!(
                                 "Inconsistent `SN` value {}, expected {}",
@@ -308,7 +333,14 @@ impl<Buff> TransportRx<Buff> {
 
                 last_frame.replace(header);
 
-                return Self::decode(reader, last_frame, sn, ignore);
+                return Self::decode(
+                    reader,
+                    last_frame,
+                    sn,
+                    ignore,
+                    #[cfg(feature = "reliability")]
+                    pending_nacks,
+                );
             }
             InitAck::ID if ack => decode!(@Transport InitAck),
             InitSyn::ID => decode!(@Transport InitSyn),
@@ -323,6 +355,7 @@ impl<Buff> TransportRx<Buff> {
             InterestFinal::ID if net && ifinal => decode!(@Network InterestFinal),
             Interest::ID if net => decode!(@Network Interest),
             Declare::ID if net => decode!(@Network Declare),
+            Nack::ID if net => decode!(@Network Nack),
             _ => {
                 zenoh_proto::error!(
                     "Unrecognized message header: {:08b}. Skipping the rest of the message - {}",
@@ -335,6 +368,15 @@ impl<Buff> TransportRx<Buff> {
 
         let len = start - reader.len();
         Some((body, &original[..len]))
+    }
+
+    #[cfg(feature = "reliability")]
+    pub fn drain_nacks(&mut self) -> heapless::Vec<u32, MAX_PENDING_NACKS> {
+        let mut nacks = heapless::Vec::new();
+        while let Some(sn) = self.pending_nacks.pop_front() {
+            let _ = nacks.push(sn);
+        }
+        nacks
     }
 }
 
@@ -557,8 +599,18 @@ where
         let sn = &mut self.sn;
         let ignore = self.ignore_invalid_sn;
 
+        #[cfg(feature = "reliability")]
+        let pending = &mut self.pending_nacks;
+
         core::iter::from_fn(move || {
-            Self::decode(&mut reader, &mut last_frame, sn, ignore)
+            Self::decode(
+                &mut reader,
+                &mut last_frame,
+                sn,
+                ignore,
+                #[cfg(feature = "reliability")]
+                pending,
+            )
         })
         .filter_map(|m| match m.0 {
             Message::Network(msg) => Some((msg, m.1)),

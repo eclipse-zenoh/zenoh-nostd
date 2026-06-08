@@ -83,6 +83,8 @@ roundtrips!(
     UndeclareQueryable,
     DeclareToken,
     UndeclareToken,
+    DeclarePublisher,
+    UndeclarePublisher,
     DeclareFinal,
     Declare,
     Interest,
@@ -91,6 +93,7 @@ roundtrips!(
     Request,
     Response,
     ResponseFinal,
+    Nack,
 );
 
 roundtrips!(ext, transport, Auth, Patch);

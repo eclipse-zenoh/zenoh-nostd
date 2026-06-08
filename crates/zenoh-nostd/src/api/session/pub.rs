@@ -46,7 +46,11 @@ where
         }
     }
 
-    pub fn delete(&self, timestamp: Option<Timestamp>, attachment: Option<&'a [u8]>) -> core::result::Result<(), SessionError> {
+    pub fn delete(
+        &self,
+        timestamp: Option<Timestamp>,
+        attachment: Option<&'a [u8]>,
+    ) -> core::result::Result<(), SessionError> {
         let mut builder = self.session.delete(self.ke);
         if let Some(ts) = timestamp {
             builder = builder.timestamp(ts);

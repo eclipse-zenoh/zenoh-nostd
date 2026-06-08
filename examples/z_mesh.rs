@@ -14,8 +14,7 @@ fn entry() -> zenoh::ZResult<()> {
     let ke = zenoh::keyexpr::new("demo/mesh")?;
 
     let cfg_a = init_session_example().with_transports(
-        TransportLinkManager::from(LinkManager)
-            .with_whatami(zenoh_nostd::session::WhatAmI::Peer),
+        TransportLinkManager::from(LinkManager).with_whatami(zenoh_nostd::session::WhatAmI::Peer),
     );
     let session_a = zenoh::listen!(
         ExampleConfig: cfg_a,
@@ -33,17 +32,14 @@ fn entry() -> zenoh::ZResult<()> {
         .finish()?;
 
     let cfg_b = init_session_example().with_transports(
-        TransportLinkManager::from(LinkManager)
-            .with_whatami(zenoh_nostd::session::WhatAmI::Peer),
+        TransportLinkManager::from(LinkManager).with_whatami(zenoh_nostd::session::WhatAmI::Peer),
     );
     let session_b = zenoh::connect!(
         ExampleConfig: cfg_b,
         Endpoint::try_from("tcp/127.0.0.1:7444")?
     );
 
-    let publisher = session_b
-        .declare_publisher(ke)
-        .finish()?;
+    let publisher = session_b.declare_publisher(ke).finish()?;
 
     for i in 0..5 {
         let payload = b"Hello from peer B";

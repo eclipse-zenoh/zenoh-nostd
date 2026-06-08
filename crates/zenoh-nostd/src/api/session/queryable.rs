@@ -57,10 +57,7 @@ where
             ..Default::default()
         };
 
-        self.session
-            .state()
-            .queryable_callbacks
-            .remove(self.id)?;
+        self.session.state().queryable_callbacks.remove(self.id)?;
 
         self.session
             .driver()
@@ -88,13 +85,8 @@ where
     session: &'static Session<'static, Config>,
     ke: &'static keyexpr,
 
-    callback: Option<
-        DynCallback<
-            'static,
-            CallbackStorage<Config>,
-            QueryableQueryRef<'static, Config>,
-        >,
-    >,
+    callback:
+        Option<DynCallback<'static, CallbackStorage<Config>, QueryableQueryRef<'static, Config>>>,
     allowed_origin: Locality,
 }
 

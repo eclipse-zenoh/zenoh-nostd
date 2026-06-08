@@ -1,8 +1,8 @@
 use core::str::FromStr;
 
-use zenoh_proto::{CollectionError, SessionError, exts::QoS, fields::ZenohIdProto, keyexpr};
 use zenoh_proto::fields::Encoding;
 use zenoh_proto::msgs::exts::QueryTarget;
+use zenoh_proto::{CollectionError, SessionError, exts::QoS, fields::ZenohIdProto, keyexpr};
 
 use crate::{api::session::Session, config::ZSessionConfig};
 
@@ -94,26 +94,15 @@ where
         self.accept_replies.map_or(true, |ar| ar.intersects(ke))
     }
 
-    pub fn reply_del(
-        &self,
-        ke: &keyexpr,
-    ) -> core::result::Result<(), SessionError> {
+    pub fn reply_del(&self, ke: &keyexpr) -> core::result::Result<(), SessionError> {
         self.session.reply_del(self.rid, ke)
     }
 
-    pub fn reply(
-        &self,
-        ke: &keyexpr,
-        payload: &[u8],
-    ) -> core::result::Result<(), SessionError> {
+    pub fn reply(&self, ke: &keyexpr, payload: &[u8]) -> core::result::Result<(), SessionError> {
         self.session.reply(self.rid, ke, payload)
     }
 
-    pub fn err(
-        &self,
-        ke: &keyexpr,
-        payload: &[u8],
-    ) -> core::result::Result<(), SessionError> {
+    pub fn err(&self, ke: &keyexpr, payload: &[u8]) -> core::result::Result<(), SessionError> {
         self.session.err(self.rid, ke, payload)
     }
 
@@ -170,19 +159,11 @@ where
         self.qos
     }
 
-    pub fn reply(
-        &self,
-        ke: &keyexpr,
-        payload: &[u8],
-    ) -> core::result::Result<(), SessionError> {
+    pub fn reply(&self, ke: &keyexpr, payload: &[u8]) -> core::result::Result<(), SessionError> {
         self.session.reply(self.rid, ke, payload)
     }
 
-    pub fn err(
-        &self,
-        ke: &keyexpr,
-        payload: &[u8],
-    ) -> core::result::Result<(), SessionError> {
+    pub fn err(&self, ke: &keyexpr, payload: &[u8]) -> core::result::Result<(), SessionError> {
         self.session.err(self.rid, ke, payload)
     }
 
@@ -276,19 +257,11 @@ where
         self.qos
     }
 
-    pub fn reply(
-        &self,
-        ke: &keyexpr,
-        payload: &[u8],
-    ) -> core::result::Result<(), SessionError> {
+    pub fn reply(&self, ke: &keyexpr, payload: &[u8]) -> core::result::Result<(), SessionError> {
         self.session.reply(self.rid, ke, payload)
     }
 
-    pub fn err(
-        &self,
-        ke: &keyexpr,
-        payload: &[u8],
-    ) -> core::result::Result<(), SessionError> {
+    pub fn err(&self, ke: &keyexpr, payload: &[u8]) -> core::result::Result<(), SessionError> {
         self.session.err(self.rid, ke, payload)
     }
 

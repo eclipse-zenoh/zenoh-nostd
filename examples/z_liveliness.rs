@@ -19,8 +19,7 @@ fn entry() -> zenoh::ZResult<()> {
         zenoh::connect(&mut resources, &config, Endpoint::try_from(ENDPOINT)?)?
     };
 
-    let _token = session
-        .declare_liveliness_token(zenoh::keyexpr::new("demo/example")?)?;
+    let _token = session.declare_liveliness_token(zenoh::keyexpr::new("demo/example")?)?;
 
     let _subscriber = session
         .declare_liveliness_subscriber(zenoh::keyexpr::new("demo/**")?)

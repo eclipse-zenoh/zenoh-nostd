@@ -157,8 +157,7 @@ impl<const MAX_KEYEXPR: usize, const MAX_PAYLOAD: usize, const MAX_ATTACHMENT: u
 }
 
 impl<const MAX_KEYEXPR: usize, const MAX_PAYLOAD: usize, const MAX_ATTACHMENT: usize>
-    TryFrom<&Sample<'_>>
-    for FixedCapacitySample<MAX_KEYEXPR, MAX_PAYLOAD, MAX_ATTACHMENT>
+    TryFrom<&Sample<'_>> for FixedCapacitySample<MAX_KEYEXPR, MAX_PAYLOAD, MAX_ATTACHMENT>
 {
     type Error = CollectionError;
 
@@ -281,9 +280,7 @@ impl TryFrom<&Sample<'_>> for AllocSample {
                 }),
             }),
             timestamp: value.timestamp,
-            attachment: value
-                .attachment
-                .map(alloc::vec::Vec::from),
+            attachment: value.attachment.map(alloc::vec::Vec::from),
             qos: value.qos,
             reliability: value.reliability,
         })

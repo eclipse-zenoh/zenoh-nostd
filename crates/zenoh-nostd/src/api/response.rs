@@ -47,7 +47,11 @@ impl<'a> GetResponse<'a> {
 }
 
 #[derive(Debug)]
-pub enum FixedCapacityGetResponse<const MAX_KEYEXPR: usize, const MAX_PAYLOAD: usize, const MAX_ATTACHMENT: usize> {
+pub enum FixedCapacityGetResponse<
+    const MAX_KEYEXPR: usize,
+    const MAX_PAYLOAD: usize,
+    const MAX_ATTACHMENT: usize,
+> {
     Ok(FixedCapacitySample<MAX_KEYEXPR, MAX_PAYLOAD, MAX_ATTACHMENT>),
     Err(FixedCapacitySample<MAX_KEYEXPR, MAX_PAYLOAD, MAX_ATTACHMENT>),
 }
@@ -85,7 +89,8 @@ impl<const MAX_KEYEXPR: usize, const MAX_PAYLOAD: usize, const MAX_ATTACHMENT: u
     }
 }
 
-impl<const MAX_KEYEXPR: usize, const MAX_PAYLOAD: usize, const MAX_ATTACHMENT: usize> TryFrom<&GetResponse<'_>>
+impl<const MAX_KEYEXPR: usize, const MAX_PAYLOAD: usize, const MAX_ATTACHMENT: usize>
+    TryFrom<&GetResponse<'_>>
     for FixedCapacityGetResponse<MAX_KEYEXPR, MAX_PAYLOAD, MAX_ATTACHMENT>
 {
     type Error = CollectionError;
@@ -157,7 +162,11 @@ mod tests {
     use zenoh_proto::fields::{Encoding, Reliability};
     use zenoh_proto::keyexpr;
 
-    fn make_err_sample<'a>(ke: &'a keyexpr, payload: &'a [u8], encoding: Option<Encoding<'a>>) -> Sample<'a> {
+    fn make_err_sample<'a>(
+        ke: &'a keyexpr,
+        payload: &'a [u8],
+        encoding: Option<Encoding<'a>>,
+    ) -> Sample<'a> {
         Sample::new(
             ke,
             payload,

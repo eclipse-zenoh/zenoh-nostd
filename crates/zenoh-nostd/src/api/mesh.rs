@@ -2,16 +2,10 @@ use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
 use core::cell::RefCell;
 
-use zenoh_proto::{
-    BrokerError,
-    fields::ZenohIdProto,
-    msgs::NetworkMessage,
-};
+use zenoh_proto::{BrokerError, fields::ZenohIdProto, msgs::NetworkMessage};
 
 use crate::{
-    config::ZSessionConfig,
-    io::driver::Driver,
-    io::transport::ZTransportLinkTx,
+    config::ZSessionConfig, io::driver::Driver, io::transport::ZTransportLinkTx,
     platform::ZLinkManager,
 };
 
@@ -37,7 +31,7 @@ where
 impl<Config> Default for MeshState<Config>
 where
     Config: ZSessionConfig,
- {
+{
     fn default() -> Self {
         Self::new()
     }
@@ -59,7 +53,10 @@ where
         zid: ZenohIdProto,
         driver: Driver<'static, Link<Config>, Config::Buff>,
     ) -> Arc<MeshEntry<Config>> {
-        let entry = Arc::new(MeshEntry { zid, driver: RefCell::new(driver) });
+        let entry = Arc::new(MeshEntry {
+            zid,
+            driver: RefCell::new(driver),
+        });
         self.peers.insert(zid, entry.clone());
         entry
     }

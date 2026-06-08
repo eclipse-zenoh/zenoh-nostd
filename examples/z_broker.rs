@@ -17,8 +17,7 @@ fn entry() -> zenoh::ZResult<()> {
     broker.accept(Endpoint::try_from("tcp/127.0.0.1:7444")?)?;
     broker.accept(Endpoint::try_from("tcp/127.0.0.1:7445")?)?;
 
-    broker
-        .open(Endpoint::try_from("tcp/127.0.0.1:7447")?)?;
+    broker.open(Endpoint::try_from("tcp/127.0.0.1:7447")?)?;
 
     Ok(())
 }

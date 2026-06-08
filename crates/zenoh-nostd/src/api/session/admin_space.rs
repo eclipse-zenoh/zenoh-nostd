@@ -10,8 +10,8 @@ where
 {
     pub fn start_admin_space(&'static self) -> core::result::Result<(), SessionError> {
         {
-                    let state = self.state();
-        if state.admin_space_id().is_some() {
+            let state = self.state();
+            if state.admin_space_id().is_some() {
                 return Err(CollectionError::KeyAlreadyExists.into());
             }
         }
@@ -41,9 +41,7 @@ where
 
     pub fn stop_admin_space(&'static self) -> core::result::Result<(), SessionError> {
         let state = self.state();
-        let id = state
-            .admin_space_id()
-            .ok_or(CollectionError::KeyNotFound)?;
+        let id = state.admin_space_id().ok_or(CollectionError::KeyNotFound)?;
         state.set_admin_space_id(None);
 
         self._undeclare_queryable(id)
@@ -59,7 +57,12 @@ mod tests {
     fn admin_space_response_format() {
         let zid = ZenohIdProto::default();
         let mut buf = heapless::String::<128>::new();
-        let _ = write!(buf, r#"{{"zid":"{:?}","version":"{}"}}"#, zid, zenoh_proto::VERSION);
+        let _ = write!(
+            buf,
+            r#"{{"zid":"{:?}","version":"{}"}}"#,
+            zid,
+            zenoh_proto::VERSION
+        );
 
         let s = buf.as_str();
         assert!(s.starts_with(r#"{"zid":""#));

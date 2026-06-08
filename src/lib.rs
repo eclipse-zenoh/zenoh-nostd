@@ -180,5 +180,3 @@ pub fn init_session_example() -> ExampleConfig {
         }
     }
 }
-
-

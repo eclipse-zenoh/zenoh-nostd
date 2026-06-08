@@ -298,7 +298,6 @@ impl<Buff> TransportBuilder<Buff> {
 
         #[cfg(feature = "auth")]
         let auth_bytes = auth_payload;
-        
 
         #[cfg_attr(not(feature = "auth"), allow(unused_mut))]
         let mut init = InitSyn {
@@ -319,9 +318,7 @@ impl<Buff> TransportBuilder<Buff> {
         #[cfg(feature = "auth")]
         if let Some(ref bytes) = auth_bytes {
             init.auth = Some(zenoh_proto::exts::Auth {
-                payload: unsafe {
-                    core::mem::transmute::<&[u8], &'static [u8]>(bytes.as_slice())
-                },
+                payload: unsafe { core::mem::transmute::<&[u8], &'static [u8]>(bytes.as_slice()) },
             });
         }
 
@@ -367,8 +364,7 @@ impl<Buff> TransportBuilder<Buff> {
         Read: FnMut(&mut T, &mut [u8]) -> core::result::Result<usize, E>,
         Write: FnMut(&mut T, &[u8]) -> core::result::Result<(), E>,
     {
-        self.with_whatami(WhatAmI::Peer)
-            .listen(handle, read, write)
+        self.with_whatami(WhatAmI::Peer).listen(handle, read, write)
     }
 
     pub fn connect_async<T, E, Read, Write>(
@@ -415,7 +411,6 @@ impl<Buff> TransportBuilder<Buff> {
 
         #[cfg(feature = "auth")]
         let auth_bytes = auth_payload;
-        
 
         #[cfg_attr(not(feature = "auth"), allow(unused_mut))]
         let mut init = InitSyn {
@@ -433,9 +428,7 @@ impl<Buff> TransportBuilder<Buff> {
         #[cfg(feature = "auth")]
         if let Some(ref bytes) = auth_bytes {
             init.auth = Some(zenoh_proto::exts::Auth {
-                payload: unsafe {
-                    core::mem::transmute::<&[u8], &'static [u8]>(bytes.as_slice())
-                },
+                payload: unsafe { core::mem::transmute::<&[u8], &'static [u8]>(bytes.as_slice()) },
             });
         }
 

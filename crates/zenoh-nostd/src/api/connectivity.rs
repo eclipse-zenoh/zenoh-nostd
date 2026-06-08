@@ -74,8 +74,12 @@ mod tests {
     fn connectivity_multiple_listeners() {
         let c1 = core::cell::Cell::new(false);
         let c2 = core::cell::Cell::new(false);
-        let f1 = |_: TransportEvent| { c1.set(true); };
-        let f2 = |_: TransportEvent| { c2.set(true); };
+        let f1 = |_: TransportEvent| {
+            c1.set(true);
+        };
+        let f2 = |_: TransportEvent| {
+            c2.set(true);
+        };
         let mut state = ConnectivityState::new();
         let _ = state.on_event(&f1);
         let _ = state.on_event(&f2);

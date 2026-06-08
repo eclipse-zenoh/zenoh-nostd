@@ -63,7 +63,11 @@ fn batch_size_min_property() {
     assert_eq!(mine.min(their), 2048, "must use min when ours is smaller");
     let mine2 = 65535u16;
     let their2 = 2048u16;
-    assert_eq!(mine2.min(their2), 2048, "must use min when theirs is smaller");
+    assert_eq!(
+        mine2.min(their2),
+        2048,
+        "must use min when theirs is smaller"
+    );
     let mine3 = 4096u16;
     let their3 = 4096u16;
     assert_eq!(mine3.min(their3), 4096, "equal values must be preserved");

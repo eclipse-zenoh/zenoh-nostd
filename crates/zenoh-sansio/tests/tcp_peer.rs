@@ -1,8 +1,8 @@
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::thread;
-use zenoh_sansio::Transport;
 use zenoh_proto::fields::WhatAmI;
+use zenoh_sansio::Transport;
 
 #[test]
 fn peer_transport_handshake_over_tcp() {

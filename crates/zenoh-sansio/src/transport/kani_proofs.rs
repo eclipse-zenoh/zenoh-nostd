@@ -220,9 +220,7 @@ fn zid_comparison_exhaustive_proof() {
 
     let (response, _) = state.poll((TransportMessage::InitSyn(init_syn), &[] as &[u8]));
 
-    assert!(
-        (mine > other && response.is_some()) || (mine < other && response.is_none()),
-    );
+    assert!((mine > other && response.is_some()) || (mine < other && response.is_none()),);
 }
 
 // ============================

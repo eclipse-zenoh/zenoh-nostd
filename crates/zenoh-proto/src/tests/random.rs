@@ -418,6 +418,32 @@ impl<'a> UndeclareToken<'a> {
     }
 }
 
+impl<'a> DeclarePublisher<'a> {
+    #[cfg(test)]
+    pub(crate) fn rand(w: &mut impl crate::ZStoreable<'a>) -> Self {
+        let id = rand::thread_rng().r#gen();
+        let wire_expr = WireExpr::rand(w);
+        Self { id, wire_expr }
+    }
+}
+
+impl UndeclarePublisher {
+    #[cfg(test)]
+    pub(crate) fn rand<'a>(_: &mut impl crate::ZStoreable<'a>) -> Self {
+        let id = rand::thread_rng().r#gen();
+        Self { id }
+    }
+}
+
+impl Nack {
+    #[cfg(test)]
+    pub(crate) fn rand<'a>(_: &mut impl crate::ZStoreable<'a>) -> Self {
+        Self {
+            sn: rand::thread_rng().r#gen(),
+        }
+    }
+}
+
 impl DeclareFinal {
     #[cfg(test)]
     pub(crate) fn rand<'a>(_: &mut impl crate::ZStoreable<'a>) -> Self {

@@ -33,9 +33,17 @@ const BUF_SIZE: usize = 512;
 fn hex_init_syn() {
     let msg = InitSyn {
         version: 9,
-        identifier: InitIdentifier { whatami: WhatAmI::Peer, zid: zid_from_bytes(&[0,0,0,0,0,0,0,1]) },
+        identifier: InitIdentifier {
+            whatami: WhatAmI::Peer,
+            zid: zid_from_bytes(&[0, 0, 0, 0, 0, 0, 0, 1]),
+        },
         resolution: InitResolution::default(),
-        qos: None, qos_link: None, auth: None, mlink: None, lowlatency: None, compression: None,
+        qos: None,
+        qos_link: None,
+        auth: None,
+        mlink: None,
+        lowlatency: None,
+        compression: None,
         patch: Patch::none(),
     };
     let len = crate::ZLen::z_len(&msg);
@@ -44,7 +52,10 @@ fn hex_init_syn() {
     let mut hex_buf = [0u8; BUF_SIZE * 2];
     let hex = hex_encode(&buf[..len], &mut hex_buf);
     let expected = "0109710000000000000001";
-    assert_eq!(hex, expected, "\nInitSyn — actual: {hex}, expected: {expected}");
+    assert_eq!(
+        hex, expected,
+        "\nInitSyn — actual: {hex}, expected: {expected}"
+    );
     let decoded = <InitSyn as crate::ZDecode>::z_decode(&mut &buf[..len]).unwrap();
     assert_eq!(msg, decoded);
     let mut buf2 = [0u8; BUF_SIZE];
@@ -56,10 +67,21 @@ fn hex_init_syn() {
 fn hex_init_ack() {
     let msg = InitAck {
         version: 9,
-        identifier: InitIdentifier { whatami: WhatAmI::Router, zid: zid_from_bytes(&[0,0,0,0,0,0,0,2]) },
-        resolution: InitResolution { resolution: Resolution::default(), batch_size: BatchSize(8192) },
+        identifier: InitIdentifier {
+            whatami: WhatAmI::Router,
+            zid: zid_from_bytes(&[0, 0, 0, 0, 0, 0, 0, 2]),
+        },
+        resolution: InitResolution {
+            resolution: Resolution::default(),
+            batch_size: BatchSize(8192),
+        },
         cookie: &[0xca, 0xfe],
-        qos: None, qos_link: None, auth: None, mlink: None, lowlatency: None, compression: None,
+        qos: None,
+        qos_link: None,
+        auth: None,
+        mlink: None,
+        lowlatency: None,
+        compression: None,
         patch: Patch::none(),
     };
     let len = crate::ZLen::z_len(&msg);
@@ -68,7 +90,10 @@ fn hex_init_ack() {
     let mut hex_buf = [0u8; BUF_SIZE * 2];
     let hex = hex_encode(&buf[..len], &mut hex_buf);
     let expected = "61097000000000000000020a002002cafe";
-    assert_eq!(hex, expected, "\nInitAck — actual: {hex}, expected: {expected}");
+    assert_eq!(
+        hex, expected,
+        "\nInitAck — actual: {hex}, expected: {expected}"
+    );
     let decoded = <InitAck as crate::ZDecode>::z_decode(&mut &buf[..len]).unwrap();
     assert_eq!(msg, decoded);
     let mut buf2 = [0u8; BUF_SIZE];
@@ -79,8 +104,15 @@ fn hex_init_ack() {
 #[test]
 fn hex_open_syn() {
     let msg = OpenSyn {
-        lease: core::time::Duration::from_secs(30), sn: 42, cookie: &[],
-        qos: None, auth: None, mlink_syn: None, mlink_ack: None, lowlatency: None, compression: None,
+        lease: core::time::Duration::from_secs(30),
+        sn: 42,
+        cookie: &[],
+        qos: None,
+        auth: None,
+        mlink_syn: None,
+        mlink_ack: None,
+        lowlatency: None,
+        compression: None,
     };
     let len = crate::ZLen::z_len(&msg);
     let mut buf = [0u8; BUF_SIZE];
@@ -88,7 +120,10 @@ fn hex_open_syn() {
     let mut hex_buf = [0u8; BUF_SIZE * 2];
     let hex = hex_encode(&buf[..len], &mut hex_buf);
     let expected = "421e2a00";
-    assert_eq!(hex, expected, "\nOpenSyn — actual: {hex}, expected: {expected}");
+    assert_eq!(
+        hex, expected,
+        "\nOpenSyn — actual: {hex}, expected: {expected}"
+    );
     let decoded = <OpenSyn as crate::ZDecode>::z_decode(&mut &buf[..len]).unwrap();
     assert_eq!(msg, decoded);
     let mut buf2 = [0u8; BUF_SIZE];
@@ -99,8 +134,14 @@ fn hex_open_syn() {
 #[test]
 fn hex_open_ack() {
     let msg = OpenAck {
-        lease: core::time::Duration::from_secs(60), sn: 100,
-        qos: None, auth: None, mlink_syn: None, mlink_ack: None, lowlatency: None, compression: None,
+        lease: core::time::Duration::from_secs(60),
+        sn: 100,
+        qos: None,
+        auth: None,
+        mlink_syn: None,
+        mlink_ack: None,
+        lowlatency: None,
+        compression: None,
     };
     let len = crate::ZLen::z_len(&msg);
     let mut buf = [0u8; BUF_SIZE];
@@ -108,7 +149,10 @@ fn hex_open_ack() {
     let mut hex_buf = [0u8; BUF_SIZE * 2];
     let hex = hex_encode(&buf[..len], &mut hex_buf);
     let expected = "623c64";
-    assert_eq!(hex, expected, "\nOpenAck — actual: {hex}, expected: {expected}");
+    assert_eq!(
+        hex, expected,
+        "\nOpenAck — actual: {hex}, expected: {expected}"
+    );
     let decoded = <OpenAck as crate::ZDecode>::z_decode(&mut &buf[..len]).unwrap();
     assert_eq!(msg, decoded);
     let mut buf2 = [0u8; BUF_SIZE];
@@ -125,7 +169,10 @@ fn hex_keep_alive() {
     let mut hex_buf = [0u8; BUF_SIZE * 2];
     let hex = hex_encode(&buf[..len], &mut hex_buf);
     let expected = "04";
-    assert_eq!(hex, expected, "\nKeepAlive — actual: {hex}, expected: {expected}");
+    assert_eq!(
+        hex, expected,
+        "\nKeepAlive — actual: {hex}, expected: {expected}"
+    );
     let decoded = <KeepAlive as crate::ZDecode>::z_decode(&mut &buf[..len]).unwrap();
     assert_eq!(msg, decoded);
     let mut buf2 = [0u8; BUF_SIZE];
@@ -135,14 +182,20 @@ fn hex_keep_alive() {
 
 #[test]
 fn hex_close() {
-    let msg = Close { reason: 0, behaviour: CloseBehaviour::Link };
+    let msg = Close {
+        reason: 0,
+        behaviour: CloseBehaviour::Link,
+    };
     let len = crate::ZLen::z_len(&msg);
     let mut buf = [0u8; BUF_SIZE];
     crate::ZEncode::z_encode(&msg, &mut &mut buf[..]).unwrap();
     let mut hex_buf = [0u8; BUF_SIZE * 2];
     let hex = hex_encode(&buf[..len], &mut hex_buf);
     let expected = "0300";
-    assert_eq!(hex, expected, "\nClose — actual: {hex}, expected: {expected}");
+    assert_eq!(
+        hex, expected,
+        "\nClose — actual: {hex}, expected: {expected}"
+    );
     let decoded = <Close as crate::ZDecode>::z_decode(&mut &buf[..len]).unwrap();
     assert_eq!(msg, decoded);
     let mut buf2 = [0u8; BUF_SIZE];
@@ -155,7 +208,10 @@ fn hex_close() {
 #[test]
 fn hex_put() {
     let msg = Put {
-        timestamp: None, encoding: Encoding::text_plain(), sinfo: None, attachment: None,
+        timestamp: None,
+        encoding: Encoding::text_plain(),
+        sinfo: None,
+        attachment: None,
         payload: b"hello",
     };
     let len = crate::ZLen::z_len(&msg);
@@ -174,7 +230,11 @@ fn hex_put() {
 
 #[test]
 fn hex_del() {
-    let msg = Del { timestamp: None, sinfo: None, attachment: None };
+    let msg = Del {
+        timestamp: None,
+        sinfo: None,
+        attachment: None,
+    };
     let len = crate::ZLen::z_len(&msg);
     let mut buf = [0u8; BUF_SIZE];
     crate::ZEncode::z_encode(&msg, &mut &mut buf[..]).unwrap();
@@ -195,16 +255,29 @@ fn hex_del() {
 fn hex_declare_subscriber() {
     let body = DeclareBody::DeclareSubscriber(DeclareSubscriber {
         id: 1,
-        wire_expr: WireExpr { scope: 0, mapping: Mapping::Sender, suffix: "example/sub" },
+        wire_expr: WireExpr {
+            scope: 0,
+            mapping: Mapping::Sender,
+            suffix: "example/sub",
+        },
     });
-    let msg = Declare { id: Some(42), qos: QoS::default(), timestamp: None, nodeid: NodeId::default(), body };
+    let msg = Declare {
+        id: Some(42),
+        qos: QoS::default(),
+        timestamp: None,
+        nodeid: NodeId::default(),
+        body,
+    };
     let len = crate::ZLen::z_len(&msg);
     let mut buf = [0u8; BUF_SIZE];
     crate::ZEncode::z_encode(&msg, &mut &mut buf[..]).unwrap();
     let mut hex_buf = [0u8; BUF_SIZE * 2];
     let hex = hex_encode(&buf[..len], &mut hex_buf);
     let expected = "3e2a6201000b6578616d706c652f737562";
-    assert_eq!(hex, expected, "\nDeclareSubscriber — actual: {hex}, expected: {expected}");
+    assert_eq!(
+        hex, expected,
+        "\nDeclareSubscriber — actual: {hex}, expected: {expected}"
+    );
     let decoded = <Declare as crate::ZDecode>::z_decode(&mut &buf[..len]).unwrap();
     assert_eq!(msg, decoded);
     let mut buf2 = [0u8; BUF_SIZE];
@@ -216,16 +289,29 @@ fn hex_declare_subscriber() {
 fn hex_declare_key_expr() {
     let body = DeclareBody::DeclareKeyExpr(DeclareKeyExpr {
         id: 7,
-        wire_expr: WireExpr { scope: 0, mapping: Mapping::Sender, suffix: "example/ke" },
+        wire_expr: WireExpr {
+            scope: 0,
+            mapping: Mapping::Sender,
+            suffix: "example/ke",
+        },
     });
-    let msg = Declare { id: None, qos: QoS::default(), timestamp: None, nodeid: NodeId::default(), body };
+    let msg = Declare {
+        id: None,
+        qos: QoS::default(),
+        timestamp: None,
+        nodeid: NodeId::default(),
+        body,
+    };
     let len = crate::ZLen::z_len(&msg);
     let mut buf = [0u8; BUF_SIZE];
     crate::ZEncode::z_encode(&msg, &mut &mut buf[..]).unwrap();
     let mut hex_buf = [0u8; BUF_SIZE * 2];
     let hex = hex_encode(&buf[..len], &mut hex_buf);
     let expected = "1e6007000a6578616d706c652f6b65";
-    assert_eq!(hex, expected, "\nDeclareKeyExpr — actual: {hex}, expected: {expected}");
+    assert_eq!(
+        hex, expected,
+        "\nDeclareKeyExpr — actual: {hex}, expected: {expected}"
+    );
     let decoded = <Declare as crate::ZDecode>::z_decode(&mut &buf[..len]).unwrap();
     assert_eq!(msg, decoded);
     let mut buf2 = [0u8; BUF_SIZE];
@@ -238,7 +324,10 @@ fn hex_declare_key_expr() {
 #[test]
 fn hex_transport_batch() {
     let keepalive = KeepAlive {};
-    let close = Close { reason: 0, behaviour: CloseBehaviour::Link };
+    let close = Close {
+        reason: 0,
+        behaviour: CloseBehaviour::Link,
+    };
     let len_ka = crate::ZLen::z_len(&keepalive);
     let len_cl = crate::ZLen::z_len(&close);
     let total = len_ka + len_cl;
@@ -248,7 +337,10 @@ fn hex_transport_batch() {
     let mut hex_buf = [0u8; BUF_SIZE * 2];
     let hex = hex_encode(&buf[..total], &mut hex_buf);
     let expected = "040300";
-    assert_eq!(hex, expected, "\nTransport batch — actual: {hex}, expected: {expected}");
+    assert_eq!(
+        hex, expected,
+        "\nTransport batch — actual: {hex}, expected: {expected}"
+    );
     let decoded_ka = <KeepAlive as crate::ZDecode>::z_decode(&mut &buf[..]).unwrap();
     assert_eq!(keepalive, decoded_ka);
     let decoded_cl = <Close as crate::ZDecode>::z_decode(&mut &buf[len_ka..]).unwrap();

@@ -170,69 +170,69 @@ impl State {
                     #[cfg(feature = "auth")]
                     ref mine_auth,
                 } => {
-                    if mine_whatami == WhatAmI::Peer
-                        && syn.identifier.whatami == WhatAmI::Peer
-                    {
+                    if mine_whatami == WhatAmI::Peer && syn.identifier.whatami == WhatAmI::Peer {
                         if mine_zid > syn.identifier.zid {
-                        zenoh_proto::debug!(
-                            "Simultaneous open: {:?} yields to {:?} (higher ZID)",
-                            mine_zid,
-                            syn.identifier.zid
-                        );
+                            zenoh_proto::debug!(
+                                "Simultaneous open: {:?} yields to {:?} (higher ZID)",
+                                mine_zid,
+                                syn.identifier.zid
+                            );
 
-                        let batch_size = mine_batch_size.min(syn.resolution.batch_size.0);
-                        let resolution = mine_resolution;
+                            let batch_size = mine_batch_size.min(syn.resolution.batch_size.0);
+                            let resolution = mine_resolution;
 
-                        #[cfg(feature = "auth")]
-                        let ack_auth = mine_auth.as_ref().map(|bytes| {
-                            let payload: &'static [u8] =
-                                unsafe { core::mem::transmute(bytes.as_slice()) };
-                            zenoh_proto::exts::Auth { payload }
-                        });
-                        #[cfg(not(feature = "auth"))]
-                        let ack_auth: Option<zenoh_proto::exts::Auth<'_>> = None;
+                            #[cfg(feature = "auth")]
+                            let ack_auth = mine_auth.as_ref().map(|bytes| {
+                                let payload: &'static [u8] =
+                                    unsafe { core::mem::transmute(bytes.as_slice()) };
+                                zenoh_proto::exts::Auth { payload }
+                            });
+                            #[cfg(not(feature = "auth"))]
+                            let ack_auth: Option<
+                                zenoh_proto::exts::Auth<'_>,
+                            > = None;
 
-                        *self = Self::WaitingOpenSyn {
-                            mine_zid,
-                            mine_whatami,
-                            mine_batch_size: batch_size,
-                            mine_resolution: resolution,
-                            mine_lease,
-                        };
+                            *self = Self::WaitingOpenSyn {
+                                mine_zid,
+                                mine_whatami,
+                                mine_batch_size: batch_size,
+                                mine_resolution: resolution,
+                                mine_lease,
+                            };
 
-                        (
-                            Some(TransportMessage::InitAck(InitAck {
-                                identifier: InitIdentifier {
-                                    zid: mine_zid,
-                                    whatami: mine_whatami,
-                                },
-                                resolution: InitResolution {
-                                    resolution,
-                                    batch_size: BatchSize(batch_size),
-                                },
-                                cookie: buff, // TODO: cypher ChaCha20
-                                version: zenoh_proto::VERSION,
-                                qos: None,
-                                qos_link: None,
-                                auth: ack_auth,
-                                mlink: None,
-                                lowlatency: None,
-                                compression: None,
-                                patch: Patch::none(),
-                            })),
-                            None,
-                        )
-                    } else if mine_zid < syn.identifier.zid {
-                        zenoh_proto::debug!(
-                            "Simultaneous open: {:?} wins over {:?} (lower ZID)",
-                            mine_zid,
-                            syn.identifier.zid
-                        );
+                            (
+                                Some(TransportMessage::InitAck(InitAck {
+                                    identifier: InitIdentifier {
+                                        zid: mine_zid,
+                                        whatami: mine_whatami,
+                                    },
+                                    resolution: InitResolution {
+                                        resolution,
+                                        batch_size: BatchSize(batch_size),
+                                    },
+                                    cookie: buff, // TODO: cypher ChaCha20
+                                    version: zenoh_proto::VERSION,
+                                    qos: None,
+                                    qos_link: None,
+                                    auth: ack_auth,
+                                    mlink: None,
+                                    lowlatency: None,
+                                    compression: None,
+                                    patch: Patch::none(),
+                                })),
+                                None,
+                            )
+                        } else if mine_zid < syn.identifier.zid {
+                            zenoh_proto::debug!(
+                                "Simultaneous open: {:?} wins over {:?} (lower ZID)",
+                                mine_zid,
+                                syn.identifier.zid
+                            );
 
-                        (None, None)
-                    } else {
-                         zenoh_proto::zbail!(@ret (None, None), TransportError::InvalidAttribute)
-                    }
+                            (None, None)
+                        } else {
+                            zenoh_proto::zbail!(@ret (None, None), TransportError::InvalidAttribute)
+                        }
                     } else {
                         zenoh_proto::zbail!(@ret (None, None), TransportError::InvalidState)
                     }

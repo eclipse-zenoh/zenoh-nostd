@@ -1,8 +1,9 @@
 use core::cell::UnsafeCell;
 use zenoh_proto::{
-    Endpoint, SessionError, TransportLinkError, keyexpr,
+    Endpoint, SessionError, TransportLinkError,
     exts::QoS,
     fields::{ConsolidationMode, Reliability, WireExpr, ZenohIdProto},
+    keyexpr,
     msgs::{
         Declare, DeclareBody, Del, Err, NetworkBody, NetworkMessage, PushBody, Put, Reply,
         Response, ResponseBody, ResponseFinal, UndeclareQueryable,
@@ -14,7 +15,10 @@ use crate::{
     api::callbacks::ZCallbacks,
     api::connectivity::{ConnectivityState, TransportEvent},
     config::ZSessionConfig,
-    io::{driver::Driver, transport::{TransportLink, ZTransportLinkTx}},
+    io::{
+        driver::Driver,
+        transport::{TransportLink, ZTransportLinkTx},
+    },
     platform::ZLinkManager,
     resources::Resources,
 };
@@ -30,10 +34,10 @@ pub mod background_sub;
 pub mod delete;
 pub mod get;
 pub mod liveliness;
+pub mod r#pub;
 pub mod put;
 pub mod querier;
 pub mod queryable;
-pub mod r#pub;
 #[cfg(feature = "scouting")]
 pub mod scout;
 pub mod sub;
@@ -106,31 +110,35 @@ where
     #[allow(dead_code)]
     pub fn has_queryable(&self, ke: &keyexpr) -> bool {
         let mut found = false;
-        self.queryable_callbacks.for_each_keyexpr(|_id, registered_ke| {
-            if !found && ke.intersects(registered_ke) {
-                found = true;
-            }
-        });
+        self.queryable_callbacks
+            .for_each_keyexpr(|_id, registered_ke| {
+                if !found && ke.intersects(registered_ke) {
+                    found = true;
+                }
+            });
         found
     }
 
-pub(crate) fn resolve_keyexpr<'a>(&self, wire_expr: &WireExpr<'a>) -> Option<heapless::String<64>> {
-    if !wire_expr.suffix.is_empty() {
-        let mut s = heapless::String::new();
-        s.push_str(wire_expr.suffix).ok()?;
-        return Some(s);
-    }
-    // Mapped keyexpr: look up scope ID
-    let scope = wire_expr.scope;
-    for m in &self.ke_mappings {
-        if m.scope == scope {
+    pub(crate) fn resolve_keyexpr<'a>(
+        &self,
+        wire_expr: &WireExpr<'a>,
+    ) -> Option<heapless::String<64>> {
+        if !wire_expr.suffix.is_empty() {
             let mut s = heapless::String::new();
-            s.push_str(&m.keyexpr).ok()?;
+            s.push_str(wire_expr.suffix).ok()?;
             return Some(s);
         }
+        // Mapped keyexpr: look up scope ID
+        let scope = wire_expr.scope;
+        for m in &self.ke_mappings {
+            if m.scope == scope {
+                let mut s = heapless::String::new();
+                s.push_str(&m.keyexpr).ok()?;
+                return Some(s);
+            }
+        }
+        None
     }
-    None
-}
 
     pub(crate) fn next(&mut self) -> u32 {
         let next = self.next;
@@ -151,7 +159,8 @@ pub struct Session<'res, Config>
 where
     Config: ZSessionConfig,
 {
-    driver: UnsafeCell<Driver<'res, <Config::LinkManager as ZLinkManager>::Link<'res>, Config::Buff>>,
+    driver:
+        UnsafeCell<Driver<'res, <Config::LinkManager as ZLinkManager>::Link<'res>, Config::Buff>>,
     state: UnsafeCell<SessionState<'res, Config>>,
     connectivity: ConnectivityState<'static>,
 }
@@ -179,7 +188,9 @@ where
     }
 
     #[allow(clippy::mut_from_ref)]
-    pub(crate) fn driver(&self) -> &mut Driver<'res, <Config::LinkManager as ZLinkManager>::Link<'res>, Config::Buff> {
+    pub(crate) fn driver(
+        &self,
+    ) -> &mut Driver<'res, <Config::LinkManager as ZLinkManager>::Link<'res>, Config::Buff> {
         // SAFETY: Single-threaded execution. Callers guarantee exclusive access.
         unsafe { &mut *self.driver.get() }
     }
@@ -213,10 +224,7 @@ where
         unsafe { &*self.driver.get() }.zid()
     }
 
-    pub(crate) fn _undeclare_queryable(
-        &self,
-        id: u32,
-    ) -> core::result::Result<(), SessionError> {
+    pub(crate) fn _undeclare_queryable(&self, id: u32) -> core::result::Result<(), SessionError> {
         self.state().queryable_callbacks.remove(id)?;
 
         let msg = Declare {
@@ -399,11 +407,9 @@ macro_rules! __session_connect {
             static_cell::StaticCell::new();
 
         SESSION.init($crate::session::Session::new(
-            RESOURCES.init($crate::session::Resources::default()).init(
-                config
-                    .transports()
-                    .connect($endpoint, config.buff())?,
-            ),
+            RESOURCES
+                .init($crate::session::Resources::default())
+                .init(config.transports().connect($endpoint, config.buff())?),
         )) as &$crate::session::Session<'static, $CONFIG>
     }};
 }
@@ -503,14 +509,98 @@ macro_rules! __session_peer_connect {
             static_cell::StaticCell::new();
 
         SESSION.init($crate::session::Session::new(
-            RESOURCES.init($crate::session::Resources::default()).init(
-                config.transports().peer_connect($endpoint, config.buff())?,
-            ),
+            RESOURCES
+                .init($crate::session::Resources::default())
+                .init(config.transports().peer_connect($endpoint, config.buff())?),
         )) as &$crate::session::Session<'static, $CONFIG>
     }};
 }
 
-#[cfg(feature = "peer-mode")]
+#[cfg(test)]
+#[cfg(feature = "session-check")]
+mod tests {
+    use super::*;
+    use crate::api::arg::SampleRef;
+    use crate::api::callbacks::FixedCapacityCallbacks;
+    use crate::config::ZSessionConfig;
+    use crate::io::link::{EmbeddedIOLink, ZLinkManager};
+    use crate::io::transport::TransportLinkManager;
+    use dyn_utils::storage::RawOrBox;
+    use zenoh_proto::Endpoint;
+
+    struct EmptyWrite;
+    impl embedded_io::ErrorType for EmptyWrite {
+        type Error = core::convert::Infallible;
+    }
+    impl embedded_io::Write for EmptyWrite {
+        fn write(&mut self, _buf: &[u8]) -> Result<usize, Self::Error> {
+            Ok(0)
+        }
+        fn flush(&mut self) -> Result<(), Self::Error> {
+            Ok(())
+        }
+    }
+
+    struct EmptyRead;
+    impl embedded_io::ErrorType for EmptyRead {
+        type Error = core::convert::Infallible;
+    }
+    impl embedded_io::Read for EmptyRead {
+        fn read(&mut self, _buf: &mut [u8]) -> Result<usize, Self::Error> {
+            Ok(0)
+        }
+    }
+
+    struct TestLinkManager;
+    impl ZLinkManager for TestLinkManager {
+        type Link<'a> = EmbeddedIOLink<EmptyWrite, EmptyRead>;
+        fn connect(&self, _endpoint: Endpoint<'_>) -> Result<Self::Link<'_>, zenoh_proto::LinkError> {
+            Ok(EmbeddedIOLink::new(EmptyWrite, EmptyRead, 256, false))
+        }
+        fn listen(&self, _endpoint: Endpoint<'_>) -> Result<Self::Link<'_>, zenoh_proto::LinkError> {
+            Ok(EmbeddedIOLink::new(EmptyWrite, EmptyRead, 256, false))
+        }
+    }
+
+    struct TestConfig;
+    impl ZSessionConfig for TestConfig {
+        type Buff = [u8; 256];
+        type LinkManager = TestLinkManager;
+        type SubCallbacks<'res> = FixedCapacityCallbacks<'res, SampleRef, 8, RawOrBox<56>>;
+        type GetCallbacks<'res> = FixedCapacityCallbacks<'res, crate::api::arg::GetResponseRef, 8, RawOrBox<56>>;
+        type QueryableCallbacks<'res> = FixedCapacityCallbacks<'res, crate::api::arg::QueryableQueryRef<'res, Self>, 8, RawOrBox<56>>;
+        type LivelinessCallbacks<'res> = FixedCapacityCallbacks<'res, SampleRef, 8, RawOrBox<56>>;
+
+        fn transports(&self) -> &TransportLinkManager<Self::LinkManager> {
+            unreachable!("not called for SessionState::new()")
+        }
+        fn buff(&self) -> Self::Buff {
+            [0u8; 256]
+        }
+    }
+
+    #[test]
+    fn session_check_no_subscriber() {
+        let state = SessionState::<'_, TestConfig>::new();
+        let ke = keyexpr::new("test/foo").unwrap();
+        assert!(!state.has_subscription(ke));
+    }
+
+    #[test]
+    fn session_check_no_queryable() {
+        let state = SessionState::<'_, TestConfig>::new();
+        let ke = keyexpr::new("test/foo").unwrap();
+        assert!(!state.has_queryable(ke));
+    }
+
+    #[test]
+    fn session_check_empty_subscriber_list_returns_false() {
+        let state = SessionState::<'_, TestConfig>::new();
+        let ke = keyexpr::new("test/foo").unwrap();
+        assert!(!state.has_subscription(ke));
+    }
+}
+
 #[macro_export]
 macro_rules! __session_peer_listen {
     (
@@ -527,9 +617,9 @@ macro_rules! __session_peer_listen {
             static_cell::StaticCell::new();
 
         SESSION.init($crate::session::Session::new(
-            RESOURCES.init($crate::session::Resources::default()).init(
-                config.transports().peer_listen($endpoint, config.buff())?,
-            ),
+            RESOURCES
+                .init($crate::session::Resources::default())
+                .init(config.transports().peer_listen($endpoint, config.buff())?),
         )) as &$crate::session::Session<'static, $CONFIG>
     }};
 }

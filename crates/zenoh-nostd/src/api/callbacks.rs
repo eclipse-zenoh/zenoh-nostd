@@ -14,8 +14,7 @@ pub trait ZCallback {
     fn call(&mut self, arg: <Self::Arg as ZArg>::Of<'_>);
 }
 
-pub type DynCallback<'a, Callback, Arg> =
-    DynObject<dyn ZDynCallback<Arg = Arg> + 'a, Callback>;
+pub type DynCallback<'a, Callback, Arg> = DynObject<dyn ZDynCallback<Arg = Arg> + 'a, Callback>;
 
 pub trait ZCallbacks<'a, Arg>
 where
@@ -56,21 +55,15 @@ where
     fn for_each_keyexpr(&self, f: impl FnMut(u32, &'static keyexpr));
 }
 
-pub struct FixedCapacityCallbacks<
-    'a,
-    Arg: ZArg,
-    const CAPACITY: usize,
-    Callback: Storage,
-> {
+pub struct FixedCapacityCallbacks<'a, Arg: ZArg, const CAPACITY: usize, Callback: Storage> {
     keyexprs: FnvIndexMap<u32, &'static keyexpr, CAPACITY>,
-    callbacks:
-        FnvIndexMap<(u32, &'static keyexpr), DynCallback<'a, Callback, Arg>, CAPACITY>,
+    callbacks: FnvIndexMap<(u32, &'static keyexpr), DynCallback<'a, Callback, Arg>, CAPACITY>,
     timedouts: FnvIndexMap<u32, u64, CAPACITY>,
     counters: FnvIndexMap<u32, usize, CAPACITY>,
 }
 
-impl<'a, Arg: ZArg + 'a, const CAPACITY: usize, Callback: Storage>
-    ZCallbacks<'a, Arg> for FixedCapacityCallbacks<'a, Arg, CAPACITY, Callback>
+impl<'a, Arg: ZArg + 'a, const CAPACITY: usize, Callback: Storage> ZCallbacks<'a, Arg>
+    for FixedCapacityCallbacks<'a, Arg, CAPACITY, Callback>
 {
     type Callback = Callback;
 
@@ -193,10 +186,8 @@ impl<'a, Arg: ZArg + 'a, const CAPACITY: usize, Callback: Storage>
 #[cfg(feature = "alloc")]
 pub struct AllocCallbacks<'a, Arg: ZArg, Callback: Storage> {
     keyexprs: alloc::collections::BTreeMap<u32, &'static keyexpr>,
-    callbacks: alloc::collections::BTreeMap<
-        (u32, &'static keyexpr),
-        DynCallback<'a, Callback, Arg>,
-    >,
+    callbacks:
+        alloc::collections::BTreeMap<(u32, &'static keyexpr), DynCallback<'a, Callback, Arg>>,
     timedouts: alloc::collections::BTreeMap<u32, u64>,
     counters: alloc::collections::BTreeMap<u32, usize>,
 }
@@ -247,9 +238,7 @@ impl<'a, Arg: ZArg + 'a, Callback: Storage> ZCallbacks<'a, Arg>
     }
 
     fn drop_timedout(&mut self) {
-        self.timedouts.retain(|_id, _timedout| {
-            true
-        });
+        self.timedouts.retain(|_id, _timedout| true);
     }
 
     fn remove(&mut self, id: u32) -> core::result::Result<(), zenoh_proto::CollectionError> {

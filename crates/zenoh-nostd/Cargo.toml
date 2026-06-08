@@ -44,6 +44,7 @@ creusot = ["zenoh-sansio/creusot"]
 verus = ["zenoh-sansio/verus"]
 
 auth = ["zenoh-sansio/auth"]
+reliability = ["zenoh-sansio/reliability"]
 
 [dependencies]
 zenoh-derive.workspace = true

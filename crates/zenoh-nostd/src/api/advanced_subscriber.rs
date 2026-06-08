@@ -26,31 +26,26 @@ pub struct AdvancedSubscriber<
     ke: &'static keyexpr,
     #[allow(dead_code)]
     session: &'a crate::session::Session<'res, Config>,
-    history: Vec<
-        FixedCapacitySample<MAX_KEYEXPR, MAX_PAYLOAD, MAX_ATTACHMENT>,
-        HISTORY_SIZE,
-    >,
+    history: Vec<FixedCapacitySample<MAX_KEYEXPR, MAX_PAYLOAD, MAX_ATTACHMENT>, HISTORY_SIZE>,
 }
 
 impl<
-        'a,
-        'res,
-        Config: ZSessionConfig,
-        const HISTORY_SIZE: usize,
-        const MAX_KEYEXPR: usize,
-        const MAX_PAYLOAD: usize,
-        const MAX_ATTACHMENT: usize,
-    >
-    AdvancedSubscriber<'a, 'res, Config, HISTORY_SIZE, MAX_KEYEXPR, MAX_PAYLOAD, MAX_ATTACHMENT>
+    'a,
+    'res,
+    Config: ZSessionConfig,
+    const HISTORY_SIZE: usize,
+    const MAX_KEYEXPR: usize,
+    const MAX_PAYLOAD: usize,
+    const MAX_ATTACHMENT: usize,
+> AdvancedSubscriber<'a, 'res, Config, HISTORY_SIZE, MAX_KEYEXPR, MAX_PAYLOAD, MAX_ATTACHMENT>
 {
     pub fn record(&mut self, sample: &Sample<'_>) -> Result<(), SessionError> {
         if sample.kind() != SampleKind::Put {
             return Ok(());
         }
-        let owned = FixedCapacitySample::<MAX_KEYEXPR, MAX_PAYLOAD, MAX_ATTACHMENT>::try_from(
-            sample,
-        )
-        .map_err(|_| SessionError::RequestTimedout)?;
+        let owned =
+            FixedCapacitySample::<MAX_KEYEXPR, MAX_PAYLOAD, MAX_ATTACHMENT>::try_from(sample)
+                .map_err(|_| SessionError::RequestTimedout)?;
         if self.history.is_full() {
             self.history.remove(0);
         }
@@ -60,9 +55,7 @@ impl<
         Ok(())
     }
 
-    pub fn history(
-        &self,
-    ) -> &[FixedCapacitySample<MAX_KEYEXPR, MAX_PAYLOAD, MAX_ATTACHMENT>] {
+    pub fn history(&self) -> &[FixedCapacitySample<MAX_KEYEXPR, MAX_PAYLOAD, MAX_ATTACHMENT>] {
         self.history.as_slice()
     }
 

@@ -1,11 +1,11 @@
 #[cfg(feature = "acl")]
 pub mod acl;
-#[cfg(feature = "cancellation_token")]
-pub mod cancellation_token;
 pub mod advanced_publisher;
 pub mod advanced_subscriber;
-pub mod auto_reconnect;
 pub mod arg;
+pub mod auto_reconnect;
+#[cfg(feature = "cancellation_token")]
+pub mod cancellation_token;
 pub mod connectivity;
 pub mod encoding;
 #[cfg(feature = "matching")]
@@ -18,9 +18,9 @@ pub mod response;
 pub mod ring_channel;
 pub mod sample;
 
-pub mod callbacks;
 #[cfg(feature = "bytes")]
 pub mod bytes;
+pub mod callbacks;
 #[cfg(feature = "serialization")]
 pub mod serialization;
 

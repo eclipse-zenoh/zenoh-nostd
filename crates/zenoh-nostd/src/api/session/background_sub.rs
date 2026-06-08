@@ -54,13 +54,7 @@ where
 {
     session: &'a Session<'res, Config>,
     ke: &'static keyexpr,
-    callback: Option<
-        DynCallback<
-            'res,
-            SubCallbackStorage<'res, Config>,
-            SampleRef,
-        >,
-    >,
+    callback: Option<DynCallback<'res, SubCallbackStorage<'res, Config>, SampleRef>>,
 }
 
 impl<'a, 'res, Config> BackgroundSubscriberBuilder<'a, 'res, Config>
@@ -75,10 +69,7 @@ where
         }
     }
 
-    pub fn callback_sync(
-        self,
-        callback: impl FnMut(&Sample<'_>) + 'res,
-    ) -> Self {
+    pub fn callback_sync(self, callback: impl FnMut(&Sample<'_>) + 'res) -> Self {
         Self {
             session: self.session,
             ke: self.ke,
@@ -86,10 +77,7 @@ where
         }
     }
 
-    pub fn callback(
-        self,
-        callback: impl FnMut(&Sample<'_>) + 'res,
-    ) -> Self {
+    pub fn callback(self, callback: impl FnMut(&Sample<'_>) + 'res) -> Self {
         Self {
             session: self.session,
             ke: self.ke,
@@ -169,11 +157,8 @@ where
         let mut state = self.state();
         let id = state.next();
 
-        let callback: DynCallback<
-            'res,
-            LivelinessCallbackStorage<'res, Config>,
-            SampleRef,
-        > = DynObject::new(SyncCallback::new(callback));
+        let callback: DynCallback<'res, LivelinessCallbackStorage<'res, Config>, SampleRef> =
+            DynObject::new(SyncCallback::new(callback));
 
         state.liveliness_callbacks.insert(id, ke, None, callback)?;
 

@@ -168,3 +168,63 @@ impl<'a> TryFrom<&'a str> for Endpoint<'a> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use core::convert::TryFrom;
+    use crate::Endpoint;
+
+    #[test]
+    fn endpoint_tcp() {
+        let ep = Endpoint::try_from("tcp/127.0.0.1:7447").unwrap();
+        assert_eq!(ep.protocol().as_str(), "tcp");
+        assert_eq!(ep.address().as_str(), "127.0.0.1:7447");
+    }
+
+    #[test]
+    fn endpoint_udp() {
+        let ep = Endpoint::try_from("udp/192.168.1.1:7447").unwrap();
+        assert_eq!(ep.protocol().as_str(), "udp");
+        assert_eq!(ep.address().as_str(), "192.168.1.1:7447");
+    }
+
+    #[test]
+    fn endpoint_serial() {
+        let ep = Endpoint::try_from("serial//dev/ttyUSB0").unwrap();
+        assert_eq!(ep.protocol().as_str(), "serial");
+        assert_eq!(ep.address().as_str(), "/dev/ttyUSB0");
+    }
+
+    #[test]
+    fn endpoint_no_protocol_separator_is_err() {
+        assert!(Endpoint::try_from("tcp").is_err());
+    }
+
+    #[test]
+    fn endpoint_empty_address_is_err() {
+        assert!(Endpoint::try_from("tcp/").is_err());
+    }
+
+    #[test]
+    fn endpoint_metadata_not_supported() {
+        assert!(Endpoint::try_from("tcp/127.0.0.1:7447?mtu=1500").is_err());
+    }
+
+    #[test]
+    fn endpoint_config_not_supported() {
+        assert!(Endpoint::try_from("tcp/127.0.0.1:7447#config").is_err());
+    }
+
+    #[test]
+    fn endpoint_display() {
+        let ep = Endpoint::try_from("tcp/127.0.0.1:7447").unwrap();
+        assert_eq!(format!("{}", ep), "tcp/127.0.0.1:7447");
+    }
+
+    #[test]
+    fn endpoint_protocol_address_accessors() {
+        let ep = Endpoint::try_from("ws/example.com:8080/path").unwrap();
+        assert_eq!(ep.protocol().as_str(), "ws");
+        assert_eq!(ep.address().as_str(), "example.com:8080/path");
+    }
+}

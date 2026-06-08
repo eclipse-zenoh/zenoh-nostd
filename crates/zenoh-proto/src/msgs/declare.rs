@@ -26,6 +26,8 @@ pub enum DeclareBody<'a> {
     UndeclareQueryable(UndeclareQueryable<'a>),
     DeclareToken(DeclareToken<'a>),
     UndeclareToken(UndeclareToken<'a>),
+    DeclarePublisher(DeclarePublisher<'a>),
+    UndeclarePublisher(UndeclarePublisher),
     DeclareFinal(DeclareFinal),
 }
 
@@ -98,6 +100,20 @@ pub struct UndeclareToken<'a> {
     pub id: u32,
     #[zenoh(ext = 0x0f)]
     pub wire_expr: Option<WireExpr<'a>>,
+}
+
+#[derive(ZStruct, Debug, PartialEq, Default)]
+#[zenoh(header = "_|M|N|ID:5=0x08")]
+pub struct DeclarePublisher<'a> {
+    pub id: u32,
+    #[zenoh(flatten, shift = 5)]
+    pub wire_expr: WireExpr<'a>,
+}
+
+#[derive(ZStruct, Debug, PartialEq, Default)]
+#[zenoh(header = "_:3|ID:5=0x09")]
+pub struct UndeclarePublisher {
+    pub id: u32,
 }
 
 #[derive(ZStruct, Debug, PartialEq, Default)]

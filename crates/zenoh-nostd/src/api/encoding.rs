@@ -17,7 +17,8 @@ pub const APPLICATION_PYTHON_SERIALIZED_OBJECT: Encoding<'static> =
 pub const APPLICATION_PROTOBUF: Encoding<'static> = Encoding::application_protobuf();
 pub const APPLICATION_JAVA_SERIALIZED_OBJECT: Encoding<'static> =
     Encoding::application_java_serialized_object();
-pub const APPLICATION_OPENMETRICS_TEXT: Encoding<'static> = Encoding::application_openmetrics_text();
+pub const APPLICATION_OPENMETRICS_TEXT: Encoding<'static> =
+    Encoding::application_openmetrics_text();
 pub const IMAGE_PNG: Encoding<'static> = Encoding::image_png();
 pub const IMAGE_JPEG: Encoding<'static> = Encoding::image_jpeg();
 pub const IMAGE_GIF: Encoding<'static> = Encoding::image_gif();
@@ -90,8 +91,7 @@ pub mod ext {
         }
 
         fn schema(&self) -> Option<&str> {
-            self.schema
-                .and_then(|b| core::str::from_utf8(b).ok())
+            self.schema.and_then(|b| core::str::from_utf8(b).ok())
         }
 
         fn set_schema(&mut self, schema: &'a str) -> Result<(), EncodingError> {

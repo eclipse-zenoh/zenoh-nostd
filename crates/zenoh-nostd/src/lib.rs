@@ -17,10 +17,10 @@ pub mod session {
     pub use zenoh_proto::{Endpoint, Error};
 
     pub use super::api::{
-        connectivity::{ConnectivityState, TransportEvent},
         advanced_publisher::*,
         advanced_subscriber::*,
         auto_reconnect::*,
+        connectivity::{ConnectivityState, TransportEvent},
         encoding::*,
         query::*,
         response::*,
@@ -52,7 +52,9 @@ pub mod session {
 
     pub use zenoh_proto::msgs::exts::QoS;
     pub use zenoh_proto::msgs::exts::QueryTarget;
-    pub use zenoh_proto::msgs::fields::{CongestionControl, ConsolidationMode, Locality, Priority, Reliability};
+    pub use zenoh_proto::msgs::fields::{
+        CongestionControl, ConsolidationMode, Locality, Priority, Reliability,
+    };
     pub use zenoh_proto::msgs::{DeclareKeyExpr, Interest, UndeclareKeyExpr};
 
     pub mod zenoh {
@@ -65,14 +67,15 @@ pub mod session {
 
         #[cfg(feature = "peer-mode")]
         pub use super::super::api::session::{
-            session_peer_connect as peer_connect,
-            session_peer_listen as peer_listen,
+            session_peer_connect as peer_connect, session_peer_listen as peer_listen,
         };
 
         pub use crate::{__session_connect as connect, __session_listen as listen};
 
         #[cfg(feature = "peer-mode")]
-        pub use crate::{__session_peer_connect as peer_connect, __session_peer_listen as peer_listen};
+        pub use crate::{
+            __session_peer_connect as peer_connect, __session_peer_listen as peer_listen,
+        };
 
         pub use zenoh_proto::{debug, error, info, keyexpr, trace, warn, zbail};
 

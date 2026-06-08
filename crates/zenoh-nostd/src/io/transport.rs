@@ -166,19 +166,19 @@ impl<LinkManager> TransportLinkManager<LinkManager> {
             }
             builder
                 .connect(
-                &mut link,
-                |link, bytes| {
-                    if link.is_streamed() {
-                        link.read_exact(bytes).map(|_| bytes.len())
-                    } else {
-                        link.read(bytes)
-                    }
-                },
-                |link, bytes| link.write_all(bytes),
-            )
-            .with_prefixed(streamed)
-            .finish()
-            .map_err(|e| e.flatten_map::<TransportLinkError>())?
+                    &mut link,
+                    |link, bytes| {
+                        if link.is_streamed() {
+                            link.read_exact(bytes).map(|_| bytes.len())
+                        } else {
+                            link.read(bytes)
+                        }
+                    },
+                    |link, bytes| link.write_all(bytes),
+                )
+                .with_prefixed(streamed)
+                .finish()
+                .map_err(|e| e.flatten_map::<TransportLinkError>())?
         };
 
         Ok(TransportLink::new(link, transport))
@@ -206,19 +206,19 @@ impl<LinkManager> TransportLinkManager<LinkManager> {
             }
             builder
                 .listen(
-                &mut link,
-                |link, bytes| {
-                    if link.is_streamed() {
-                        link.read_exact(bytes).map(|_| bytes.len())
-                    } else {
-                        link.read(bytes)
-                    }
-                },
-                |link, bytes| link.write_all(bytes),
-            )
-            .with_prefixed(streamed)
-            .finish()
-            .map_err(|e| e.flatten_map::<TransportLinkError>())?
+                    &mut link,
+                    |link, bytes| {
+                        if link.is_streamed() {
+                            link.read_exact(bytes).map(|_| bytes.len())
+                        } else {
+                            link.read(bytes)
+                        }
+                    },
+                    |link, bytes| link.write_all(bytes),
+                )
+                .with_prefixed(streamed)
+                .finish()
+                .map_err(|e| e.flatten_map::<TransportLinkError>())?
         };
 
         Ok(TransportLink::new(link, transport))
@@ -248,19 +248,19 @@ impl<LinkManager> TransportLinkManager<LinkManager> {
             }
             builder
                 .peer_connect(
-                &mut link,
-                |link, bytes| {
-                    if link.is_streamed() {
-                        link.read_exact(bytes).map(|_| bytes.len())
-                    } else {
-                        link.read(bytes)
-                    }
-                },
-                |link, bytes| link.write_all(bytes),
-            )
-            .with_prefixed(streamed)
-            .finish()
-            .map_err(|e| e.flatten_map::<TransportLinkError>())?
+                    &mut link,
+                    |link, bytes| {
+                        if link.is_streamed() {
+                            link.read_exact(bytes).map(|_| bytes.len())
+                        } else {
+                            link.read(bytes)
+                        }
+                    },
+                    |link, bytes| link.write_all(bytes),
+                )
+                .with_prefixed(streamed)
+                .finish()
+                .map_err(|e| e.flatten_map::<TransportLinkError>())?
         };
 
         Ok(TransportLink::new(link, transport))
@@ -290,19 +290,19 @@ impl<LinkManager> TransportLinkManager<LinkManager> {
             }
             builder
                 .peer_listen(
-                &mut link,
-                |link, bytes| {
-                    if link.is_streamed() {
-                        link.read_exact(bytes).map(|_| bytes.len())
-                    } else {
-                        link.read(bytes)
-                    }
-                },
-                |link, bytes| link.write_all(bytes),
-            )
-            .with_prefixed(streamed)
-            .finish()
-            .map_err(|e| e.flatten_map::<TransportLinkError>())?
+                    &mut link,
+                    |link, bytes| {
+                        if link.is_streamed() {
+                            link.read_exact(bytes).map(|_| bytes.len())
+                        } else {
+                            link.read(bytes)
+                        }
+                    },
+                    |link, bytes| link.write_all(bytes),
+                )
+                .with_prefixed(streamed)
+                .finish()
+                .map_err(|e| e.flatten_map::<TransportLinkError>())?
         };
 
         Ok(TransportLink::new(link, transport))
@@ -332,19 +332,19 @@ impl<LinkManager> TransportLinkManager<LinkManager> {
             }
             builder
                 .connect(
-                &mut link,
-                |link, bytes| {
-                    if link.is_streamed() {
-                        link.read_exact(bytes).map(|_| bytes.len())
-                    } else {
-                        link.read(bytes)
-                    }
-                },
-                |link, bytes| link.write_all(bytes),
-            )
-            .with_prefixed(streamed)
-            .finish()
-            .map_err(|e| e.flatten_map::<TransportLinkError>())?
+                    &mut link,
+                    |link, bytes| {
+                        if link.is_streamed() {
+                            link.read_exact(bytes).map(|_| bytes.len())
+                        } else {
+                            link.read(bytes)
+                        }
+                    },
+                    |link, bytes| link.write_all(bytes),
+                )
+                .with_prefixed(streamed)
+                .finish()
+                .map_err(|e| e.flatten_map::<TransportLinkError>())?
         };
 
         Ok(TransportLink::new(link, transport))
@@ -374,19 +374,19 @@ impl<LinkManager> TransportLinkManager<LinkManager> {
             }
             builder
                 .listen(
-                &mut link,
-                |link, bytes| {
-                    if link.is_streamed() {
-                        link.read_exact(bytes).map(|_| bytes.len())
-                    } else {
-                        link.read(bytes)
-                    }
-                },
-                |link, bytes| link.write_all(bytes),
-            )
-            .with_prefixed(streamed)
-            .finish()
-            .map_err(|e| e.flatten_map::<TransportLinkError>())?
+                    &mut link,
+                    |link, bytes| {
+                        if link.is_streamed() {
+                            link.read_exact(bytes).map(|_| bytes.len())
+                        } else {
+                            link.read(bytes)
+                        }
+                    },
+                    |link, bytes| link.write_all(bytes),
+                )
+                .with_prefixed(streamed)
+                .finish()
+                .map_err(|e| e.flatten_map::<TransportLinkError>())?
         };
 
         Ok(TransportLink::new(link, transport))

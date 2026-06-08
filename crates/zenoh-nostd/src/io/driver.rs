@@ -1,8 +1,4 @@
-use zenoh_proto::{
-    EitherError, TransportLinkError,
-    fields::ZenohIdProto,
-    msgs::NetworkMessage,
-};
+use zenoh_proto::{EitherError, TransportLinkError, fields::ZenohIdProto, msgs::NetworkMessage};
 use zenoh_sansio::{ZTransportRx, ZTransportTx};
 
 use crate::{
@@ -63,7 +59,9 @@ where
         let mut did_work = false;
 
         // 1. Sync transport state machines (lease, keepalive timers)
-        self.rx.transport_mut().sync(None, core::time::Duration::ZERO);
+        self.rx
+            .transport_mut()
+            .sync(None, core::time::Duration::ZERO);
         self.tx
             .transport_mut()
             .sync(Some(self.rx.transport()), core::time::Duration::ZERO);
@@ -84,8 +82,7 @@ where
             transport.keepalive();
             let streamed = link.is_streamed();
             if let Some(bytes) = transport.flush(streamed) {
-                link.write_all(bytes)
-                    .map_err(TransportLinkError::from)?;
+                link.write_all(bytes).map_err(TransportLinkError::from)?;
             }
             did_work = true;
         }
@@ -113,9 +110,7 @@ where
                 }
                 Err(e) => {
                     connectivity.emit(TransportEvent::Disconnected);
-                    return Err(EitherError::A(
-                        e.flatten_map::<TransportLinkError>(),
-                    ));
+                    return Err(EitherError::A(e.flatten_map::<TransportLinkError>()));
                 }
             }
         }
@@ -126,8 +121,7 @@ where
             transport.close();
             let streamed = link.is_streamed();
             if let Some(bytes) = transport.flush(streamed) {
-                link.write_all(bytes)
-                    .map_err(TransportLinkError::from)?;
+                link.write_all(bytes).map_err(TransportLinkError::from)?;
             }
             connectivity.emit(TransportEvent::Disconnected);
             return Err(EitherError::A(TransportLinkError::TransportClosed));

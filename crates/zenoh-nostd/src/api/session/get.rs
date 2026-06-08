@@ -22,11 +22,8 @@ use crate::{
     session::GetResponse,
 };
 
-pub type FixedCapacityGetCallbacks<
-    'a,
-    const CAPACITY: usize,
-    Callback = RawOrBox<16>,
-> = FixedCapacityCallbacks<'a, GetResponseRef, CAPACITY, Callback>;
+pub type FixedCapacityGetCallbacks<'a, const CAPACITY: usize, Callback = RawOrBox<16>> =
+    FixedCapacityCallbacks<'a, GetResponseRef, CAPACITY, Callback>;
 
 #[cfg(feature = "alloc")]
 pub type AllocGetCallbacks<'a, Callback = RawOrBox<16>> =
@@ -59,13 +56,7 @@ where
     pub(crate) parameters: Option<&'a str>,
     pub(crate) payload: Option<&'a [u8]>,
     pub(crate) timeout: Option<Duration>,
-    pub(crate) callback: Option<
-        DynCallback<
-            'res,
-            CallbackStorage<'res, Config>,
-            GetResponseRef,
-        >,
-    >,
+    pub(crate) callback: Option<DynCallback<'res, CallbackStorage<'res, Config>, GetResponseRef>>,
     pub(crate) reliability: Reliability,
     pub(crate) query_target: QueryTarget,
 }
@@ -87,10 +78,7 @@ where
         }
     }
 
-    pub fn callback(
-        self,
-        callback: impl FnMut(&GetResponse<'_>) + 'res,
-    ) -> Self {
+    pub fn callback(self, callback: impl FnMut(&GetResponse<'_>) + 'res) -> Self {
         Self {
             session: self.session,
             ke: self.ke,
@@ -103,10 +91,7 @@ where
         }
     }
 
-    pub fn callback_sync(
-        self,
-        callback: impl FnMut(&GetResponse<'_>) + 'res,
-    ) -> Self {
+    pub fn callback_sync(self, callback: impl FnMut(&GetResponse<'_>) + 'res) -> Self {
         Self {
             session: self.session,
             ke: self.ke,
@@ -149,17 +134,13 @@ where
         self
     }
 
-    pub fn finish(
-        self,
-    ) -> core::result::Result<GetResponses, SessionError> {
+    pub fn finish(self) -> core::result::Result<GetResponses, SessionError> {
         let state = self.session.state();
         let rid = state.next();
 
         if let Some(callback) = self.callback {
             state.get_callbacks.drop_timedout();
-            state
-                .get_callbacks
-                .insert(rid, self.ke, None, callback)?;
+            state.get_callbacks.insert(rid, self.ke, None, callback)?;
         }
 
         let msg = Request {

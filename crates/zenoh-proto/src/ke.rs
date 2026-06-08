@@ -218,7 +218,10 @@ pub fn canonize_str(s: &str) -> Result<OwnedKeyExpr, crate::KeyexprError> {
 
     let result_str = out.as_str();
     if result_str.is_empty() {
-        crate::zbail!(crate::KeyexprError::EmptyChunk, "empty keyexpr after canonization");
+        crate::zbail!(
+            crate::KeyexprError::EmptyChunk,
+            "empty keyexpr after canonization"
+        );
     }
     keyexpr::new(result_str)?;
     Ok(out)
@@ -330,8 +333,7 @@ impl keyexpr {
         let b = other.as_bytes();
 
         if let Some(prefix) = a.strip_suffix(b"/**") {
-            return b.starts_with(prefix)
-                && (b.len() == prefix.len() || b[prefix.len()] == b'/');
+            return b.starts_with(prefix) && (b.len() == prefix.len() || b[prefix.len()] == b'/');
         }
 
         if a == b {

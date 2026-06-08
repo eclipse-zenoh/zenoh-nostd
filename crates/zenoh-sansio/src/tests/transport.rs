@@ -1,5 +1,8 @@
+use crate::{
+    Transport, ZTransportRx, ZTransportTx,
+    transport::{TransportTx, establishment::State},
+};
 use core::{cell::RefCell, time::Duration};
-use crate::{Transport, ZTransportRx, ZTransportTx, transport::{TransportTx, establishment::State}};
 use zenoh_proto::{exts::*, fields::*, keyexpr, msgs::*};
 
 fn zid(val: u128) -> ZenohIdProto {
@@ -434,8 +437,14 @@ fn transport_peer_simultaneous_connect_lower_zid_wins() {
 
     let (response, desc) = a.poll((TransportMessage::InitSyn(init), encoded));
 
-    assert!(response.is_none(), "lower ZID should not yield, expected no response");
-    assert!(desc.is_none(), "expected no description while waiting for InitAck");
+    assert!(
+        response.is_none(),
+        "lower ZID should not yield, expected no response"
+    );
+    assert!(
+        desc.is_none(),
+        "expected no description while waiting for InitAck"
+    );
 }
 
 #[test]
@@ -828,28 +837,20 @@ fn transport_state_machine_happy_path() {
     assert!(matches!(listener, State::WaitingOpenSyn { .. }));
 
     if let Some(TransportMessage::InitAck(ack)) = resp {
-        let (resp2, desc2) = connector.poll((
-            TransportMessage::InitAck(ack),
-            &[] as &[u8],
-        ));
+        let (resp2, desc2) = connector.poll((TransportMessage::InitAck(ack), &[] as &[u8]));
         assert!(resp2.is_some(), "connector must respond with OpenSyn");
         assert!(desc2.is_none(), "not yet established");
         assert!(matches!(connector, State::WaitingOpenAck { .. }));
 
         if let Some(TransportMessage::OpenSyn(open)) = resp2 {
-            let (resp3, desc3) = listener.poll((
-                TransportMessage::OpenSyn(open),
-                &[] as &[u8],
-            ));
+            let (resp3, desc3) = listener.poll((TransportMessage::OpenSyn(open), &[] as &[u8]));
             assert!(resp3.is_some(), "listener must respond with OpenAck");
             assert!(desc3.is_some(), "listener must establish after OpenSyn");
             assert!(matches!(listener, State::Opened(_)));
 
             if let Some(TransportMessage::OpenAck(ack2)) = resp3 {
-                let (resp4, desc4) = connector.poll((
-                    TransportMessage::OpenAck(ack2),
-                    &[] as &[u8],
-                ));
+                let (resp4, desc4) =
+                    connector.poll((TransportMessage::OpenAck(ack2), &[] as &[u8]));
                 assert!(resp4.is_none(), "no response after OpenAck");
                 assert!(desc4.is_some(), "connector must establish after OpenAck");
                 assert!(matches!(connector, State::Opened(_)));
@@ -884,7 +885,10 @@ fn transport_state_machine_invalid_transitions() {
         };
         let (resp, desc) =
             state.poll((TransportMessage::InitAck(InitAck::default()), &[] as &[u8]));
-        assert!(resp.is_none() && desc.is_none(), "WaitingInitSyn must reject InitAck");
+        assert!(
+            resp.is_none() && desc.is_none(),
+            "WaitingInitSyn must reject InitAck"
+        );
     }
     {
         let mut state = State::WaitingInitSyn {
@@ -898,7 +902,10 @@ fn transport_state_machine_invalid_transitions() {
         };
         let (resp, desc) =
             state.poll((TransportMessage::OpenSyn(OpenSyn::default()), &[] as &[u8]));
-        assert!(resp.is_none() && desc.is_none(), "WaitingInitSyn must reject OpenSyn");
+        assert!(
+            resp.is_none() && desc.is_none(),
+            "WaitingInitSyn must reject OpenSyn"
+        );
     }
     {
         let mut state = State::WaitingInitSyn {
@@ -912,7 +919,10 @@ fn transport_state_machine_invalid_transitions() {
         };
         let (resp, desc) =
             state.poll((TransportMessage::OpenAck(OpenAck::default()), &[] as &[u8]));
-        assert!(resp.is_none() && desc.is_none(), "WaitingInitSyn must reject OpenAck");
+        assert!(
+            resp.is_none() && desc.is_none(),
+            "WaitingInitSyn must reject OpenAck"
+        );
     }
 
     // WaitingInitAck rejects OpenSyn and OpenAck
@@ -928,7 +938,10 @@ fn transport_state_machine_invalid_transitions() {
         };
         let (resp, desc) =
             state.poll((TransportMessage::OpenSyn(OpenSyn::default()), &[] as &[u8]));
-        assert!(resp.is_none() && desc.is_none(), "WaitingInitAck must reject OpenSyn");
+        assert!(
+            resp.is_none() && desc.is_none(),
+            "WaitingInitAck must reject OpenSyn"
+        );
     }
     {
         let mut state = State::WaitingInitAck {
@@ -942,7 +955,10 @@ fn transport_state_machine_invalid_transitions() {
         };
         let (resp, desc) =
             state.poll((TransportMessage::OpenAck(OpenAck::default()), &[] as &[u8]));
-        assert!(resp.is_none() && desc.is_none(), "WaitingInitAck must reject OpenAck");
+        assert!(
+            resp.is_none() && desc.is_none(),
+            "WaitingInitAck must reject OpenAck"
+        );
     }
 
     // WaitingOpenSyn rejects InitSyn, InitAck, OpenAck
@@ -956,7 +972,10 @@ fn transport_state_machine_invalid_transitions() {
         };
         let (resp, desc) =
             state.poll((TransportMessage::InitSyn(InitSyn::default()), &[] as &[u8]));
-        assert!(resp.is_none() && desc.is_none(), "WaitingOpenSyn must reject InitSyn");
+        assert!(
+            resp.is_none() && desc.is_none(),
+            "WaitingOpenSyn must reject InitSyn"
+        );
     }
     {
         let mut state = State::WaitingOpenSyn {
@@ -968,7 +987,10 @@ fn transport_state_machine_invalid_transitions() {
         };
         let (resp, desc) =
             state.poll((TransportMessage::InitAck(InitAck::default()), &[] as &[u8]));
-        assert!(resp.is_none() && desc.is_none(), "WaitingOpenSyn must reject InitAck");
+        assert!(
+            resp.is_none() && desc.is_none(),
+            "WaitingOpenSyn must reject InitAck"
+        );
     }
     {
         let mut state = State::WaitingOpenSyn {
@@ -980,7 +1002,10 @@ fn transport_state_machine_invalid_transitions() {
         };
         let (resp, desc) =
             state.poll((TransportMessage::OpenAck(OpenAck::default()), &[] as &[u8]));
-        assert!(resp.is_none() && desc.is_none(), "WaitingOpenSyn must reject OpenAck");
+        assert!(
+            resp.is_none() && desc.is_none(),
+            "WaitingOpenSyn must reject OpenAck"
+        );
     }
 
     // WaitingOpenAck rejects InitSyn, InitAck, OpenSyn
@@ -995,7 +1020,10 @@ fn transport_state_machine_invalid_transitions() {
         };
         let (resp, desc) =
             state.poll((TransportMessage::InitSyn(InitSyn::default()), &[] as &[u8]));
-        assert!(resp.is_none() && desc.is_none(), "WaitingOpenAck must reject InitSyn");
+        assert!(
+            resp.is_none() && desc.is_none(),
+            "WaitingOpenAck must reject InitSyn"
+        );
     }
     {
         let mut state = State::WaitingOpenAck {
@@ -1008,7 +1036,10 @@ fn transport_state_machine_invalid_transitions() {
         };
         let (resp, desc) =
             state.poll((TransportMessage::InitAck(InitAck::default()), &[] as &[u8]));
-        assert!(resp.is_none() && desc.is_none(), "WaitingOpenAck must reject InitAck");
+        assert!(
+            resp.is_none() && desc.is_none(),
+            "WaitingOpenAck must reject InitAck"
+        );
     }
     {
         let mut state = State::WaitingOpenAck {
@@ -1021,7 +1052,10 @@ fn transport_state_machine_invalid_transitions() {
         };
         let (resp, desc) =
             state.poll((TransportMessage::OpenSyn(OpenSyn::default()), &[] as &[u8]));
-        assert!(resp.is_none() && desc.is_none(), "WaitingOpenAck must reject OpenSyn");
+        assert!(
+            resp.is_none() && desc.is_none(),
+            "WaitingOpenAck must reject OpenSyn"
+        );
     }
 }
 
@@ -1088,10 +1122,14 @@ fn invalid_frame_header_does_not_panic() {
 fn double_close_is_safe() {
     let mut transport = Transport::builder([0u8; 128]).codec();
     transport.tx.close();
-    transport.tx.close();  // second close should not panic
+    transport.tx.close(); // second close should not panic
     // close() queues a Close message; enter Synchronized then timeout to trigger closure
-    transport.tx.sync(None, core::time::Duration::from_secs(3600));
-    transport.tx.sync(None, core::time::Duration::from_secs(3700));
+    transport
+        .tx
+        .sync(None, core::time::Duration::from_secs(3600));
+    transport
+        .tx
+        .sync(None, core::time::Duration::from_secs(3700));
     assert!(transport.tx.closed());
 }
 
@@ -1124,8 +1162,12 @@ fn message_after_close_is_rejected() {
     let mut transport = Transport::builder([0u8; 128]).codec();
 
     transport.tx.close();
-    transport.tx.sync(None, core::time::Duration::from_secs(3600));
-    transport.tx.sync(None, core::time::Duration::from_secs(3700));
+    transport
+        .tx
+        .sync(None, core::time::Duration::from_secs(3600));
+    transport
+        .tx
+        .sync(None, core::time::Duration::from_secs(3700));
     assert!(transport.tx.closed());
 
     let msg = NetworkMessage {
@@ -1150,10 +1192,16 @@ fn message_after_close_is_rejected() {
 fn simultaneous_close_handling() {
     let mut transport = Transport::builder([0u8; 128]).codec();
     transport.tx.close();
-    transport.tx.sync(None, core::time::Duration::from_secs(3600));
-    transport.tx.sync(None, core::time::Duration::from_secs(3700));
+    transport
+        .tx
+        .sync(None, core::time::Duration::from_secs(3600));
+    transport
+        .tx
+        .sync(None, core::time::Duration::from_secs(3700));
     assert!(transport.tx.closed());
-    transport.rx.sync(Some(&transport.tx), core::time::Duration::from_secs(0));
+    transport
+        .rx
+        .sync(Some(&transport.tx), core::time::Duration::from_secs(0));
     assert!(transport.rx.closed());
 }
 
@@ -1207,25 +1255,30 @@ fn max_sn_before_wrap() {
         }
         count += 1;
     }
-    assert_eq!(count, 8, "all messages must survive SN wrap from u32::MAX-3");
+    assert_eq!(
+        count, 8,
+        "all messages must survive SN wrap from u32::MAX-3"
+    );
 }
 
 #[cfg(feature = "auth")]
 #[cfg(test)]
 mod auth_tests {
-    use core::time::Duration;
     use crate::transport::establishment::State;
-    use zenoh_proto::{fields::*, msgs::*};
+    use core::time::Duration;
+    use zenoh_proto::{ZDecode, exts::Auth, fields::*, msgs::*, VERSION};
 
     fn zid(val: u128) -> ZenohIdProto {
         ZenohIdProto::try_from(&val.to_le_bytes()[..]).unwrap()
     }
 
-    #[test]
+#[test]
     fn state_waitinginitsyn_with_auth_produces_initack_with_auth() {
         let z = zid(42);
         let mut payload = heapless::Vec::<u8, 256>::new();
-        payload.extend_from_slice(&[0x01, b'u', b's', b'e', b'r', 0x00, b'p', b'a', b's', b's']).unwrap();
+        payload
+            .extend_from_slice(&[0x01, b'u', b's', b'e', b'r', 0x00, b'p', b'a', b's', b's'])
+            .unwrap();
 
         let mut state = State::WaitingInitSyn {
             mine_zid: z,
@@ -1238,7 +1291,10 @@ mod auth_tests {
         };
 
         let init = InitSyn {
-            identifier: InitIdentifier { zid: z, ..Default::default() },
+            identifier: InitIdentifier {
+                zid: z,
+                ..Default::default()
+            },
             resolution: InitResolution {
                 resolution: Resolution::default(),
                 batch_size: BatchSize(512),
@@ -1256,7 +1312,76 @@ mod auth_tests {
 
         assert!(ack.auth.is_some(), "InitAck must carry auth");
         let auth = ack.auth.unwrap();
-        assert_eq!(auth.payload, &[0x01, b'u', b's', b'e', b'r', 0x00, b'p', b'a', b's', b's']);
+        assert_eq!(
+            auth.payload,
+            &[0x01, b'u', b's', b'e', b'r', 0x00, b'p', b'a', b's', b's']
+        );
+    }
+
+    #[test]
+    fn auth_payload_roundtrip() {
+        use zenoh_proto::{ZEncode, ZLen};
+        let payload: &[u8] = &[0x01, b'u', b's', b'e', b'r', 0x00, b'p', b'a', b's', b's'];
+        let auth = Auth { payload };
+
+        let mut buf = [0u8; 64];
+        let len = auth.z_len();
+        auth.z_encode(&mut &mut buf[..]).unwrap();
+
+        let decoded = Auth::z_decode(&mut &buf[..len]).unwrap();
+        assert_eq!(auth, decoded);
+    }
+
+    #[test]
+    fn auth_empty_payload_roundtrip() {
+        use zenoh_proto::{ZEncode, ZLen};
+        let auth = Auth { payload: &[] };
+
+        let mut buf = [0u8; 64];
+        let len = auth.z_len();
+        auth.z_encode(&mut &mut buf[..]).unwrap();
+
+        let decoded = Auth::z_decode(&mut &buf[..len]).unwrap();
+        assert_eq!(auth, decoded);
+    }
+
+    #[test]
+    fn auth_payload_in_initack() {
+        use zenoh_proto::{ZEncode, ZLen};
+        let payload: &[u8] = &[0x01, b't', b'o', b'k', b'e', b'n', 0x00, b'd', b'a', b't', b'a'];
+        let ack = InitAck {
+            auth: Some(Auth { payload }),
+            ..Default::default()
+        };
+
+        let mut buf = [0u8; 128];
+        let len = ack.z_len();
+        ack.z_encode(&mut &mut buf[..]).unwrap();
+
+        let decoded = <InitAck as ZDecode>::z_decode(&mut &buf[..len]).unwrap();
+        assert_eq!(ack, decoded);
+        assert!(decoded.auth.is_some());
+        assert_eq!(decoded.auth.unwrap().payload, payload);
+    }
+
+    #[test]
+    fn init_syn_with_auth() {
+        use zenoh_proto::{ZEncode, ZLen};
+        let payload: &[u8] = &[0x02, b'c', b'r', b'e', b'd'];
+        let syn = InitSyn {
+            auth: Some(Auth { payload }),
+            ..Default::default()
+        };
+
+        let mut buf = [0u8; 128];
+        let len = syn.z_len();
+        syn.z_encode(&mut &mut buf[..]).unwrap();
+
+        let decoded = <InitSyn as ZDecode>::z_decode(&mut &buf[..len]).unwrap();
+        assert_eq!(syn, decoded);
+        assert!(decoded.auth.is_some());
+        assert_eq!(decoded.auth.unwrap().payload, payload);
+        assert_eq!(decoded.version, VERSION);
     }
 }
 
@@ -1264,21 +1389,12 @@ mod auth_tests {
 #[cfg(test)]
 mod proptests {
     extern crate std;
-    use std::vec::Vec;
     use core::time::Duration;
     use proptest::prelude::*;
-    use zenoh_proto::{
-        ZDecode, ZEncode,
-        exts::*,
-        fields::*,
-        keyexpr,
-        msgs::*,
-    };
+    use std::vec::Vec;
+    use zenoh_proto::{ZDecode, ZEncode, exts::*, fields::*, keyexpr, msgs::*};
 
-    use crate::{
-        Transport, ZTransportRx, ZTransportTx,
-        transport::establishment::State,
-    };
+    use crate::{Transport, ZTransportRx, ZTransportTx, transport::establishment::State};
 
     /// Property: ZID comparison for simultaneous-open is deterministic and
     /// consistent. For any two ZIDs, one must win and the other must yield

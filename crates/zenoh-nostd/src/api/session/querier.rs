@@ -1,5 +1,10 @@
 use core::time::Duration;
-use zenoh_proto::{SessionError, exts::QueryTarget, fields::{Locality, Reliability}, keyexpr};
+use zenoh_proto::{
+    SessionError,
+    exts::QueryTarget,
+    fields::{Locality, Reliability},
+    keyexpr,
+};
 
 use crate::{api::session::Session, config::ZSessionConfig, session::GetBuilder};
 
