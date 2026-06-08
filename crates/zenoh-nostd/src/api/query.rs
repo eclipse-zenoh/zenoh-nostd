@@ -94,32 +94,32 @@ where
         self.accept_replies.map_or(true, |ar| ar.intersects(ke))
     }
 
-    pub async fn reply_del(
+    pub fn reply_del(
         &self,
         ke: &keyexpr,
     ) -> core::result::Result<(), SessionError> {
-        self.session.reply_del(self.rid, ke).await
+        self.session.reply_del(self.rid, ke)
     }
 
-    pub async fn reply(
-        &self,
-        ke: &keyexpr,
-        payload: &[u8],
-    ) -> core::result::Result<(), SessionError> {
-        self.session.reply(self.rid, ke, payload).await
-    }
-
-    pub async fn err(
+    pub fn reply(
         &self,
         ke: &keyexpr,
         payload: &[u8],
     ) -> core::result::Result<(), SessionError> {
-        self.session.err(self.rid, ke, payload).await
+        self.session.reply(self.rid, ke, payload)
     }
 
-    pub async fn finalize(&mut self) -> core::result::Result<(), SessionError> {
+    pub fn err(
+        &self,
+        ke: &keyexpr,
+        payload: &[u8],
+    ) -> core::result::Result<(), SessionError> {
+        self.session.err(self.rid, ke, payload)
+    }
+
+    pub fn finalize(&mut self) -> core::result::Result<(), SessionError> {
         if !self.finalized {
-            self.session.finalize(self.rid).await?;
+            self.session.finalize(self.rid)?;
             self.finalized = true
         }
 
@@ -170,25 +170,25 @@ where
         self.qos
     }
 
-    pub async fn reply(
+    pub fn reply(
         &self,
         ke: &keyexpr,
         payload: &[u8],
     ) -> core::result::Result<(), SessionError> {
-        self.session.reply(self.rid, ke, payload).await
+        self.session.reply(self.rid, ke, payload)
     }
 
-    pub async fn err(
+    pub fn err(
         &self,
         ke: &keyexpr,
         payload: &[u8],
     ) -> core::result::Result<(), SessionError> {
-        self.session.err(self.rid, ke, payload).await
+        self.session.err(self.rid, ke, payload)
     }
 
-    pub async fn finalize(&mut self) -> core::result::Result<(), SessionError> {
+    pub fn finalize(&mut self) -> core::result::Result<(), SessionError> {
         if !self.finalized {
-            self.session.finalize(self.rid).await?;
+            self.session.finalize(self.rid)?;
             self.finalized = true
         }
 
@@ -276,25 +276,25 @@ where
         self.qos
     }
 
-    pub async fn reply(
+    pub fn reply(
         &self,
         ke: &keyexpr,
         payload: &[u8],
     ) -> core::result::Result<(), SessionError> {
-        self.session.reply(self.rid, ke, payload).await
+        self.session.reply(self.rid, ke, payload)
     }
 
-    pub async fn err(
+    pub fn err(
         &self,
         ke: &keyexpr,
         payload: &[u8],
     ) -> core::result::Result<(), SessionError> {
-        self.session.err(self.rid, ke, payload).await
+        self.session.err(self.rid, ke, payload)
     }
 
-    pub async fn finalize(&mut self) -> core::result::Result<(), SessionError> {
+    pub fn finalize(&mut self) -> core::result::Result<(), SessionError> {
         if !self.finalized {
-            self.session.finalize(self.rid).await?;
+            self.session.finalize(self.rid)?;
             self.finalized = true
         }
 

@@ -12,32 +12,26 @@ pub trait ZTransportLinkTx {
     fn send<'a>(
         &mut self,
         msgs: impl Iterator<Item = NetworkMessage<'a>>,
-    ) -> impl Future<Output = core::result::Result<(), zenoh_proto::TransportLinkError>> {
+    ) -> core::result::Result<(), zenoh_proto::TransportLinkError> {
         let (link, transport) = self.tx();
         transport.encode(msgs);
 
-        async move {
-            if transport.is_batching() {
-                Ok(())
-            } else if let Some(bytes) = transport.flush(link.is_streamed()) {
-                link.write_all(bytes).await.map_err(|e| e.into())
-            } else {
-                Ok(())
-            }
+        if transport.is_batching() {
+            Ok(())
+        } else if let Some(bytes) = transport.flush(link.is_streamed()) {
+            link.write_all(bytes).map_err(|e| e.into())
+        } else {
+            Ok(())
         }
     }
 
-    fn batch_flush(
-        &mut self,
-    ) -> impl Future<Output = core::result::Result<(), zenoh_proto::TransportLinkError>> {
+    fn batch_flush(&mut self) -> core::result::Result<(), zenoh_proto::TransportLinkError> {
         let (link, transport) = self.tx();
 
-        async move {
-            if let Some(bytes) = transport.flush(link.is_streamed()) {
-                link.write_all(bytes).await.map_err(|e| e.into())
-            } else {
-                Ok(())
-            }
+        if let Some(bytes) = transport.flush(link.is_streamed()) {
+            link.write_all(bytes).map_err(|e| e.into())
+        } else {
+            Ok(())
         }
     }
 
@@ -45,48 +39,38 @@ pub trait ZTransportLinkTx {
     fn send_optimized_ref<'a>(
         &mut self,
         msgs: impl Iterator<Item = (NetworkMessageRef<'a>, &'a [u8])>,
-    ) -> impl Future<Output = core::result::Result<(), zenoh_proto::TransportLinkError>> {
+    ) -> core::result::Result<(), zenoh_proto::TransportLinkError> {
         let (link, transport) = self.tx();
         transport.encode_optimized_ref(msgs);
 
-        async move {
-            if let Some(bytes) = transport.flush(link.is_streamed()) {
-                link.write_all(bytes).await.map_err(|e| e.into())
-            } else {
-                Ok(())
-            }
+        if let Some(bytes) = transport.flush(link.is_streamed()) {
+            link.write_all(bytes).map_err(|e| e.into())
+        } else {
+            Ok(())
         }
     }
 
-    fn keepalive(
-        &mut self,
-    ) -> impl Future<Output = core::result::Result<(), zenoh_proto::TransportLinkError>> {
+    fn keepalive(&mut self) -> core::result::Result<(), zenoh_proto::TransportLinkError> {
         let (link, transport) = self.tx();
         transport.keepalive();
 
-        async move {
-            if let Some(bytes) = transport.flush(link.is_streamed()) {
-                link.write_all(bytes).await.map_err(|e| e.into())
-            } else {
-                Ok(())
-            }
+        if let Some(bytes) = transport.flush(link.is_streamed()) {
+            link.write_all(bytes).map_err(|e| e.into())
+        } else {
+            Ok(())
         }
     }
 
     /// Send a Close message and flush it to the transport link.
     /// This gracefully terminates the transport session.
-    fn close(
-        &mut self,
-    ) -> impl Future<Output = core::result::Result<(), zenoh_proto::TransportLinkError>> {
+    fn close(&mut self) -> core::result::Result<(), zenoh_proto::TransportLinkError> {
         let (link, transport) = self.tx();
         transport.close();
 
-        async move {
-            if let Some(bytes) = transport.flush(link.is_streamed()) {
-                link.write_all(bytes).await.map_err(|e| e.into())
-            } else {
-                Ok(())
-            }
+        if let Some(bytes) = transport.flush(link.is_streamed()) {
+            link.write_all(bytes).map_err(|e| e.into())
+        } else {
+            Ok(())
         }
     }
 }
@@ -96,31 +80,26 @@ pub trait ZTransportLinkRx {
 
     fn recv(
         &mut self,
-    ) -> impl core::future::Future<
-        Output = core::result::Result<
-            impl Iterator<Item = (NetworkMessage<'_>, &'_ [u8])>,
-            zenoh_proto::TransportLinkError,
-        >,
+    ) -> core::result::Result<
+        impl Iterator<Item = (NetworkMessage<'_>, &'_ [u8])>,
+        zenoh_proto::TransportLinkError,
     > {
         let (link, transport) = self.rx();
         let streamed = link.is_streamed();
 
-        async move {
-            transport
-                .decode_with_async(
-                    async |bytes| {
-                        if streamed {
-                            link.read_exact(bytes).await.map(|_| bytes.len())
-                        } else {
-                            link.read(bytes).await
-                        }
-                    },
-                    streamed,
-                )
-                .await
-                .map_err(|e| e.flatten_map::<TransportLinkError>())?;
+        transport
+            .decode_with(
+                |bytes| {
+                    if streamed {
+                        link.read_exact(bytes).map(|_| bytes.len())
+                    } else {
+                        link.read(bytes)
+                    }
+                },
+                streamed,
+            )
+            .map_err(|e| e.flatten_map::<TransportLinkError>())?;
 
-            Ok(transport.flush())
-        }
+        Ok(transport.flush())
     }
 }

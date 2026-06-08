@@ -8,10 +8,10 @@ impl<Config> Session<'static, Config>
 where
     Config: ZSessionConfig,
 {
-    pub async fn start_admin_space(&'static self) -> core::result::Result<(), SessionError> {
+    pub fn start_admin_space(&'static self) -> core::result::Result<(), SessionError> {
         {
-            let state = self.state().await;
-            if state.admin_space_id().is_some() {
+                    let state = self.state();
+        if state.admin_space_id().is_some() {
                 return Err(CollectionError::KeyAlreadyExists.into());
             }
         }
@@ -20,7 +20,7 @@ where
 
         let queryable = self
             .declare_queryable(ke)
-            .callback(async move |query| {
+            .callback_sync(move |query| {
                 let mut buf = heapless::String::<128>::new();
                 let _ = write!(
                     buf,
@@ -29,26 +29,24 @@ where
                     zenoh_proto::VERSION,
                 );
 
-                let _ = query.reply(query.keyexpr(), buf.as_bytes()).await;
+                let _ = query.reply(query.keyexpr(), buf.as_bytes());
             })
-            .finish()
-            .await?;
+            .finish()?;
 
-        let mut state = self.state().await;
+        let state = self.state();
         state.set_admin_space_id(Some(queryable.id()));
 
         Ok(())
     }
 
-    pub async fn stop_admin_space(&'static self) -> core::result::Result<(), SessionError> {
-        let mut state = self.state().await;
+    pub fn stop_admin_space(&'static self) -> core::result::Result<(), SessionError> {
+        let state = self.state();
         let id = state
             .admin_space_id()
             .ok_or(CollectionError::KeyNotFound)?;
         state.set_admin_space_id(None);
-        drop(state);
 
-        self._undeclare_queryable(id).await
+        self._undeclare_queryable(id)
     }
 }
 

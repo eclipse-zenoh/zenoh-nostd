@@ -55,11 +55,11 @@ impl<'a, 'res, Config: ZSessionConfig, const CACHE_SIZE: usize>
         }
     }
 
-    pub async fn put(
+    pub fn put(
         &mut self,
         payload: &'a [u8],
     ) -> core::result::Result<(), zenoh_proto::SessionError> {
-        self.publisher.put(payload).finish().await?;
+        self.publisher.put(payload).finish()?;
 
         if let Some(sample) = CachedSample::new(payload, None) {
             if self.cache.is_full() {
@@ -71,12 +71,12 @@ impl<'a, 'res, Config: ZSessionConfig, const CACHE_SIZE: usize>
         Ok(())
     }
 
-    pub async fn delete(
+    pub fn delete(
         &mut self,
         timestamp: Option<zenoh_proto::fields::Timestamp>,
         attachment: Option<&'a [u8]>,
     ) -> core::result::Result<(), zenoh_proto::SessionError> {
-        self.publisher.delete(timestamp, attachment).await
+        self.publisher.delete(timestamp, attachment)
     }
 
     pub fn cache(&self) -> &[CachedSample] {

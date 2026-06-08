@@ -1,10 +1,7 @@
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
+use core::cell::RefCell;
 
-use embassy_sync::{
-    blocking_mutex::raw::NoopRawMutex,
-    mutex::Mutex,
-};
 use zenoh_proto::{
     BrokerError,
     fields::ZenohIdProto,
@@ -26,7 +23,7 @@ where
     Config: ZSessionConfig + 'static,
 {
     pub zid: ZenohIdProto,
-    pub driver: Driver<'static, Link<Config>, Config::Buff>,
+    pub driver: RefCell<Driver<'static, Link<Config>, Config::Buff>>,
 }
 
 /// Shared state for a peer mesh: maps ZID → peer entry.
@@ -34,7 +31,7 @@ pub struct MeshState<Config>
 where
     Config: ZSessionConfig + 'static,
 {
-    pub peers: BTreeMap<ZenohIdProto, Arc<Mutex<NoopRawMutex, MeshEntry<Config>>>>,
+    pub peers: BTreeMap<ZenohIdProto, Arc<MeshEntry<Config>>>,
 }
 
 impl<Config> Default for MeshState<Config>
@@ -57,22 +54,22 @@ where
     }
 
     /// Insert a peer and return its Arc'd entry.
-    pub async fn insert(
+    pub fn insert(
         &mut self,
         zid: ZenohIdProto,
         driver: Driver<'static, Link<Config>, Config::Buff>,
-    ) -> Arc<Mutex<NoopRawMutex, MeshEntry<Config>>> {
-        let entry = Arc::new(Mutex::new(MeshEntry { zid, driver }));
+    ) -> Arc<MeshEntry<Config>> {
+        let entry = Arc::new(MeshEntry { zid, driver: RefCell::new(driver) });
         self.peers.insert(zid, entry.clone());
         entry
     }
 
-    pub async fn remove(&mut self, zid: &ZenohIdProto) {
+    pub fn remove(&mut self, zid: &ZenohIdProto) {
         self.peers.remove(zid);
     }
 
     /// Forward a message from `sender_zid` to all other connected peers.
-    pub async fn forward(
+    pub fn forward(
         sender_zid: ZenohIdProto,
         state: &mut Self,
         msg: NetworkMessage<'_>,
@@ -80,13 +77,11 @@ where
     ) -> core::result::Result<(), BrokerError> {
         for (zid, entry) in state.peers.iter() {
             if *zid != sender_zid {
-                let guard = entry.lock().await;
-                guard
+                entry
                     .driver
-                    .tx()
-                    .await
-                    .send_optimized_ref(core::iter::once((msg.as_ref(), bytes)))
-                    .await?;
+                    .borrow_mut()
+                    .tx_mut()
+                    .send_optimized_ref(core::iter::once((msg.as_ref(), bytes)))?;
             }
         }
         Ok(())

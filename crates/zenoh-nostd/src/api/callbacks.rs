@@ -1,7 +1,6 @@
 use core::marker::PhantomData;
 
 use dyn_utils::{DynObject, storage::Storage};
-use embassy_time::Instant;
 use heapless::FnvIndexMap;
 use zenoh_proto::keyexpr;
 
@@ -12,18 +11,17 @@ use crate::api::arg::ZArg;
 pub trait ZCallback {
     type Arg: ZArg;
 
-    fn call(&mut self, arg: <Self::Arg as ZArg>::Of<'_>) -> impl Future<Output = ()>;
+    fn call(&mut self, arg: <Self::Arg as ZArg>::Of<'_>);
 }
 
-pub type DynCallback<'a, Callback, Future, Arg> =
-    DynObject<dyn ZDynCallback<Future, Arg = Arg> + 'a, Callback>;
+pub type DynCallback<'a, Callback, Arg> =
+    DynObject<dyn ZDynCallback<Arg = Arg> + 'a, Callback>;
 
 pub trait ZCallbacks<'a, Arg>
 where
     Arg: ZArg,
 {
     type Callback: Storage;
-    type Future: Storage;
 
     fn empty() -> Self;
 
@@ -31,12 +29,12 @@ where
         &mut self,
         id: u32,
         ke: &'static keyexpr,
-        timedout: Option<Instant>,
-        callback: DynCallback<'a, Self::Callback, Self::Future, Arg>,
+        timedout: Option<u64>,
+        callback: DynCallback<'a, Self::Callback, Arg>,
     ) -> core::result::Result<(), zenoh_proto::CollectionError>;
 
     fn drop_timedout(&mut self);
-    fn get(&mut self, id: u32) -> Option<&mut DynCallback<'a, Self::Callback, Self::Future, Arg>>;
+    fn get(&mut self, id: u32) -> Option<&mut DynCallback<'a, Self::Callback, Arg>>;
 
     fn remove(&mut self, id: u32) -> core::result::Result<(), zenoh_proto::CollectionError>;
 
@@ -51,9 +49,9 @@ where
     fn intersects<'r>(
         &'r mut self,
         ke: &keyexpr,
-    ) -> impl Iterator<Item = &'r mut DynCallback<'a, Self::Callback, Self::Future, Arg>>
+    ) -> impl Iterator<Item = &'r mut DynCallback<'a, Self::Callback, Arg>>
     where
-        DynCallback<'a, Self::Callback, Self::Future, Arg>: 'r;
+        DynCallback<'a, Self::Callback, Arg>: 'r;
 
     fn for_each_keyexpr(&self, f: impl FnMut(u32, &'static keyexpr));
 }
@@ -63,20 +61,18 @@ pub struct FixedCapacityCallbacks<
     Arg: ZArg,
     const CAPACITY: usize,
     Callback: Storage,
-    Future: Storage,
 > {
     keyexprs: FnvIndexMap<u32, &'static keyexpr, CAPACITY>,
     callbacks:
-        FnvIndexMap<(u32, &'static keyexpr), DynCallback<'a, Callback, Future, Arg>, CAPACITY>,
-    timedouts: FnvIndexMap<u32, Instant, CAPACITY>,
+        FnvIndexMap<(u32, &'static keyexpr), DynCallback<'a, Callback, Arg>, CAPACITY>,
+    timedouts: FnvIndexMap<u32, u64, CAPACITY>,
     counters: FnvIndexMap<u32, usize, CAPACITY>,
 }
 
-impl<'a, Arg: ZArg + 'a, const CAPACITY: usize, Callback: Storage, Future: Storage>
-    ZCallbacks<'a, Arg> for FixedCapacityCallbacks<'a, Arg, CAPACITY, Callback, Future>
+impl<'a, Arg: ZArg + 'a, const CAPACITY: usize, Callback: Storage>
+    ZCallbacks<'a, Arg> for FixedCapacityCallbacks<'a, Arg, CAPACITY, Callback>
 {
     type Callback = Callback;
-    type Future = Future;
 
     fn empty() -> Self {
         Self {
@@ -91,8 +87,8 @@ impl<'a, Arg: ZArg + 'a, const CAPACITY: usize, Callback: Storage, Future: Stora
         &mut self,
         id: u32,
         ke: &'static keyexpr,
-        timedout: Option<Instant>,
-        callback: DynCallback<'a, Callback, Future, Arg>,
+        timedout: Option<u64>,
+        callback: DynCallback<'a, Callback, Arg>,
     ) -> core::result::Result<(), zenoh_proto::CollectionError> {
         if self.keyexprs.contains_key(&id) {
             return Err(zenoh_proto::CollectionError::KeyAlreadyExists);
@@ -124,17 +120,10 @@ impl<'a, Arg: ZArg + 'a, const CAPACITY: usize, Callback: Storage, Future: Stora
     }
 
     fn drop_timedout(&mut self) {
-        self.timedouts.retain(|id, timedout| {
-            if Instant::now() >= *timedout {
-                if let Some(ke) = self.keyexprs.remove(id) {
-                    self.callbacks.remove(&(*id, ke));
-                }
-                self.counters.remove(id);
-
-                false
-            } else {
-                true
-            }
+        self.timedouts.retain(|_id, _timedout| {
+            // Timeout-based drop is disabled in sync mode.
+            // The caller is responsible for managing timeouts.
+            true
         });
     }
 
@@ -148,7 +137,7 @@ impl<'a, Arg: ZArg + 'a, const CAPACITY: usize, Callback: Storage, Future: Stora
         Ok(())
     }
 
-    fn get(&mut self, id: u32) -> Option<&mut DynCallback<'a, Callback, Future, Arg>> {
+    fn get(&mut self, id: u32) -> Option<&mut DynCallback<'a, Callback, Arg>> {
         let ke = self.keyexprs.get(&id)?;
         self.callbacks.get_mut(&(id, ke))
     }
@@ -179,9 +168,9 @@ impl<'a, Arg: ZArg + 'a, const CAPACITY: usize, Callback: Storage, Future: Stora
     fn intersects<'r>(
         &'r mut self,
         ke: &keyexpr,
-    ) -> impl Iterator<Item = &'r mut DynCallback<'a, Callback, Future, Arg>>
+    ) -> impl Iterator<Item = &'r mut DynCallback<'a, Callback, Arg>>
     where
-        DynCallback<'a, Callback, Future, Arg>: 'r,
+        DynCallback<'a, Callback, Arg>: 'r,
     {
         self.callbacks
             .iter_mut()
@@ -202,22 +191,21 @@ impl<'a, Arg: ZArg + 'a, const CAPACITY: usize, Callback: Storage, Future: Stora
 }
 
 #[cfg(feature = "alloc")]
-pub struct AllocCallbacks<'a, Arg: ZArg, Callback: Storage, Future: Storage> {
+pub struct AllocCallbacks<'a, Arg: ZArg, Callback: Storage> {
     keyexprs: alloc::collections::BTreeMap<u32, &'static keyexpr>,
     callbacks: alloc::collections::BTreeMap<
         (u32, &'static keyexpr),
-        DynCallback<'a, Callback, Future, Arg>,
+        DynCallback<'a, Callback, Arg>,
     >,
-    timedouts: alloc::collections::BTreeMap<u32, Instant>,
+    timedouts: alloc::collections::BTreeMap<u32, u64>,
     counters: alloc::collections::BTreeMap<u32, usize>,
 }
 
 #[cfg(feature = "alloc")]
-impl<'a, Arg: ZArg + 'a, Callback: Storage, Future: Storage> ZCallbacks<'a, Arg>
-    for AllocCallbacks<'a, Arg, Callback, Future>
+impl<'a, Arg: ZArg + 'a, Callback: Storage> ZCallbacks<'a, Arg>
+    for AllocCallbacks<'a, Arg, Callback>
 {
     type Callback = Callback;
-    type Future = Future;
 
     fn empty() -> Self {
         Self {
@@ -232,8 +220,8 @@ impl<'a, Arg: ZArg + 'a, Callback: Storage, Future: Storage> ZCallbacks<'a, Arg>
         &mut self,
         id: u32,
         ke: &'static keyexpr,
-        timedout: Option<Instant>,
-        callback: DynCallback<'a, Callback, Future, Arg>,
+        timedout: Option<u64>,
+        callback: DynCallback<'a, Callback, Arg>,
     ) -> core::result::Result<(), zenoh_proto::CollectionError> {
         if self.keyexprs.contains_key(&id) {
             return Err(zenoh_proto::CollectionError::KeyAlreadyExists);
@@ -259,17 +247,8 @@ impl<'a, Arg: ZArg + 'a, Callback: Storage, Future: Storage> ZCallbacks<'a, Arg>
     }
 
     fn drop_timedout(&mut self) {
-        self.timedouts.retain(|id, timedout| {
-            if Instant::now() >= *timedout {
-                if let Some(ke) = self.keyexprs.remove(id) {
-                    self.callbacks.remove(&(*id, ke));
-                }
-                self.counters.remove(id);
-
-                false
-            } else {
-                true
-            }
+        self.timedouts.retain(|_id, _timedout| {
+            true
         });
     }
 
@@ -283,7 +262,7 @@ impl<'a, Arg: ZArg + 'a, Callback: Storage, Future: Storage> ZCallbacks<'a, Arg>
         Ok(())
     }
 
-    fn get(&mut self, id: u32) -> Option<&mut DynCallback<'a, Callback, Future, Arg>> {
+    fn get(&mut self, id: u32) -> Option<&mut DynCallback<'a, Callback, Arg>> {
         let ke = self.keyexprs.get(&id)?;
         self.callbacks.get_mut(&(id, ke))
     }
@@ -313,9 +292,9 @@ impl<'a, Arg: ZArg + 'a, Callback: Storage, Future: Storage> ZCallbacks<'a, Arg>
     fn intersects<'r>(
         &'r mut self,
         ke: &keyexpr,
-    ) -> impl Iterator<Item = &'r mut DynCallback<'a, Callback, Future, Arg>>
+    ) -> impl Iterator<Item = &'r mut DynCallback<'a, Callback, Arg>>
     where
-        DynCallback<'a, Callback, Future, Arg>: 'r,
+        DynCallback<'a, Callback, Arg>: 'r,
     {
         self.callbacks
             .iter_mut()
@@ -356,7 +335,7 @@ where
 {
     type Arg = Arg;
 
-    async fn call(&mut self, arg: <Self::Arg as ZArg>::Of<'_>) {
+    fn call(&mut self, arg: <Self::Arg as ZArg>::Of<'_>) {
         (self.0)(arg)
     }
 }
@@ -371,11 +350,11 @@ impl<Arg, F> AsyncCallback<Arg, F> {
 impl<Arg, F> ZCallback for AsyncCallback<Arg, F>
 where
     Arg: ZArg,
-    F: AsyncFnMut(Arg::Of<'_>),
+    F: FnMut(Arg::Of<'_>),
 {
     type Arg = Arg;
 
-    fn call(&mut self, arg: <Self::Arg as ZArg>::Of<'_>) -> impl Future<Output = ()> {
+    fn call(&mut self, arg: <Self::Arg as ZArg>::Of<'_>) {
         (self.0)(arg)
     }
 }

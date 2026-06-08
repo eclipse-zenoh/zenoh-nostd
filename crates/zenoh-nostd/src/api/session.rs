@@ -1,15 +1,12 @@
-use core::ops::DerefMut;
-
-use embassy_sync::{
-    blocking_mutex::raw::NoopRawMutex,
-    channel::DynamicSender,
-    mutex::{Mutex, MutexGuard},
-};
+use core::cell::UnsafeCell;
 use zenoh_proto::{
     Endpoint, SessionError, TransportLinkError, keyexpr,
     exts::QoS,
-    fields::{Reliability, WireExpr, ZenohIdProto},
-    msgs::{Declare, DeclareBody, NetworkBody, NetworkMessage, UndeclareQueryable},
+    fields::{ConsolidationMode, Reliability, WireExpr, ZenohIdProto},
+    msgs::{
+        Declare, DeclareBody, Del, Err, NetworkBody, NetworkMessage, PushBody, Put, Reply,
+        Response, ResponseBody, ResponseFinal, UndeclareQueryable,
+    },
 };
 use zenoh_sansio::ZTransportTx;
 
@@ -132,10 +129,15 @@ pub struct Session<'res, Config>
 where
     Config: ZSessionConfig,
 {
-    driver: Driver<'res, <Config::LinkManager as ZLinkManager>::Link<'res>, Config::Buff>,
-    state: Mutex<NoopRawMutex, SessionState<'res, Config>>,
+    driver: UnsafeCell<Driver<'res, <Config::LinkManager as ZLinkManager>::Link<'res>, Config::Buff>>,
+    state: UnsafeCell<SessionState<'res, Config>>,
     connectivity: ConnectivityState<'static>,
 }
+
+// SAFETY: Session is single-threaded. UnsafeCell fields are accessed with
+// exclusive access guarantees from the caller (no concurrent access).
+unsafe impl<'res, Config> Send for Session<'res, Config> where Config: ZSessionConfig {}
+unsafe impl<'res, Config> Sync for Session<'res, Config> where Config: ZSessionConfig {}
 
 impl<'res, Config> Session<'res, Config>
 where
@@ -148,46 +150,50 @@ where
         >,
     ) -> Self {
         Self {
-            driver: Driver::new(transport),
-            state: Mutex::new(SessionState::new()),
+            driver: UnsafeCell::new(Driver::new(transport)),
+            state: UnsafeCell::new(SessionState::new()),
             connectivity: ConnectivityState::new(),
         }
     }
 
-    pub(crate) async fn state(&self) -> MutexGuard<'_, NoopRawMutex, SessionState<'res, Config>> {
-        self.state.lock().await
+    pub(crate) fn driver(&self) -> &mut Driver<'res, <Config::LinkManager as ZLinkManager>::Link<'res>, Config::Buff> {
+        // SAFETY: Single-threaded execution. Callers guarantee exclusive access.
+        unsafe { &mut *self.driver.get() }
     }
 
-    pub async fn batch_start(&self) -> core::result::Result<(), TransportLinkError> {
-        let mut tx_guard = self.driver.tx().await;
-        let (_, transport) = tx_guard.tx();
+    pub(crate) fn state(&self) -> &mut SessionState<'res, Config> {
+        // SAFETY: Single-threaded execution. Callers guarantee exclusive access.
+        unsafe { &mut *self.state.get() }
+    }
+
+    pub fn batch_start(&self) -> core::result::Result<(), TransportLinkError> {
+        let (_, transport) = self.driver().tx_mut().tx();
         transport.batch_start();
         Ok(())
     }
 
-    pub async fn batch_flush(&self) -> core::result::Result<(), TransportLinkError> {
-        ZTransportLinkTx::batch_flush(self.driver.tx().await.deref_mut()).await
+    pub fn batch_flush(&self) -> core::result::Result<(), TransportLinkError> {
+        self.driver().tx_mut().batch_flush()
     }
 
-    pub async fn batch_stop(&self) -> core::result::Result<(), TransportLinkError> {
+    pub fn batch_stop(&self) -> core::result::Result<(), TransportLinkError> {
         {
-            let mut tx_guard = self.driver.tx().await;
-            let (_, transport) = tx_guard.tx();
+            let (_, transport) = self.driver().tx_mut().tx();
             transport.batch_stop();
         }
-        ZTransportLinkTx::batch_flush(self.driver.tx().await.deref_mut()).await
+        self.driver().tx_mut().batch_flush()
     }
 
     pub fn zid(&self) -> ZenohIdProto {
-        self.driver.zid()
+        // SAFETY: zid() only reads immutable data, safe via shared ref.
+        unsafe { &*self.driver.get() }.zid()
     }
 
-    pub(crate) async fn _undeclare_queryable(
+    pub(crate) fn _undeclare_queryable(
         &self,
         id: u32,
     ) -> core::result::Result<(), SessionError> {
-        let mut state = self.state().await;
-        state.queryable_callbacks.remove(id)?;
+        self.state().queryable_callbacks.remove(id)?;
 
         let msg = Declare {
             body: DeclareBody::UndeclareQueryable(UndeclareQueryable {
@@ -197,25 +203,114 @@ where
             ..Default::default()
         };
 
-        self.driver
-            .tx()
-            .await
+        self.driver()
+            .tx_mut()
             .send(core::iter::once(NetworkMessage {
                 reliability: Reliability::default(),
                 qos: QoS::default(),
                 body: NetworkBody::Declare(msg),
-            }))
-            .await?;
+            }))?;
 
         Ok(())
     }
 
-    pub fn on_connect(&mut self, sender: DynamicSender<'static, TransportEvent>) {
-        let _ = self.connectivity.transport_senders.push(sender);
+    pub fn on_connect(&mut self, f: &'static dyn Fn(TransportEvent)) {
+        let _ = self.connectivity.on_event(f);
     }
 
-    pub fn on_disconnect(&mut self, sender: DynamicSender<'static, TransportEvent>) {
-        let _ = self.connectivity.transport_senders.push(sender);
+    pub fn on_disconnect(&mut self, f: &'static dyn Fn(TransportEvent)) {
+        let _ = self.connectivity.on_event(f);
+    }
+
+    pub(crate) fn reply(
+        &self,
+        rid: u32,
+        ke: &keyexpr,
+        payload: &[u8],
+    ) -> core::result::Result<(), SessionError> {
+        Ok(self
+            .driver()
+            .tx_mut()
+            .send(core::iter::once(NetworkMessage {
+                reliability: Reliability::default(),
+                qos: QoS::default(),
+                body: NetworkBody::Response(Response {
+                    rid,
+                    wire_expr: WireExpr::from(ke),
+                    payload: ResponseBody::Reply(Reply {
+                        consolidation: ConsolidationMode::None,
+                        payload: PushBody::Put(Put {
+                            payload,
+                            ..Default::default()
+                        }),
+                    }),
+                    ..Default::default()
+                }),
+            }))?)
+    }
+
+    pub(crate) fn err(
+        &self,
+        rid: u32,
+        ke: &keyexpr,
+        payload: &[u8],
+    ) -> core::result::Result<(), SessionError> {
+        Ok(self
+            .driver()
+            .tx_mut()
+            .send(core::iter::once(NetworkMessage {
+                reliability: Reliability::default(),
+                qos: QoS::default(),
+                body: NetworkBody::Response(Response {
+                    rid,
+                    wire_expr: WireExpr::from(ke),
+                    payload: ResponseBody::Err(Err {
+                        payload,
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }),
+            }))?)
+    }
+
+    pub(crate) fn reply_del(
+        &self,
+        rid: u32,
+        ke: &keyexpr,
+    ) -> core::result::Result<(), SessionError> {
+        Ok(self
+            .driver()
+            .tx_mut()
+            .send(core::iter::once(NetworkMessage {
+                reliability: Reliability::default(),
+                qos: QoS::default(),
+                body: NetworkBody::Response(Response {
+                    rid,
+                    wire_expr: WireExpr::from(ke),
+                    payload: ResponseBody::Reply(Reply {
+                        consolidation: ConsolidationMode::None,
+                        payload: PushBody::Del(Del::default()),
+                    }),
+                    ..Default::default()
+                }),
+            }))?)
+    }
+
+    pub(crate) fn finalize(&self, rid: u32) -> core::result::Result<(), SessionError> {
+        if self.state().queryable_callbacks.decrease(rid) {
+            self.driver()
+                .tx_mut()
+                .send(core::iter::once(NetworkMessage {
+                    reliability: Reliability::default(),
+                    qos: QoS::default(),
+                    body: NetworkBody::ResponseFinal(ResponseFinal {
+                        rid,
+                        ..Default::default()
+                    }),
+                }))?;
+        }
+
+        Ok(())
     }
 
     #[cfg(feature = "acl")]
@@ -228,7 +323,7 @@ where
     }
 }
 
-pub async fn session_connect<'res, Config>(
+pub fn session_connect<'res, Config>(
     resources: &'res mut Resources<'res, Config>,
     config: &'res Config,
     endpoint: Endpoint<'_>,
@@ -237,11 +332,11 @@ where
     Config: ZSessionConfig,
 {
     Ok(Session::new(resources.init(
-        config.transports().connect(endpoint, config.buff()).await?,
+        config.transports().connect(endpoint, config.buff())?,
     )))
 }
 
-pub async fn session_listen<'res, Config>(
+pub fn session_listen<'res, Config>(
     resources: &'res mut Resources<'res, Config>,
     config: &'res Config,
     endpoint: Endpoint<'_>,
@@ -250,7 +345,7 @@ where
     Config: ZSessionConfig,
 {
     Ok(Session::new(resources.init(
-        config.transports().listen(endpoint, config.buff()).await?,
+        config.transports().listen(endpoint, config.buff())?,
     )))
 }
 
@@ -273,8 +368,7 @@ macro_rules! __session_connect {
             RESOURCES.init($crate::session::Resources::default()).init(
                 config
                     .transports()
-                    .connect($endpoint, config.buff())
-                    .await?,
+                    .connect($endpoint, config.buff())?,
             ),
         )) as &$crate::session::Session<'static, $CONFIG>
     }};
@@ -298,12 +392,12 @@ macro_rules! __session_listen {
         SESSION.init($crate::session::Session::new(
             RESOURCES
                 .init($crate::session::Resources::default())
-                .init(config.transports().listen($endpoint, config.buff()).await?),
+                .init(config.transports().listen($endpoint, config.buff())?),
         )) as &$crate::session::Session<'static, $CONFIG>
     }};
 }
 
-pub async fn session_connect_ignore_invalid_sn<'res, Config>(
+pub fn session_connect_ignore_invalid_sn<'res, Config>(
     resources: &'res mut Resources<'res, Config>,
     config: &'res Config,
     endpoint: Endpoint<'_>,
@@ -311,13 +405,13 @@ pub async fn session_connect_ignore_invalid_sn<'res, Config>(
 where
     Config: ZSessionConfig,
 {
-    let mut transport = config.transports().connect(endpoint, config.buff()).await?;
+    let mut transport = config.transports().connect(endpoint, config.buff())?;
     transport.transport_mut().rx.ignore_invalid_sn();
 
     Ok(Session::new(resources.init(transport)))
 }
 
-pub async fn session_listen_ignore_invalid_sn<'res, Config>(
+pub fn session_listen_ignore_invalid_sn<'res, Config>(
     resources: &'res mut Resources<'res, Config>,
     config: &'res Config,
     endpoint: Endpoint<'_>,
@@ -325,7 +419,7 @@ pub async fn session_listen_ignore_invalid_sn<'res, Config>(
 where
     Config: ZSessionConfig,
 {
-    let mut transport = config.transports().listen(endpoint, config.buff()).await?;
+    let mut transport = config.transports().listen(endpoint, config.buff())?;
     transport.transport_mut().rx.ignore_invalid_sn();
     Ok(Session::new(resources.init(transport)))
 }

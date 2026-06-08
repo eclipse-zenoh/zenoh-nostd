@@ -1,10 +1,7 @@
 use alloc::collections::BTreeMap;
 use alloc::{boxed::Box, sync::Arc};
+use core::cell::RefCell;
 
-use embassy_sync::{
-    blocking_mutex::raw::NoopRawMutex,
-    mutex::{Mutex, MutexGuard},
-};
 use zenoh_proto::BrokerError;
 use zenoh_proto::msgs::NetworkMessage;
 use zenoh_proto::{Endpoint, fields::ZenohIdProto};
@@ -19,18 +16,7 @@ struct StaticDriver<Config>
 where
     Config: ZBrokerConfig + 'static,
 {
-    driver: core::mem::ManuallyDrop<Driver<'static, Link<Config>, Config::Buff>>,
-    ptr: *mut TransportLink<Link<Config>, Config::Buff>,
-}
-
-impl<Config> Drop for StaticDriver<Config>
-where
-    Config: ZBrokerConfig,
-{
-    fn drop(&mut self) {
-        unsafe { core::mem::ManuallyDrop::drop(&mut self.driver) };
-        unsafe { drop(Box::from_raw(self.ptr)) };
-    }
+    driver: RefCell<Driver<'static, Link<Config>, Config::Buff>>,
 }
 
 pub struct BrokerState<Config>
@@ -46,7 +32,7 @@ where
     Config: ZBrokerConfig + 'static,
 {
     config: &'static Config,
-    state: Mutex<NoopRawMutex, BrokerState<Config>>,
+    state: BrokerState<Config>,
 }
 
 impl<Config> Broker<Config>
@@ -56,18 +42,18 @@ where
     pub fn new(config: &'static Config) -> Self {
         Self {
             config,
-            state: Mutex::new(BrokerState {
+            state: BrokerState {
                 north: None,
                 south: BTreeMap::new(),
-            }),
+            },
         }
     }
 
-    pub(crate) async fn state(&self) -> MutexGuard<'_, NoopRawMutex, BrokerState<Config>> {
-        self.state.lock().await
+    fn state(&mut self) -> &mut BrokerState<Config> {
+        &mut self.state
     }
 
-    async fn update(
+    fn update(
         north: bool,
         id: ZenohIdProto,
         state: &mut BrokerState<Config>,
@@ -78,112 +64,118 @@ where
             for south in state.south.values() {
                 south
                     .driver
-                    .tx()
-                    .await
-                    .send_optimized_ref(core::iter::once((msg.as_ref(), bytes)))
-                    .await?;
+                    .borrow_mut()
+                    .tx_mut()
+                    .send_optimized_ref(core::iter::once((msg.as_ref(), bytes)))?;
             }
         } else {
             if let Some((_, north)) = &state.north {
                 north
                     .driver
-                    .tx()
-                    .await
-                    .send_optimized_ref(core::iter::once((msg.as_ref(), bytes)))
-                    .await?;
+                    .borrow_mut()
+                    .tx_mut()
+                    .send_optimized_ref(core::iter::once((msg.as_ref(), bytes)))?;
             }
 
-            for (_, south) in state.south.iter().filter(|(sid, _)| **sid != id) {
+            for (sid, south) in state.south.iter().filter(|(sid, _)| **sid != id) {
                 south
                     .driver
-                    .tx()
-                    .await
-                    .send_optimized_ref(core::iter::once((msg.as_ref(), bytes)))
-                    .await?;
+                    .borrow_mut()
+                    .tx_mut()
+                    .send_optimized_ref(core::iter::once((msg.as_ref(), bytes)))?;
             }
         }
 
         Ok(())
     }
 
-    async fn update_north(
+    fn update_north(
         id: ZenohIdProto,
         state: &mut BrokerState<Config>,
         msg: NetworkMessage<'_>,
         bytes: &[u8],
     ) -> core::result::Result<(), BrokerError> {
-        Self::update(true, id, state, msg, bytes).await
+        Self::update(true, id, state, msg, bytes)
     }
 
-    async fn update_south(
+    fn update_south(
         id: ZenohIdProto,
         state: &mut BrokerState<Config>,
         msg: NetworkMessage<'_>,
         bytes: &[u8],
     ) -> core::result::Result<(), BrokerError> {
-        Self::update(false, id, state, msg, bytes).await
+        Self::update(false, id, state, msg, bytes)
     }
 
-    pub async fn open(&self, endpoint: Endpoint<'_>) -> core::result::Result<(), BrokerError> {
+    pub fn open(&mut self, endpoint: Endpoint<'_>) -> core::result::Result<(), BrokerError> {
         loop {
             let transport = Box::leak(Box::new(
                 self.config
                     .transports()
-                    .connect(endpoint.clone(), self.config.buff())
-                    .await?,
+                    .connect(endpoint.clone(), self.config.buff())?,
             ));
 
             let driver = Arc::new(StaticDriver {
-                ptr: transport,
-                driver: core::mem::ManuallyDrop::new(Driver::new(transport)),
+                driver: RefCell::new(Driver::new(transport)),
             });
 
-            self.state().await.north = Some((driver.driver.zid(), driver.clone()));
+            self.state().north = Some((driver.driver.borrow().zid(), driver.clone()));
 
             let connectivity = ConnectivityState::new();
-            if let Err(e) = driver
-                .driver
-                .run(&self.state, &connectivity, Self::update_north)
-                .await
-                .map_err(|e| e.flatten_map::<BrokerError>())
-            {
-                zenoh_proto::error!("Error on north: {}", e);
+            loop {
+                let result = driver
+                    .driver
+                    .borrow_mut()
+                    .poll(&mut self.state, &connectivity, Self::update_north)
+                    .map_err(|e| e.flatten_map::<BrokerError>());
+                match result {
+                    Err(e) => {
+                        zenoh_proto::error!("Error on north: {}", e);
+                        break;
+                    }
+                    Ok(false) => break,
+                    Ok(true) => {}
+                }
             }
 
-            self.state().await.north.take();
+            self.state().north.take();
         }
     }
 
-    pub async fn accept(&self, endpoint: Endpoint<'_>) -> core::result::Result<(), BrokerError> {
+    pub fn accept(&mut self, endpoint: Endpoint<'_>) -> core::result::Result<(), BrokerError> {
         loop {
             let transport = Box::leak(Box::new(
                 self.config
                     .transports()
-                    .listen(endpoint.clone(), self.config.buff())
-                    .await?,
+                    .listen(endpoint.clone(), self.config.buff())?,
             ));
 
             let driver = Arc::new(StaticDriver {
-                ptr: transport,
-                driver: core::mem::ManuallyDrop::new(Driver::new(transport)),
+                driver: RefCell::new(Driver::new(transport)),
             });
 
             self.state()
-                .await
                 .south
-                .insert(driver.driver.zid(), driver.clone());
+                .insert(driver.driver.borrow().zid(), driver.clone());
 
             let connectivity = ConnectivityState::new();
-            if let Err(e) = driver
-                .driver
-                .run(&self.state, &connectivity, Self::update_south)
-                .await
-                .map_err(|e| e.flatten_map::<BrokerError>())
-            {
-                zenoh_proto::error!("Error on south: {}", e);
+            loop {
+                let result = driver
+                    .driver
+                    .borrow_mut()
+                    .poll(&mut self.state, &connectivity, Self::update_south)
+                    .map_err(|e| e.flatten_map::<BrokerError>());
+                match result {
+                    Err(e) => {
+                        zenoh_proto::error!("Error on south: {}", e);
+                        break;
+                    }
+                    Ok(false) => break,
+                    Ok(true) => {}
+                }
             }
 
-            self.state().await.south.remove(&driver.driver.zid());
+            self.state().south.remove(&driver.driver.borrow().zid());
         }
     }
 }
@@ -197,6 +189,6 @@ macro_rules! __broker {
         static BROKER: static_cell::StaticCell<$crate::broker::Broker<$CONFIG>> =
             static_cell::StaticCell::new();
 
-        BROKER.init($crate::broker::Broker::new(config)) as &'static $crate::broker::Broker<$CONFIG>
+        BROKER.init($crate::broker::Broker::new(config)) as &mut $crate::broker::Broker<$CONFIG>
     }};
 }

@@ -1,5 +1,3 @@
-use embassy_sync::channel::DynamicSender;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransportEvent {
     Connected,
@@ -7,13 +5,20 @@ pub enum TransportEvent {
 }
 
 pub struct ConnectivityState<'ch> {
-    pub transport_senders: heapless::Vec<DynamicSender<'ch, TransportEvent>, 4>,
+    pub transport_senders: heapless::Vec<core::cell::Cell<Option<&'ch dyn Fn(TransportEvent)>>, 4>,
 }
 
 impl<'ch> ConnectivityState<'ch> {
-    #[allow(dead_code)]
     pub fn new() -> Self {
-        Self { transport_senders: heapless::Vec::new() }
+        Self {
+            transport_senders: heapless::Vec::new(),
+        }
+    }
+
+    pub fn on_event(&mut self, f: &'ch dyn Fn(TransportEvent)) -> core::result::Result<(), ()> {
+        self.transport_senders
+            .push(core::cell::Cell::new(Some(f)))
+            .map_err(|_| ())
     }
 }
 
@@ -26,7 +31,9 @@ impl<'ch> Default for ConnectivityState<'ch> {
 impl<'ch> ConnectivityState<'ch> {
     pub fn emit(&self, event: TransportEvent) {
         for sender in &self.transport_senders {
-            let _ = sender.try_send(event);
+            if let Some(f) = sender.get() {
+                f(event);
+            }
         }
     }
 }
@@ -34,45 +41,45 @@ impl<'ch> ConnectivityState<'ch> {
 #[cfg(all(test, feature = "alloc"))]
 mod tests {
     use super::*;
-    use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-    use embassy_sync::channel::Channel;
-
-    fn make_channel() -> (DynamicSender<'static, TransportEvent>, embassy_sync::channel::DynamicReceiver<'static, TransportEvent>) {
-        let ch: &'static _ = alloc::boxed::Box::leak(alloc::boxed::Box::new(Channel::<NoopRawMutex, TransportEvent, 1>::new()));
-        (ch.dyn_sender(), ch.dyn_receiver())
-    }
 
     #[test]
     fn connectivity_emit_receive() {
-        let (sender, receiver) = make_channel();
+        let called = core::cell::Cell::new(false);
+        let f = |_event: TransportEvent| {
+            called.set(true);
+        };
         let mut state = ConnectivityState::new();
-        let _ = state.transport_senders.push(sender);
+        let _ = state.on_event(&f);
 
         state.emit(TransportEvent::Connected);
-        assert_eq!(receiver.try_receive(), Ok(TransportEvent::Connected));
+        assert!(called.get());
     }
 
     #[test]
     fn connectivity_disconnected() {
-        let (sender, receiver) = make_channel();
+        let event = core::cell::Cell::new(None);
+        let f = |e: TransportEvent| {
+            event.set(Some(e));
+        };
         let mut state = ConnectivityState::new();
-        let _ = state.transport_senders.push(sender);
+        let _ = state.on_event(&f);
 
         state.emit(TransportEvent::Disconnected);
-        assert_eq!(receiver.try_receive(), Ok(TransportEvent::Disconnected));
+        assert_eq!(event.get(), Some(TransportEvent::Disconnected));
     }
 
     #[test]
     fn connectivity_multiple_listeners() {
-        let (s1, r1) = make_channel();
-        let (s2, r2) = make_channel();
-
+        let c1 = core::cell::Cell::new(false);
+        let c2 = core::cell::Cell::new(false);
+        let f1 = |_: TransportEvent| { c1.set(true); };
+        let f2 = |_: TransportEvent| { c2.set(true); };
         let mut state = ConnectivityState::new();
-        let _ = state.transport_senders.push(s1);
-        let _ = state.transport_senders.push(s2);
+        let _ = state.on_event(&f1);
+        let _ = state.on_event(&f2);
 
         state.emit(TransportEvent::Connected);
-        assert_eq!(r1.try_receive(), Ok(TransportEvent::Connected));
-        assert_eq!(r2.try_receive(), Ok(TransportEvent::Connected));
+        assert!(c1.get());
+        assert!(c2.get());
     }
 }

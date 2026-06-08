@@ -1,5 +1,4 @@
 use dyn_utils::{DynObject, storage::RawOrBox};
-use embassy_sync::channel::{DynamicReceiver, DynamicSender};
 use zenoh_proto::{exts::QoS, fields::*, msgs::*, *};
 
 #[cfg(feature = "alloc")]
@@ -8,7 +7,7 @@ use crate::api::callbacks::AllocCallbacks;
 use crate::{
     api::{
         arg::SampleRef,
-        callbacks::{AsyncCallback, DynCallback, FixedCapacityCallbacks, SyncCallback, ZCallbacks},
+        callbacks::{DynCallback, FixedCapacityCallbacks, SyncCallback, ZCallbacks},
         sample::Sample,
         session::Session,
     },
@@ -20,30 +19,26 @@ pub type FixedCapacitySubCallbacks<
     'a,
     const CAPACITY: usize,
     Callback = RawOrBox<16>,
-    Future = RawOrBox<128>,
-> = FixedCapacityCallbacks<'a, SampleRef, CAPACITY, Callback, Future>;
+> = FixedCapacityCallbacks<'a, SampleRef, CAPACITY, Callback>;
 
 #[cfg(feature = "alloc")]
-pub type AllocSubCallbacks<'a, Callback = RawOrBox<16>, Future = RawOrBox<128>> =
-    AllocCallbacks<'a, SampleRef, Callback, Future>;
+pub type AllocSubCallbacks<'a, Callback = RawOrBox<16>> =
+    AllocCallbacks<'a, SampleRef, Callback>;
 
-pub struct Subscriber<'a, 'res, Config, OwnedSample = (), const CHANNEL: bool = false>
+pub struct Subscriber<'a, 'res, Config>
 where
     Config: ZSessionConfig,
 {
     id: u32,
     ke: &'static keyexpr,
     session: &'a Session<'res, Config>,
-    receiver: Option<DynamicReceiver<'res, OwnedSample>>,
 }
 
-impl<'a, 'res, Config, OwnedSample, const CHANNEL: bool>
-    Subscriber<'a, 'res, Config, OwnedSample, CHANNEL>
+impl<'a, 'res, Config> Subscriber<'a, 'res, Config>
 where
     Config: ZSessionConfig,
 {
-    #[allow(dead_code)]
-    async fn undeclare(self) -> core::result::Result<(), SessionError> {
+    pub fn undeclare(self) -> core::result::Result<(), SessionError> {
         let msg = Declare {
             body: DeclareBody::UndeclareSubscriber(UndeclareSubscriber {
                 id: self.id,
@@ -52,20 +47,17 @@ where
             ..Default::default()
         };
 
-        self.session.state().await.sub_callbacks.remove(self.id)?;
+        self.session.state().sub_callbacks.remove(self.id)?;
 
         self.session
-            .driver
-            .tx()
-            .await
+            .driver()
+            .tx_mut()
             .send(core::iter::once(NetworkMessage {
                 reliability: Reliability::default(),
                 qos: exts::QoS::default(),
                 body: NetworkBody::Declare(msg),
-            }))
-            .await?;
+            }))?;
 
-        // FIXME: drop/close the receiver channel
         Ok(())
     }
 
@@ -74,45 +66,22 @@ where
     }
 }
 
-impl<'a, 'res, Config, OwnedSample> Subscriber<'a, 'res, Config, OwnedSample, true>
-where
-    Config: ZSessionConfig,
-{
-    pub fn try_recv(&self) -> Option<OwnedSample> {
-        self.receiver.as_ref().unwrap().try_receive().ok()
-    }
-
-    pub async fn recv(&self) -> Option<OwnedSample> {
-        Some(self.receiver.as_ref().unwrap().receive().await)
-    }
-}
-
 type CallbackStorage<'res, Config> =
     <<Config as ZSessionConfig>::SubCallbacks<'res> as ZCallbacks<'res, SampleRef>>::Callback;
 
-type FutureStorage<'res, Config> =
-    <<Config as ZSessionConfig>::SubCallbacks<'res> as ZCallbacks<'res, SampleRef>>::Future;
-
-pub struct SubscriberBuilder<
-    'a,
-    'res,
-    Config,
-    OwnedSample = (),
-    const READY: bool = false,
-    const CHANNEL: bool = false,
-> where
+pub struct SubscriberBuilder<'a, 'res, Config>
+where
     Config: ZSessionConfig,
 {
     session: &'a Session<'res, Config>,
     ke: &'static keyexpr,
     callback: Option<
-        DynCallback<'res, CallbackStorage<'res, Config>, FutureStorage<'res, Config>, SampleRef>,
+        DynCallback<'res, CallbackStorage<'res, Config>, SampleRef>,
     >,
-    receiver: Option<DynamicReceiver<'res, OwnedSample>>,
     allowed_origin: Locality,
 }
 
-impl<'a, 'res, Config> SubscriberBuilder<'a, 'res, Config, (), false, false>
+impl<'a, 'res, Config> SubscriberBuilder<'a, 'res, Config>
 where
     Config: ZSessionConfig,
 {
@@ -121,7 +90,6 @@ where
             session,
             ke,
             callback: None,
-            receiver: None,
             allowed_origin: Locality::default(),
         }
     }
@@ -133,13 +101,12 @@ where
 
     pub fn callback(
         self,
-        callback: impl AsyncFnMut(&Sample<'_>) + 'res,
-    ) -> SubscriberBuilder<'a, 'res, Config, (), true, false> {
-        SubscriberBuilder {
+        callback: impl FnMut(&Sample<'_>) + 'res,
+    ) -> Self {
+        Self {
             session: self.session,
             ke: self.ke,
-            callback: Some(DynObject::new(AsyncCallback::new(callback))),
-            receiver: None,
+            callback: Some(DynObject::new(SyncCallback::new(callback))),
             allowed_origin: self.allowed_origin,
         }
     }
@@ -147,55 +114,19 @@ where
     pub fn callback_sync(
         self,
         callback: impl FnMut(&Sample<'_>) + 'res,
-    ) -> SubscriberBuilder<'a, 'res, Config, (), true, false> {
-        SubscriberBuilder {
+    ) -> Self {
+        Self {
             session: self.session,
             ke: self.ke,
             callback: Some(DynObject::new(SyncCallback::new(callback))),
-            receiver: None,
             allowed_origin: self.allowed_origin,
         }
     }
 
-    pub fn channel<OwnedSample, E>(
+    pub fn finish(
         self,
-        sender: DynamicSender<'res, OwnedSample>,
-        receiver: DynamicReceiver<'res, OwnedSample>,
-    ) -> SubscriberBuilder<'a, 'res, Config, OwnedSample, true, true>
-    where
-        OwnedSample: for<'any> TryFrom<&'any Sample<'any>, Error = E>,
-    {
-        SubscriberBuilder {
-            session: self.session,
-            ke: self.ke,
-            callback: Some(DynObject::new(AsyncCallback::new(
-                async move |resp: &'_ Sample<'_>| {
-                    if let Ok(resp) = OwnedSample::try_from(resp) {
-                        sender.send(resp).await;
-                    } else {
-                        zenoh_proto::error!(
-                            "{}: Couldn't convert to a transferable sample",
-                            zenoh_proto::zctx!()
-                        )
-                    }
-                },
-            ))),
-            receiver: Some(receiver),
-            allowed_origin: self.allowed_origin,
-        }
-    }
-}
-
-impl<'a, 'res, Config, OwnedSample, const CHANNEL: bool>
-    SubscriberBuilder<'a, 'res, Config, OwnedSample, true, CHANNEL>
-where
-    Config: ZSessionConfig,
-{
-    pub async fn finish(
-        self,
-    ) -> core::result::Result<Subscriber<'a, 'res, Config, OwnedSample, CHANNEL>, SessionError>
-    {
-        let mut state = self.session.state().await;
+    ) -> core::result::Result<Subscriber<'a, 'res, Config>, SessionError> {
+        let state = self.session.state();
         let id = state.next();
 
         if let Some(callback) = self.callback {
@@ -211,21 +142,18 @@ where
         };
 
         self.session
-            .driver
-            .tx()
-            .await
+            .driver()
+            .tx_mut()
             .send(core::iter::once(NetworkMessage {
                 reliability: Reliability::default(),
                 qos: QoS::default(),
                 body: NetworkBody::Declare(msg),
-            }))
-            .await?;
+            }))?;
 
         Ok(Subscriber {
             ke: self.ke,
             id,
             session: self.session,
-            receiver: self.receiver,
         })
     }
 }

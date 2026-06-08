@@ -1,4 +1,5 @@
 use dyn_utils::DynObject;
+
 use zenoh_proto::{
     SessionError,
     exts::QoS,
@@ -7,10 +8,16 @@ use zenoh_proto::{
     msgs::*,
 };
 
+#[cfg(feature = "acl")]
+use crate::api::acl::AclOperation;
+
+#[cfg(feature = "alloc")]
+use crate::api::callbacks::AllocCallbacks;
+
 use crate::{
     api::{
         arg::SampleRef,
-        callbacks::{AsyncCallback, DynCallback, SyncCallback, ZCallbacks},
+        callbacks::{DynCallback, SyncCallback, ZCallbacks},
         sample::Sample,
         session::Session,
     },
@@ -18,21 +25,12 @@ use crate::{
     io::transport::ZTransportLinkTx,
 };
 
-#[cfg(feature = "acl")]
-use crate::api::acl::AclOperation;
-
 type SubCallbackStorage<'res, Config> =
     <<Config as ZSessionConfig>::SubCallbacks<'res> as ZCallbacks<'res, SampleRef>>::Callback;
-
-type SubFutureStorage<'res, Config> =
-    <<Config as ZSessionConfig>::SubCallbacks<'res> as ZCallbacks<'res, SampleRef>>::Future;
 
 type LivelinessCallbackStorage<'res, Config> = <<Config as ZSessionConfig>::LivelinessCallbacks<
     'res,
 > as ZCallbacks<'res, SampleRef>>::Callback;
-
-type LivelinessFutureStorage<'res, Config> =
-    <<Config as ZSessionConfig>::LivelinessCallbacks<'res> as ZCallbacks<'res, SampleRef>>::Future;
 
 /// A fire-and-forget subscriber that processes samples via callback.
 ///
@@ -50,7 +48,7 @@ impl BackgroundSubscriber {
     }
 }
 
-pub struct BackgroundSubscriberBuilder<'a, 'res, Config, const READY: bool = false>
+pub struct BackgroundSubscriberBuilder<'a, 'res, Config>
 where
     Config: ZSessionConfig,
 {
@@ -60,13 +58,12 @@ where
         DynCallback<
             'res,
             SubCallbackStorage<'res, Config>,
-            SubFutureStorage<'res, Config>,
             SampleRef,
         >,
     >,
 }
 
-impl<'a, 'res, Config> BackgroundSubscriberBuilder<'a, 'res, Config, false>
+impl<'a, 'res, Config> BackgroundSubscriberBuilder<'a, 'res, Config>
 where
     Config: ZSessionConfig,
 {
@@ -81,8 +78,8 @@ where
     pub fn callback_sync(
         self,
         callback: impl FnMut(&Sample<'_>) + 'res,
-    ) -> BackgroundSubscriberBuilder<'a, 'res, Config, true> {
-        BackgroundSubscriberBuilder {
+    ) -> Self {
+        Self {
             session: self.session,
             ke: self.ke,
             callback: Some(DynObject::new(SyncCallback::new(callback))),
@@ -91,26 +88,21 @@ where
 
     pub fn callback(
         self,
-        callback: impl AsyncFnMut(&Sample<'_>) + 'res,
-    ) -> BackgroundSubscriberBuilder<'a, 'res, Config, true> {
-        BackgroundSubscriberBuilder {
+        callback: impl FnMut(&Sample<'_>) + 'res,
+    ) -> Self {
+        Self {
             session: self.session,
             ke: self.ke,
-            callback: Some(DynObject::new(AsyncCallback::new(callback))),
+            callback: Some(DynObject::new(SyncCallback::new(callback))),
         }
     }
-}
 
-impl<'a, 'res, Config> BackgroundSubscriberBuilder<'a, 'res, Config, true>
-where
-    Config: ZSessionConfig,
-{
-    pub async fn finish(self) -> core::result::Result<BackgroundSubscriber, SessionError> {
+    pub fn finish(self) -> core::result::Result<BackgroundSubscriber, SessionError> {
         #[cfg(feature = "acl")]
         self.session
             .check_acl_permission(AclOperation::Subscribe, self.ke)?;
 
-        let mut state = self.session.state().await;
+        let mut state = self.session.state();
         let id = state.next();
 
         if let Some(callback) = self.callback {
@@ -126,15 +118,13 @@ where
         };
 
         self.session
-            .driver
-            .tx()
-            .await
+            .driver()
+            .tx_mut()
             .send(core::iter::once(NetworkMessage {
                 reliability: Reliability::default(),
                 qos: QoS::default(),
                 body: NetworkBody::Declare(msg),
-            }))
-            .await?;
+            }))?;
 
         Ok(BackgroundSubscriber { ke: self.ke })
     }
@@ -147,29 +137,28 @@ where
     pub fn declare_background_subscriber(
         &self,
         ke: &'static keyexpr,
-    ) -> BackgroundSubscriberBuilder<'_, 'res, Config, false> {
+    ) -> BackgroundSubscriberBuilder<'_, 'res, Config> {
         BackgroundSubscriberBuilder::new(self, ke)
     }
 
     /// Declare a fire-and-forget subscriber that processes samples via a
     /// synchronous callback. No handle is returned — the subscription lives
     /// until the session is dropped.
-    pub async fn declare_background_subscriber_sync(
+    pub fn declare_background_subscriber_sync(
         &self,
         ke: &'static keyexpr,
         callback: impl FnMut(&Sample<'_>) + 'res,
     ) -> core::result::Result<(), SessionError> {
         self.declare_background_subscriber(ke)
             .callback_sync(callback)
-            .finish()
-            .await?;
+            .finish()?;
         Ok(())
     }
 
     /// Declare a fire-and-forget liveliness subscriber that processes samples
     /// via a synchronous callback. No handle is returned — the subscription
     /// lives until the session is dropped.
-    pub async fn declare_liveliness_background_subscriber_sync(
+    pub fn declare_liveliness_background_subscriber_sync(
         &self,
         ke: &'static keyexpr,
         callback: impl FnMut(&Sample<'_>) + 'res,
@@ -177,13 +166,12 @@ where
         #[cfg(feature = "acl")]
         self.check_acl_permission(AclOperation::Subscribe, ke)?;
 
-        let mut state = self.state().await;
+        let mut state = self.state();
         let id = state.next();
 
         let callback: DynCallback<
             'res,
             LivelinessCallbackStorage<'res, Config>,
-            LivelinessFutureStorage<'res, Config>,
             SampleRef,
         > = DynObject::new(SyncCallback::new(callback));
 
@@ -199,15 +187,13 @@ where
             ..Default::default()
         };
 
-        self.driver
-            .tx()
-            .await
+        self.driver()
+            .tx_mut()
             .send(core::iter::once(NetworkMessage {
                 reliability: Reliability::default(),
                 qos: QoS::default(),
                 body: NetworkBody::Interest(msg),
-            }))
-            .await?;
+            }))?;
 
         Ok(())
     }
@@ -234,9 +220,6 @@ mod tests {
 
     #[test]
     fn test_sync_callback_wraps_fn_pointer() {
-        // Verify that a fn pointer can be wrapped in SyncCallback without
-        // causing type errors. This is the core mechanism used by background
-        // subscribers in no_std environments.
         fn my_callback(_s: &Sample<'_>) {}
 
         let _cb = SyncCallback::<SampleRef, _>::new(my_callback as fn(&Sample<'_>));
@@ -252,9 +235,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sync_callback_invocation_via_poll() {
-        use core::task::{Context, Waker};
-
+    fn test_sync_callback_invocation() {
         let ke = keyexpr::from_str_unchecked("test/foo");
         let sample = Sample::new(
             ke,
@@ -273,11 +254,7 @@ mod tests {
             assert_eq!(s.payload(), b"hello");
         });
 
-        let waker: &'static Waker = Waker::noop();
-        let mut cx = Context::from_waker(waker);
-        let mut fut = ZCallback::call(&mut cb, &sample);
-        let _ = unsafe { core::pin::Pin::new_unchecked(&mut fut) }.poll(&mut cx);
-
+        ZCallback::call(&mut cb, &sample);
         assert!(called.get());
     }
 }

@@ -46,7 +46,7 @@ where
         }
     }
 
-    pub async fn delete(&self, timestamp: Option<Timestamp>, attachment: Option<&'a [u8]>) -> core::result::Result<(), SessionError> {
+    pub fn delete(&self, timestamp: Option<Timestamp>, attachment: Option<&'a [u8]>) -> core::result::Result<(), SessionError> {
         let mut builder = self.session.delete(self.ke);
         if let Some(ts) = timestamp {
             builder = builder.timestamp(ts);
@@ -54,14 +54,14 @@ where
         if let Some(att) = attachment {
             builder = builder.attachment(att);
         }
-        builder.finish().await
+        builder.finish()
     }
 
     pub fn keyexpr(&self) -> &keyexpr {
         self.ke
     }
 
-    pub async fn matching_status(&self) -> bool {
+    pub fn matching_status(&self) -> bool {
         self.has_matching
     }
 
@@ -131,11 +131,11 @@ where
         self
     }
 
-    pub async fn finish(self) -> core::result::Result<Publisher<'a, 'res, Config>, SessionError> {
+    pub fn finish(self) -> core::result::Result<Publisher<'a, 'res, Config>, SessionError> {
         let has_matching = self.matching;
         #[cfg(feature = "publisher_id")]
         let id = {
-            let mut state = self.session.state().await;
+            let mut state = self.session.state();
             state.next()
         };
         Ok(Publisher {

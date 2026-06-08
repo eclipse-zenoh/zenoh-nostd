@@ -56,7 +56,7 @@ where
         self
     }
 
-    pub async fn finish(self) -> core::result::Result<(), SessionError> {
+    pub fn finish(self) -> core::result::Result<(), SessionError> {
         let msg = Push {
             wire_expr: WireExpr::from(self.ke),
             payload: PushBody::Del(Del {
@@ -70,15 +70,13 @@ where
 
         Ok(self
             .session
-            .driver
-            .tx()
-            .await
+            .driver()
+            .tx_mut()
             .send(core::iter::once(NetworkMessage {
                 reliability: self.reliability,
                 qos: self.qos,
                 body: NetworkBody::Push(msg),
-            }))
-            .await?)
+            }))?)
     }
 }
 

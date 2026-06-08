@@ -29,22 +29,16 @@ where
             payload: self.payload,
             timeout: self.timeout,
             callback: None,
-            receiver: None,
             reliability: self.reliability,
             query_target: self.query_target,
         }
-    }
-
-    #[allow(dead_code)]
-    async fn undeclare(self) -> core::result::Result<(), SessionError> {
-        todo!("send undeclare interest")
     }
 
     pub fn keyexpr(&self) -> &keyexpr {
         self.ke
     }
 
-    pub async fn matching_status(&self) -> bool {
+    pub fn matching_status(&self) -> bool {
         self.has_matching
     }
 }
@@ -117,7 +111,7 @@ where
         self
     }
 
-    pub async fn finish(self) -> core::result::Result<Querier<'a, 'res, Config>, SessionError> {
+    pub fn finish(self) -> core::result::Result<Querier<'a, 'res, Config>, SessionError> {
         let has_matching = self.matching;
         Ok(Querier {
             session: self.session,

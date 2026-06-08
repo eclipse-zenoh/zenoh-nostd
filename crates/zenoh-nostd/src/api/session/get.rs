@@ -1,9 +1,6 @@
 use core::time::Duration;
 
 use dyn_utils::{DynObject, storage::RawOrBox};
-use embassy_futures::select::{Either, select};
-use embassy_sync::channel::{DynamicReceiver, DynamicSender};
-use embassy_time::{Instant, Timer};
 use zenoh_proto::{
     SessionError,
     exts::{QoS, QueryTarget, Value},
@@ -17,7 +14,7 @@ use crate::api::callbacks::AllocCallbacks;
 use crate::{
     api::{
         arg::GetResponseRef,
-        callbacks::{AsyncCallback, DynCallback, FixedCapacityCallbacks, SyncCallback, ZCallbacks},
+        callbacks::{DynCallback, FixedCapacityCallbacks, SyncCallback, ZCallbacks},
         session::Session,
     },
     config::ZSessionConfig,
@@ -29,21 +26,18 @@ pub type FixedCapacityGetCallbacks<
     'a,
     const CAPACITY: usize,
     Callback = RawOrBox<16>,
-    Future = RawOrBox<128>,
-> = FixedCapacityCallbacks<'a, GetResponseRef, CAPACITY, Callback, Future>;
+> = FixedCapacityCallbacks<'a, GetResponseRef, CAPACITY, Callback>;
 
 #[cfg(feature = "alloc")]
-pub type AllocGetCallbacks<'a, Callback = RawOrBox<16>, Future = RawOrBox<128>> =
-    AllocCallbacks<'a, GetResponseRef, Callback, Future>;
+pub type AllocGetCallbacks<'a, Callback = RawOrBox<16>> =
+    AllocCallbacks<'a, GetResponseRef, Callback>;
 
-pub struct GetResponses<'res, OwnedResponse = (), const CHANNEL: bool = false> {
+pub struct GetResponses {
     ke: &'static keyexpr,
-    timedout: Instant,
-    receiver: Option<DynamicReceiver<'res, OwnedResponse>>,
     cancelled: core::cell::Cell<bool>,
 }
 
-impl<'res, OwnedResponse, const CHANNEL: bool> GetResponses<'res, OwnedResponse, CHANNEL> {
+impl GetResponses {
     pub fn cancel(&self) {
         self.cancelled.set(true);
     }
@@ -53,44 +47,11 @@ impl<'res, OwnedResponse, const CHANNEL: bool> GetResponses<'res, OwnedResponse,
     }
 }
 
-impl<'res, OwnedResponse> GetResponses<'res, OwnedResponse, true> {
-    pub fn try_recv(&self) -> Option<OwnedResponse> {
-        if self.cancelled.get() {
-            return None;
-        }
-        self.receiver.as_ref().unwrap().try_receive().ok()
-    }
-
-    pub async fn recv(&self) -> Option<OwnedResponse> {
-        if self.cancelled.get() {
-            return None;
-        }
-        match select(
-            Timer::at(self.timedout),
-            self.receiver.as_ref().unwrap().receive(),
-        )
-        .await
-        {
-            Either::First(_) => None,
-            Either::Second(v) => Some(v),
-        }
-    }
-}
-
 type CallbackStorage<'res, Config> =
     <<Config as ZSessionConfig>::GetCallbacks<'res> as ZCallbacks<'res, GetResponseRef>>::Callback;
 
-type FutureStorage<'res, Config> =
-    <<Config as ZSessionConfig>::GetCallbacks<'res> as ZCallbacks<'res, GetResponseRef>>::Future;
-
-pub struct GetBuilder<
-    'a,
-    'res,
-    Config,
-    OwnedResponse = (),
-    const READY: bool = false,
-    const CHANNEL: bool = false,
-> where
+pub struct GetBuilder<'a, 'res, Config>
+where
     Config: ZSessionConfig,
 {
     pub(crate) session: &'a Session<'res, Config>,
@@ -102,16 +63,14 @@ pub struct GetBuilder<
         DynCallback<
             'res,
             CallbackStorage<'res, Config>,
-            FutureStorage<'res, Config>,
             GetResponseRef,
         >,
     >,
-    pub(crate) receiver: Option<DynamicReceiver<'res, OwnedResponse>>,
     pub(crate) reliability: Reliability,
     pub(crate) query_target: QueryTarget,
 }
 
-impl<'a, 'res, Config> GetBuilder<'a, 'res, Config, (), false, false>
+impl<'a, 'res, Config> GetBuilder<'a, 'res, Config>
 where
     Config: ZSessionConfig,
 {
@@ -123,7 +82,6 @@ where
             payload: None,
             timeout: None,
             callback: None,
-            receiver: None,
             reliability: Reliability::default(),
             query_target: QueryTarget::default(),
         }
@@ -131,16 +89,15 @@ where
 
     pub fn callback(
         self,
-        callback: impl AsyncFnMut(&GetResponse<'_>) + 'res,
-    ) -> GetBuilder<'a, 'res, Config, (), true> {
-        GetBuilder {
+        callback: impl FnMut(&GetResponse<'_>) + 'res,
+    ) -> Self {
+        Self {
             session: self.session,
             ke: self.ke,
             parameters: self.parameters,
             payload: self.payload,
             timeout: self.timeout,
-            callback: Some(DynObject::new(AsyncCallback::new(callback))),
-            receiver: None,
+            callback: Some(DynObject::new(SyncCallback::new(callback))),
             reliability: self.reliability,
             query_target: self.query_target,
         }
@@ -149,58 +106,19 @@ where
     pub fn callback_sync(
         self,
         callback: impl FnMut(&GetResponse<'_>) + 'res,
-    ) -> GetBuilder<'a, 'res, Config, (), true> {
-        GetBuilder {
+    ) -> Self {
+        Self {
             session: self.session,
             ke: self.ke,
             parameters: self.parameters,
             payload: self.payload,
             timeout: self.timeout,
             callback: Some(DynObject::new(SyncCallback::new(callback))),
-            receiver: None,
             reliability: self.reliability,
             query_target: self.query_target,
         }
     }
 
-    pub fn channel<OwnedResponse, E>(
-        self,
-        sender: DynamicSender<'res, OwnedResponse>,
-        receiver: DynamicReceiver<'res, OwnedResponse>,
-    ) -> GetBuilder<'a, 'res, Config, OwnedResponse, true, true>
-    where
-        OwnedResponse: for<'any> TryFrom<&'any GetResponse<'any>, Error = E>,
-    {
-        GetBuilder {
-            session: self.session,
-            ke: self.ke,
-            parameters: self.parameters,
-            payload: self.payload,
-            timeout: self.timeout,
-            callback: Some(DynObject::new(AsyncCallback::new(
-                async move |resp: &'_ GetResponse<'_>| {
-                    if let Ok(resp) = OwnedResponse::try_from(resp) {
-                        sender.send(resp).await;
-                    } else {
-                        zenoh_proto::error!(
-                            "{}: Couldn't convert to a transferable response",
-                            zenoh_proto::zctx!()
-                        )
-                    }
-                },
-            ))),
-            receiver: Some(receiver),
-            reliability: self.reliability,
-            query_target: self.query_target,
-        }
-    }
-}
-
-impl<'a, 'res, Config, OwnedResponse, const READY: bool, const CHANNEL: bool>
-    GetBuilder<'a, 'res, Config, OwnedResponse, READY, CHANNEL>
-where
-    Config: ZSessionConfig,
-{
     pub fn keyexpr(mut self, ke: &'static keyexpr) -> Self {
         self.ke = ke;
         self
@@ -230,31 +148,18 @@ where
         self.query_target = query_target;
         self
     }
-}
 
-impl<'a, 'res, Config, OwnedResponse, const CHANNEL: bool>
-    GetBuilder<'a, 'res, Config, OwnedResponse, true, CHANNEL>
-where
-    Config: ZSessionConfig,
-{
-    pub async fn finish(
+    pub fn finish(
         self,
-    ) -> core::result::Result<GetResponses<'res, OwnedResponse, CHANNEL>, SessionError> {
-        let timedout = Instant::now()
-            + self
-                .timeout
-                .unwrap_or(Duration::from_secs(30))
-                .try_into()
-                .unwrap();
-
-        let mut state = self.session.state().await;
+    ) -> core::result::Result<GetResponses, SessionError> {
+        let state = self.session.state();
         let rid = state.next();
 
         if let Some(callback) = self.callback {
             state.get_callbacks.drop_timedout();
             state
                 .get_callbacks
-                .insert(rid, self.ke, Some(timedout), callback)?;
+                .insert(rid, self.ke, None, callback)?;
         }
 
         let msg = Request {
@@ -274,20 +179,16 @@ where
         };
 
         self.session
-            .driver
-            .tx()
-            .await
+            .driver()
+            .tx_mut()
             .send(core::iter::once(NetworkMessage {
                 reliability: self.reliability,
                 qos: QoS::default(),
                 body: NetworkBody::Request(msg),
-            }))
-            .await?;
+            }))?;
 
         Ok(GetResponses {
             ke: self.ke,
-            timedout,
-            receiver: self.receiver,
             cancelled: core::cell::Cell::new(false),
         })
     }
