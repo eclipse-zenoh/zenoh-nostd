@@ -17,6 +17,7 @@ exclude = [
     "platforms/zenoh-rp2040",
     "platforms/zenoh-opencr",
     "platforms/zenoh-flipper",
+    "platforms/zenoh-platform-posix",
 ]
 resolver = "3"
 

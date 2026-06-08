@@ -104,7 +104,6 @@ pub struct UndeclareToken<'a> {
     pub wire_expr: Option<WireExpr<'a>>,
 }
 
-#[cfg(feature = "multicast-declarations")]
 #[derive(ZStruct, Debug, PartialEq, Default)]
 #[zenoh(header = "_|M|N|ID:5=0x08")]
 pub struct DeclarePublisher<'a> {
@@ -113,7 +112,6 @@ pub struct DeclarePublisher<'a> {
     pub wire_expr: WireExpr<'a>,
 }
 
-#[cfg(feature = "multicast-declarations")]
 #[derive(ZStruct, Debug, PartialEq, Default)]
 #[zenoh(header = "_:3|ID:5=0x09")]
 pub struct UndeclarePublisher {
