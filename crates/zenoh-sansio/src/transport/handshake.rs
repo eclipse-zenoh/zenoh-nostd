@@ -1,6 +1,8 @@
 use core::fmt::Display;
 
-use zenoh_proto::{EitherError, TransportError, msgs::InitSyn};
+use zenoh_proto::{EitherError, TransportError, msgs::{Close, CloseBehaviour, InitSyn, TransportMessage}};
+
+use crate::transport::AuthVerifierFn;
 
 use crate::{
     Transport, TransportRx, TransportTx, ZTransportRx, ZTransportTx,
@@ -34,6 +36,13 @@ pub enum Handshake<Buff, T, Read, Write> {
         state: State,
 
         prefixed: bool,
+
+        /// Optional auth verifier callback for server-side auth checking.
+        /// When set, the verifier is called with the auth payload from the
+        /// remote InitSyn. If it returns false, a Close message with reason
+        /// AuthRejected (0x02) is sent and the handshake terminates.
+        #[cfg(feature = "auth")]
+        auth_verifier: Option<AuthVerifierFn>,
 
         tx: TransportTx<Buff>,
         rx: TransportRx<Buff>,
@@ -102,6 +111,13 @@ impl<Buff, T, Read, Write> Handshake<Buff, T, Read, Write> {
         Read: FnMut(&mut T, &mut [u8]) -> core::result::Result<usize, E>,
         Write: FnMut(&mut T, &[u8]) -> core::result::Result<(), E>,
     {
+        // Extract auth_verifier pointer before match to avoid borrow conflicts
+        #[cfg(feature = "auth")]
+        let auth_verifier_ptr: *const Option<AuthVerifierFn> = match self {
+            &mut Self::PendingRecv { ref auth_verifier, .. } => auth_verifier,
+            _ => core::ptr::null(),
+        };
+
         match self {
             Self::Opened => Ok(None),
             Self::Ready { .. } => Ok(Some(HandshakeReady { handshake: self })),
@@ -133,6 +149,8 @@ impl<Buff, T, Read, Write> Handshake<Buff, T, Read, Write> {
                     *self = Self::PendingRecv {
                         state,
                         prefixed,
+                        #[cfg(feature = "auth")]
+                        auth_verifier: None,
                         tx,
                         rx,
                         handle,
@@ -153,6 +171,7 @@ impl<Buff, T, Read, Write> Handshake<Buff, T, Read, Write> {
                 handle,
                 read,
                 write,
+                ..
             } => {
                 if let Some(description) = state.description() {
                     if let Self::PendingRecv { tx, rx, .. } = core::mem::replace(self, Self::Opened)
@@ -170,9 +189,37 @@ impl<Buff, T, Read, Write> Handshake<Buff, T, Read, Write> {
                 }
 
                 rx.decode_with(|bytes| read(handle, bytes), *prefixed)?;
+
                 let resp = rx
                     .flush_transport()
-                    .map(|msg| state.poll(msg))
+                    .map(|(msg, buff)| {
+                        #[cfg(feature = "auth")]
+                        {
+                            let verifier: Option<AuthVerifierFn> = unsafe {
+                                auth_verifier_ptr.as_ref().copied().flatten()
+                            };
+                            if let TransportMessage::InitSyn(ref syn) = msg {
+                                if let Some(verifier) = verifier {
+                                    if let Some(ref auth) = syn.auth {
+                                        if !verifier(auth.payload) {
+                                            zenoh_proto::debug!(
+                                                "Auth rejected for peer {:?}",
+                                                syn.identifier.zid
+                                            );
+                                            return (
+                                                Some(TransportMessage::Close(Close {
+                                                    reason: 0x02,
+                                                    behaviour: CloseBehaviour::Link,
+                                                })),
+                                                None,
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        state.poll((msg, buff))
+                    })
                     .filter_map(|response| response.0);
 
                 for resp in resp {
@@ -200,6 +247,13 @@ impl<Buff, T, Read, Write> Handshake<Buff, T, Read, Write> {
         Read: AsyncFnMut(&mut T, &mut [u8]) -> core::result::Result<usize, E>,
         Write: AsyncFnMut(&mut T, &[u8]) -> core::result::Result<(), E>,
     {
+        // Extract auth_verifier pointer before match to avoid borrow conflicts
+        #[cfg(feature = "auth")]
+        let auth_verifier_ptr: *const Option<AuthVerifierFn> = match self {
+            &mut Self::PendingRecv { ref auth_verifier, .. } => auth_verifier,
+            _ => core::ptr::null(),
+        };
+
         match self {
             Self::Opened => Ok(None),
             Self::Ready { .. } => Ok(Some(HandshakeReady { handshake: self })),
@@ -231,6 +285,8 @@ impl<Buff, T, Read, Write> Handshake<Buff, T, Read, Write> {
                     *self = Self::PendingRecv {
                         state,
                         prefixed,
+                        #[cfg(feature = "auth")]
+                        auth_verifier: None,
                         tx,
                         rx,
                         handle,
@@ -251,6 +307,7 @@ impl<Buff, T, Read, Write> Handshake<Buff, T, Read, Write> {
                 handle,
                 read,
                 write,
+                ..
             } => {
                 if let Some(description) = state.description() {
                     if let Self::PendingRecv { tx, rx, .. } = core::mem::replace(self, Self::Opened)
@@ -272,7 +329,34 @@ impl<Buff, T, Read, Write> Handshake<Buff, T, Read, Write> {
 
                 let resp = rx
                     .flush_transport()
-                    .map(|msg| state.poll(msg))
+                    .map(|(msg, buff)| {
+                        #[cfg(feature = "auth")]
+                        {
+                            let verifier: Option<AuthVerifierFn> = unsafe {
+                                auth_verifier_ptr.as_ref().copied().flatten()
+                            };
+                            if let TransportMessage::InitSyn(ref syn) = msg {
+                                if let Some(verifier) = verifier {
+                                    if let Some(ref auth) = syn.auth {
+                                        if !verifier(auth.payload) {
+                                            zenoh_proto::debug!(
+                                                "Auth rejected for peer {:?}",
+                                                syn.identifier.zid
+                                            );
+                                            return (
+                                                Some(TransportMessage::Close(Close {
+                                                    reason: 0x02,
+                                                    behaviour: CloseBehaviour::Link,
+                                                })),
+                                                None,
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        state.poll((msg, buff))
+                    })
                     .filter_map(|response| response.0);
                 for resp in resp {
                     tx.transport(resp);

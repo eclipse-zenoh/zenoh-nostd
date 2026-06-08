@@ -3,6 +3,10 @@
 #[cfg(kani)]
 extern crate kani;
 
+#[cfg(feature = "auth")]
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
 mod transport;
 
 #[cfg(feature = "verus")]

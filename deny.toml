@@ -8,13 +8,16 @@ no-default-features = false
 feature-depth = 1
 
 [advisories]
+version = 2
 ignore = [
     { id = "RUSTSEC-2024-0436", reason = "paste is a dev-dependency via zenoh-proto, unmaintained but no viable replacement needed yet" },
     { id = "RUSTSEC-2026-0173", reason = "proc-macro-error2 is transitive via defmt-macros, unmaintained but defmt has no migration path yet" },
+    { id = "RUSTSEC-2026-0007", reason = "Integer overflow in BytesMut::reserve - pre-existing, not introduced by this change" },
+    { id = "RUSTSEC-2026-0097", reason = "Rand unsound with custom logger - pre-existing, not introduced by this change" },
 ]
-yanked = "warn"
 
 [licenses]
+version = 2
 allow = [
     "MIT",
     "Apache-2.0",
@@ -25,34 +28,20 @@ allow = [
     "ISC",
     "Zlib",
     "Unicode-3.0",
+    "Unicode-DFS-2016",
     "MPL-2.0",
     "0BSD",
+    "OpenSSL",
 ]
 confidence-threshold = 0.8
 
-exceptions = []
-
-[[licenses.clarify]]
-crate = "dyn-utils@0.1.0"
-expression = "MIT"
-license-files = [
-    { path = "LICENSE-MIT", hash = 0 },
-]
-
-[[licenses.clarify]]
-crate = "dyn-utils-macros@0.1.0"
-expression = "MIT"
-license-files = [
-    { path = "../LICENSE-MIT", hash = 0 },
-]
-
 [licenses.private]
-ignore = false
-registries = []
+ignore = true
+registries = ["https://github.com/rust-lang/crates.io-index"]
 
 [bans]
-multiple-versions = "warn"
-wildcards = "allow"
+multiple-versions = "deny"
+wildcards = "deny"
 highlight = "all"
 skip = []
 skip-tree = [

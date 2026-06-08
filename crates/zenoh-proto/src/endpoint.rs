@@ -122,6 +122,14 @@ impl Endpoint<'_> {
     pub fn address(&self) -> Address<'_> {
         Address(address(self.inner))
     }
+
+    pub fn address_with_metadata(&self) -> &str {
+        let pdix = self
+            .inner
+            .find(PROTO_SEPARATOR)
+            .unwrap_or(self.inner.len());
+        &self.inner[pdix + 1..]
+    }
 }
 
 impl fmt::Display for Endpoint<'_> {
@@ -149,21 +157,17 @@ impl<'a> TryFrom<&'a str> for Endpoint<'a> {
             (None, None) => Ok(Endpoint { inner: s }),
 
             (Some(midx), None) if midx > pidx && !s[midx + 1..].is_empty() => {
-                crate::zbail!(crate::EndpointError::MetadataNotSupported)
+                Ok(Endpoint { inner: s })
             }
 
             (None, Some(cidx)) if cidx > pidx && !s[cidx + 1..].is_empty() => {
                 crate::zbail!(crate::EndpointError::ConfigNotSupported)
             }
 
-            (Some(midx), Some(cidx))
-                if midx > pidx
-                    && cidx > midx
-                    && !s[midx + 1..cidx].is_empty()
-                    && !s[cidx + 1..].is_empty() =>
-            {
-                crate::zbail!(crate::EndpointError::MetadataNotSupported)
+            (Some(_), Some(_)) => {
+                crate::zbail!(crate::EndpointError::ConfigNotSupported)
             }
+
             _ => Err(crate::EndpointError::MetadataNotSupported),
         }
     }
@@ -206,8 +210,17 @@ mod tests {
     }
 
     #[test]
-    fn endpoint_metadata_not_supported() {
-        assert!(Endpoint::try_from("tcp/127.0.0.1:7447?mtu=1500").is_err());
+    fn endpoint_metadata_allowed() {
+        let ep = Endpoint::try_from("serial//dev/ttyUSB0?baud=9600&parity=even").unwrap();
+        assert_eq!(ep.protocol().as_str(), "serial");
+        assert_eq!(ep.address().as_str(), "/dev/ttyUSB0");
+    }
+
+    #[test]
+    fn endpoint_metadata_allowed_tcp() {
+        let ep = Endpoint::try_from("tcp/127.0.0.1:7447?mtu=1500").unwrap();
+        assert_eq!(ep.protocol().as_str(), "tcp");
+        assert_eq!(ep.address().as_str(), "127.0.0.1:7447");
     }
 
     #[test]
@@ -226,5 +239,17 @@ mod tests {
         let ep = Endpoint::try_from("ws/example.com:8080/path").unwrap();
         assert_eq!(ep.protocol().as_str(), "ws");
         assert_eq!(ep.address().as_str(), "example.com:8080/path");
+    }
+
+    #[test]
+    fn endpoint_address_with_metadata() {
+        let ep = Endpoint::try_from("serial//dev/ttyUSB0?baud=9600&parity=even").unwrap();
+        assert_eq!(ep.address_with_metadata(), "/dev/ttyUSB0?baud=9600&parity=even");
+    }
+
+    #[test]
+    fn endpoint_address_with_metadata_no_query() {
+        let ep = Endpoint::try_from("serial//dev/ttyUSB0").unwrap();
+        assert_eq!(ep.address_with_metadata(), "/dev/ttyUSB0");
     }
 }

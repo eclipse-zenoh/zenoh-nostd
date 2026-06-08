@@ -1,5 +1,7 @@
 use core::time::Duration;
 
+use zenoh_sansio::AuthVerifierFn;
+
 use zenoh_proto::{
     Endpoint, TransportLinkError,
     fields::{Resolution, WhatAmI, ZenohIdProto},
@@ -87,6 +89,9 @@ pub struct TransportLinkManager<LinkManager> {
 
     #[cfg(feature = "auth")]
     auth_payload: Option<heapless::Vec<u8, 256>>,
+
+    #[cfg(feature = "auth")]
+    auth_verifier: Option<Box<dyn Fn(&[u8]) -> bool>>,
 }
 
 impl<LinkManager> From<LinkManager> for TransportLinkManager<LinkManager> {
@@ -121,6 +126,9 @@ impl<LinkManager> TransportLinkManager<LinkManager> {
 
             #[cfg(feature = "auth")]
             auth_payload: None,
+
+            #[cfg(feature = "auth")]
+            auth_verifier: None,
         }
     }
 
@@ -141,6 +149,12 @@ impl<LinkManager> TransportLinkManager<LinkManager> {
             let _ = payload.push(b);
         }
         self.auth_payload = Some(payload);
+        self
+    }
+
+    #[cfg(feature = "auth")]
+    pub fn with_auth_verifier(mut self, verifier: impl Fn(&[u8]) -> bool + 'static) -> Self {
+        self.auth_verifier = Some(Box::new(verifier));
         self
     }
 

@@ -10,11 +10,31 @@ pub struct StdSerialLink {
 }
 
 impl StdSerialLink {
-    pub fn new(path: &str, baud_rate: u32) -> core::result::Result<Self, LinkError> {
-        let port = serialport::new(path, baud_rate)
-            .timeout(Duration::from_millis(10))
-            .open()
-            .map_err(|_| LinkError::CouldNotConnect)?;
+    pub fn new(path: &str, config: &zenoh_proto::SerialConfig) -> core::result::Result<Self, LinkError> {
+        let mut builder = serialport::new(path, config.baud_rate)
+            .timeout(Duration::from_millis(10));
+
+        builder = builder.data_bits(match config.data_bits {
+            zenoh_proto::SerialDataBits::Five => serialport::DataBits::Five,
+            zenoh_proto::SerialDataBits::Six => serialport::DataBits::Six,
+            zenoh_proto::SerialDataBits::Seven => serialport::DataBits::Seven,
+            zenoh_proto::SerialDataBits::Eight => serialport::DataBits::Eight,
+        });
+
+        builder = builder.parity(match config.parity {
+            zenoh_proto::SerialParity::None => serialport::Parity::None,
+            zenoh_proto::SerialParity::Even => serialport::Parity::Even,
+            zenoh_proto::SerialParity::Odd => serialport::Parity::Odd,
+            _ => serialport::Parity::None,
+        });
+
+        builder = builder.stop_bits(match config.stop_bits {
+            zenoh_proto::SerialStopBits::One => serialport::StopBits::One,
+            zenoh_proto::SerialStopBits::Two => serialport::StopBits::Two,
+            _ => serialport::StopBits::One,
+        });
+
+        let port = builder.open().map_err(|_| LinkError::CouldNotConnect)?;
 
         Ok(Self {
             port: Arc::new(Mutex::new(port)),

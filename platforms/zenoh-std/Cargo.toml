@@ -11,7 +11,8 @@ rust-version = "1.91.0"
 version = "0.1.0"
 
 [dependencies]
-zenoh-nostd = { version = "0.1.0", path = "../../crates/zenoh-nostd" }
+zenoh-nostd = { version = "0.1.0", path = "../../crates/zenoh-nostd", features = ["std"] }
+zenoh-proto = { path = "../../crates/zenoh-proto" }
 
 socket2 = { version = "0.6.0", features = ["all"] }
 serialport = "4"

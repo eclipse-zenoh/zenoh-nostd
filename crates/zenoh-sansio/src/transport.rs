@@ -4,6 +4,8 @@ use core::time::Duration;
 use establishment::Description;
 use zenoh_proto::{fields::*, msgs::*};
 
+pub type AuthVerifierFn = for<'a> fn(&'a [u8]) -> bool;
+
 pub(crate) mod establishment;
 
 #[cfg(kani)]
@@ -36,6 +38,9 @@ pub struct TransportBuilder<Buff> {
 
     #[cfg(feature = "auth")]
     auth_payload: Option<heapless::Vec<u8, 256>>,
+
+    #[cfg(feature = "auth")]
+    auth_verifier: Option<AuthVerifierFn>,
 }
 
 impl<Buff> TransportBuilder<Buff> {
@@ -54,6 +59,9 @@ impl<Buff> TransportBuilder<Buff> {
 
             #[cfg(feature = "auth")]
             auth_payload: None,
+
+            #[cfg(feature = "auth")]
+            auth_verifier: None,
         }
     }
     pub fn with_zid(mut self, zid: ZenohIdProto) -> Self {
@@ -107,6 +115,12 @@ impl<Buff> TransportBuilder<Buff> {
         self
     }
 
+    #[cfg(feature = "auth")]
+    pub fn with_auth_verifier(mut self, verifier: AuthVerifierFn) -> Self {
+        self.auth_verifier = Some(verifier);
+        self
+    }
+
     pub fn with_buff<NewBuff>(self, buff: NewBuff) -> TransportBuilder<NewBuff> {
         TransportBuilder {
             zid: self.zid,
@@ -119,6 +133,9 @@ impl<Buff> TransportBuilder<Buff> {
 
             #[cfg(feature = "auth")]
             auth_payload: self.auth_payload,
+
+            #[cfg(feature = "auth")]
+            auth_verifier: self.auth_verifier,
         }
     }
 
@@ -162,6 +179,8 @@ impl<Buff> TransportBuilder<Buff> {
     {
         #[cfg(feature = "auth")]
         let auth_payload = self.auth_payload;
+        #[cfg(feature = "auth")]
+        let auth_verifier = self.auth_verifier;
         let state = State::WaitingInitSyn {
             mine_zid: self.zid,
             mine_whatami: self.whatami,
@@ -193,6 +212,8 @@ impl<Buff> TransportBuilder<Buff> {
         Handshake::PendingRecv {
             state,
             prefixed: false,
+            #[cfg(feature = "auth")]
+            auth_verifier,
             tx,
             rx,
             handle,
@@ -215,6 +236,8 @@ impl<Buff> TransportBuilder<Buff> {
     {
         #[cfg(feature = "auth")]
         let auth_payload = self.auth_payload;
+        #[cfg(feature = "auth")]
+        let auth_verifier = self.auth_verifier;
         let state = State::WaitingInitSyn {
             mine_zid: self.zid,
             mine_whatami: self.whatami,
@@ -246,6 +269,8 @@ impl<Buff> TransportBuilder<Buff> {
         Handshake::PendingRecv {
             state,
             prefixed: false,
+            #[cfg(feature = "auth")]
+            auth_verifier,
             tx,
             rx,
             handle,

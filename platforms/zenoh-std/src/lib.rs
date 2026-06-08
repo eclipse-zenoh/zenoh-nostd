@@ -160,9 +160,9 @@ impl ZLinkManager for StdLinkManager {
                 Ok(Self::Link::Ws(ws::StdWsLink::new(stream, mtu)))
             }
             "serial" => {
-                let path = address.as_str();
-                let baud = 115200u32;
-                let link = serial::StdSerialLink::new(path, baud)?;
+                let cfg_addr = endpoint.address();
+                let config = zenoh_proto::parse_serial_config(endpoint.address_with_metadata());
+                let link = serial::StdSerialLink::new(cfg_addr.as_str(), &config)?;
                 Ok(Self::Link::Serial(link))
             }
             "raw-eth" => {
@@ -171,8 +171,9 @@ impl ZLinkManager for StdLinkManager {
                 Ok(Self::Link::RawEth(link))
             }
             "usb-cdc" => {
-                let path = address.as_str();
-                let link = usb_cdc::StdUsbCdcLink::new(path)?;
+                let cfg_addr = endpoint.address();
+                let config = zenoh_proto::parse_serial_config(endpoint.address_with_metadata());
+                let link = usb_cdc::StdUsbCdcLink::new(cfg_addr.as_str(), &config)?;
                 Ok(Self::Link::UsbCdc(link))
             }
             #[cfg(feature = "bt")]
@@ -284,9 +285,9 @@ impl ZLinkManager for StdLinkManager {
                 Ok(Self::Link::Ws(link))
             }
             "serial" => {
-                let path = address.as_str();
-                let baud = 115200u32;
-                let link = serial::StdSerialLink::new(path, baud)?;
+                let cfg_addr = endpoint.address();
+                let config = zenoh_proto::parse_serial_config(endpoint.address_with_metadata());
+                let link = serial::StdSerialLink::new(cfg_addr.as_str(), &config)?;
                 Ok(Self::Link::Serial(link))
             }
             "raw-eth" => {
@@ -295,8 +296,9 @@ impl ZLinkManager for StdLinkManager {
                 Ok(Self::Link::RawEth(link))
             }
             "usb-cdc" => {
-                let path = address.as_str();
-                let link = usb_cdc::StdUsbCdcLink::new(path)?;
+                let cfg_addr = endpoint.address();
+                let config = zenoh_proto::parse_serial_config(endpoint.address_with_metadata());
+                let link = usb_cdc::StdUsbCdcLink::new(cfg_addr.as_str(), &config)?;
                 Ok(Self::Link::UsbCdc(link))
             }
             "udp-mcast" => {
