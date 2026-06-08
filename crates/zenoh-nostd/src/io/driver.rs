@@ -1,14 +1,13 @@
-use core::ops::DerefMut;
-use embassy_futures::select::{Either3, select3};
-use embassy_sync::{
-    blocking_mutex::raw::NoopRawMutex,
-    mutex::{Mutex, MutexGuard},
+use zenoh_proto::{
+    EitherError, TransportLinkError,
+    fields::ZenohIdProto,
+    msgs::NetworkMessage,
 };
-use embassy_time::{Duration, Instant, Timer};
-use zenoh_proto::{EitherError, TransportLinkError, fields::ZenohIdProto, msgs::NetworkMessage};
+use zenoh_sansio::{ZTransportRx, ZTransportTx};
 
 use crate::{
     api::connectivity::{ConnectivityState, TransportEvent},
+    io::link::{ZLinkInfo, ZLinkRx, ZLinkTx},
     io::transport::{
         TransportLink, TransportLinkRx, TransportLinkTx, ZTransportLinkRx, ZTransportLinkTx,
     },
@@ -21,8 +20,8 @@ where
     Buff: Clone,
 {
     zid: ZenohIdProto,
-    tx: Mutex<NoopRawMutex, TransportLinkTx<'res, Link::Tx<'res>, Buff>>,
-    rx: Mutex<NoopRawMutex, TransportLinkRx<'res, Link::Rx<'res>, Buff>>,
+    tx: TransportLinkTx<'res, Link::Tx<'res>, Buff>,
+    rx: TransportLinkRx<'res, Link::Rx<'res>, Buff>,
 }
 
 impl<'res, Link, Buff> Driver<'res, Link, Buff>
@@ -32,111 +31,108 @@ where
 {
     pub fn new(transport: &'res mut TransportLink<Link, Buff>) -> Self {
         let zid = transport.transport().other_zid;
-
         let (tx, rx) = transport.split();
-
-        Self {
-            zid,
-            tx: Mutex::new(tx),
-            rx: Mutex::new(rx),
-        }
+        Self { zid, tx, rx }
     }
 
-    #[allow(dead_code)]
     pub fn zid(&self) -> ZenohIdProto {
         self.zid
     }
 
-    pub async fn tx(
-        &self,
-    ) -> MutexGuard<'_, NoopRawMutex, TransportLinkTx<'res, Link::Tx<'res>, Buff>> {
-        self.tx.lock().await
+    pub fn tx_mut(&mut self) -> &mut TransportLinkTx<'res, Link::Tx<'res>, Buff> {
+        &mut self.tx
     }
 
-    pub async fn run<State, E, Update>(
-        &self,
-        state: &Mutex<NoopRawMutex, State>,
+    /// Drive IO: send pending frames, receive and dispatch messages, handle timeouts.
+    /// Returns `true` if any work was done, `false` if idle.
+    /// Call this in your main loop. Non-blocking.
+    pub fn poll<State, E>(
+        &mut self,
+        state: &mut State,
         connectivity: &ConnectivityState<'_>,
-        mut update: Update,
-    ) -> core::result::Result<(), EitherError<TransportLinkError, E>>
-    where
-        Buff: AsMut<[u8]> + AsRef<[u8]>,
-        Update: for<'any> AsyncFnMut(
+        mut update: impl FnMut(
             ZenohIdProto,
             &mut State,
-            NetworkMessage<'any>,
-            &'any [u8],
+            NetworkMessage<'_>,
+            &[u8],
         ) -> core::result::Result<(), E>,
+    ) -> core::result::Result<bool, EitherError<TransportLinkError, E>>
+    where
+        Buff: AsMut<[u8]> + AsRef<[u8]>,
     {
-        let mut rx = self.rx.lock().await;
+        let mut did_work = false;
 
-        let start = Instant::now();
+        // 1. Sync transport state machines (lease, keepalive timers)
+        self.rx.transport_mut().sync(None, core::time::Duration::ZERO);
+        self.tx
+            .transport_mut()
+            .sync(Some(self.rx.transport()), core::time::Duration::ZERO);
 
-        connectivity.emit(TransportEvent::Connected);
+        // 2. Check if transport is closed
+        if self.rx.transport().closed() {
+            connectivity.emit(TransportEvent::Disconnected);
+            return Err(EitherError::A(TransportLinkError::TransportClosed));
+        }
 
-        loop {
-            let (write_lease, read_lease) = self.sync(start, start.elapsed(), &mut rx).await;
-            if rx.transport().closed() {
-                connectivity.emit(TransportEvent::Disconnected);
-                return Err(EitherError::A(TransportLinkError::TransportClosed));
+        // 3. Send keepalive if needed
+        if self
+            .tx
+            .transport()
+            .should_send_keepalive(core::time::Duration::ZERO)
+        {
+            let (link, transport) = self.tx.tx();
+            transport.keepalive();
+            let streamed = link.is_streamed();
+            if let Some(bytes) = transport.flush(streamed) {
+                link.write_all(bytes)
+                    .map_err(|e| TransportLinkError::from(e))?;
             }
+            did_work = true;
+        }
 
-            match select3(write_lease, read_lease, rx.recv()).await {
-                Either3::First(_) => {
-                    let mut tx_guard = self.tx.lock().await;
-                    let tx = tx_guard.deref_mut();
+        // 4. Try to receive frames (non-blocking)
+        {
+            let (link, transport) = self.rx.rx();
+            let streamed = link.is_streamed();
 
-                    if tx.transport().should_close(start.elapsed().into()) {
-                        tx.close().await.map_err(EitherError::A)?;
-                        connectivity.emit(TransportEvent::Disconnected);
-                        break Err(EitherError::A(TransportLinkError::TransportClosed));
+            match transport.decode_with(
+                |bytes| {
+                    if streamed {
+                        link.read_exact(bytes).map(|_| bytes.len())
+                    } else {
+                        link.read(bytes)
                     }
-
-                    if tx.transport().should_send_keepalive(start.elapsed().into()) {
-                        zenoh_proto::trace!("Sending Keepalive");
-                        tx.keepalive().await?;
+                },
+                streamed,
+            ) {
+                Ok(()) => {
+                    for msg in transport.flush() {
+                        update(self.zid, state, msg.0, msg.1).map_err(EitherError::B)?;
+                        did_work = true;
                     }
-
-                    continue;
                 }
-                Either3::Third(res) => {
-                    let mut state = state.lock().await;
-
-                    for msg in res? {
-                        update(self.zid, &mut state, msg.0, msg.1)
-                            .await
-                            .map_err(EitherError::B)?;
-                    }
-
-                    continue;
+                Err(e) => {
+                    connectivity.emit(TransportEvent::Disconnected);
+                    return Err(EitherError::A(
+                        e.flatten_map::<TransportLinkError>(),
+                    ));
                 }
-                _ => {}
-            }
-
-            if rx.transport().should_close(start.elapsed().into()) {
-                let mut tx_guard = self.tx.lock().await;
-                tx_guard.deref_mut().close().await.map_err(EitherError::A)?;
-                connectivity.emit(TransportEvent::Disconnected);
-                break Err(EitherError::A(TransportLinkError::TransportClosed));
             }
         }
-    }
 
-    pub async fn sync(
-        &self,
-        start: Instant,
-        now: Duration,
-        rx: &mut TransportLinkRx<'res, Link::Rx<'res>, Buff>,
-    ) -> (Timer, Timer) {
-        let mut tx_guard = self.tx.lock().await;
-        let tx = tx_guard.deref_mut();
+        // 5. Check close condition
+        if self.rx.transport().should_close(core::time::Duration::ZERO) {
+            let (link, transport) = self.tx.tx();
+            transport.close();
+            let streamed = link.is_streamed();
+            if let Some(bytes) = transport.flush(streamed) {
+                link.write_all(bytes)
+                    .map_err(|e| TransportLinkError::from(e))?;
+            }
+            connectivity.emit(TransportEvent::Disconnected);
+            return Err(EitherError::A(TransportLinkError::TransportClosed));
+        }
 
-        rx.transport_mut().sync(Some(tx.transport()), now.into());
-        tx.transport_mut().sync(Some(rx.transport()), now.into());
-
-        let write_lease = start + tx.transport().next_timeout().try_into().unwrap();
-        let read_lease = start + rx.transport().next_timeout().try_into().unwrap();
-
-        (Timer::at(write_lease), Timer::at(read_lease))
+        Ok(did_work)
     }
 }
