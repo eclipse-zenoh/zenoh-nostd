@@ -8,6 +8,7 @@ mod serial;
 mod tcp;
 mod tls;
 mod udp;
+mod usb_cdc;
 mod ws;
 
 pub struct StdLinkManager;
@@ -21,6 +22,7 @@ pub enum StdLink {
     Tcp(tcp::StdTcpLink),
     Tls(tls::StdTlsLink),
     Udp(udp::StdUdpLink),
+    UsbCdc(usb_cdc::StdUsbCdcLink),
     Ws(ws::StdWsLink),
 }
 
@@ -31,6 +33,7 @@ pub enum StdLinkTx {
     Tcp(tcp::StdTcpLinkTx),
     Tls(tls::StdTlsLinkTx),
     Udp(udp::StdUdpLinkTx),
+    UsbCdc(usb_cdc::UsbCdcTx),
     Ws(ws::StdWsLinkTx),
 }
 
@@ -41,6 +44,7 @@ pub enum StdLinkRx {
     Tcp(tcp::StdTcpLinkRx),
     Tls(tls::StdTlsLinkRx),
     Udp(udp::StdUdpLinkRx),
+    UsbCdc(usb_cdc::UsbCdcRx),
     Ws(ws::StdWsLinkRx),
 }
 
@@ -147,6 +151,11 @@ impl ZLinkManager for StdLinkManager {
                 let link = serial::StdSerialLink::new(path, baud)?;
                 Ok(Self::Link::Serial(link))
             }
+            "usb-cdc" => {
+                let path = address.as_str();
+                let link = usb_cdc::StdUsbCdcLink::new(path)?;
+                Ok(Self::Link::UsbCdc(link))
+            }
             _ => zenoh::zbail!(LinkError::CouldNotParseProtocol),
         }
     }
@@ -218,6 +227,11 @@ impl ZLinkManager for StdLinkManager {
                 let baud = 115200u32;
                 let link = serial::StdSerialLink::new(path, baud)?;
                 Ok(Self::Link::Serial(link))
+            }
+            "usb-cdc" => {
+                let path = address.as_str();
+                let link = usb_cdc::StdUsbCdcLink::new(path)?;
+                Ok(Self::Link::UsbCdc(link))
             }
             _ => zenoh::zbail!(LinkError::CouldNotParseProtocol),
         }
