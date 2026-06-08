@@ -1,6 +1,6 @@
 use core::cell::UnsafeCell;
 use zenoh_proto::{
-    Endpoint, SessionError, TransportLinkError,
+    EitherError, Endpoint, SessionError, TransportLinkError,
     exts::QoS,
     fields::{ConsolidationMode, Reliability, WireExpr, ZenohIdProto},
     keyexpr,
@@ -224,6 +224,11 @@ where
         unsafe { &*self.driver.get() }.zid()
     }
 
+    pub fn is_connected(&self) -> bool {
+        // SAFETY: is_closed() only reads immutable data, safe via shared ref.
+        !unsafe { &*self.driver.get() }.is_closed()
+    }
+
     pub(crate) fn _undeclare_queryable(&self, id: u32) -> core::result::Result<(), SessionError> {
         self.state().queryable_callbacks.remove(id)?;
 
@@ -252,6 +257,19 @@ where
 
     pub fn on_disconnect(&mut self, f: &'static dyn Fn(TransportEvent)) {
         let _ = self.connectivity.on_event(f);
+    }
+
+    pub fn poll_with_elapsed(
+        &self,
+        elapsed: core::time::Duration,
+        connectivity: &ConnectivityState<'_>,
+    ) -> core::result::Result<bool, EitherError<TransportLinkError, SessionError>> {
+        self.driver().poll_with_elapsed(
+            self.state(),
+            elapsed,
+            connectivity,
+            |_, _state, _msg, _bytes| Ok::<(), SessionError>(()),
+        )
     }
 
     pub(crate) fn reply(

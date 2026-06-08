@@ -35,6 +35,10 @@ where
         self.zid
     }
 
+    pub fn is_closed(&self) -> bool {
+        self.rx.transport().closed()
+    }
+
     pub fn tx_mut(&mut self) -> &mut TransportLinkTx<'res, Link::Tx<'res>, Buff> {
         &mut self.tx
     }
@@ -42,9 +46,30 @@ where
     /// Drive IO: send pending frames, receive and dispatch messages, handle timeouts.
     /// Returns `true` if any work was done, `false` if idle.
     /// Call this in your main loop. Non-blocking.
+    /// Uses `Duration::ZERO` for timer checks (lease/keepalive timers never fire).
     pub fn poll<State, E>(
         &mut self,
         state: &mut State,
+        connectivity: &ConnectivityState<'_>,
+        update: impl FnMut(
+            ZenohIdProto,
+            &mut State,
+            NetworkMessage<'_>,
+            &[u8],
+        ) -> core::result::Result<(), E>,
+    ) -> core::result::Result<bool, EitherError<TransportLinkError, E>>
+    where
+        Buff: AsMut<[u8]> + AsRef<[u8]>,
+    {
+        self.poll_with_elapsed(state, core::time::Duration::ZERO, connectivity, update)
+    }
+
+    /// Drive IO with explicit elapsed time for lease/keepalive timer management.
+    /// Pass the actual time elapsed since the last call to enable proper lease tracking.
+    pub fn poll_with_elapsed<State, E>(
+        &mut self,
+        state: &mut State,
+        elapsed: core::time::Duration,
         connectivity: &ConnectivityState<'_>,
         mut update: impl FnMut(
             ZenohIdProto,
@@ -61,10 +86,10 @@ where
         // 1. Sync transport state machines (lease, keepalive timers)
         self.rx
             .transport_mut()
-            .sync(None, core::time::Duration::ZERO);
+            .sync(None, elapsed);
         self.tx
             .transport_mut()
-            .sync(Some(self.rx.transport()), core::time::Duration::ZERO);
+            .sync(Some(self.rx.transport()), elapsed);
 
         // 2. Check if transport is closed
         if self.rx.transport().closed() {
@@ -76,7 +101,7 @@ where
         if self
             .tx
             .transport()
-            .should_send_keepalive(core::time::Duration::ZERO)
+            .should_send_keepalive(elapsed)
         {
             let (link, transport) = self.tx.tx();
             transport.keepalive();
@@ -116,7 +141,7 @@ where
         }
 
         // 5. Check close condition
-        if self.rx.transport().should_close(core::time::Duration::ZERO) {
+        if self.rx.transport().should_close(elapsed) {
             let (link, transport) = self.tx.tx();
             transport.close();
             let streamed = link.is_streamed();
