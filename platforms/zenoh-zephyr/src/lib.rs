@@ -1,17 +1,48 @@
 //! Zenoh platform support for Zephyr RTOS
 //!
-//! This crate provides ZLinkManager, ZLink, ZLinkTx, ZLinkRx implementations
-//! for Zephyr RTOS.
+//! Provides ZLinkManager, ZLink, ZLinkTx, ZLinkRx implementations via
+//! Zephyr's POSIX socket API (`zephyr/posix/sys/socket.h`).
 //!
-//! NOTE: This is a stub. Full implementation requires Zephyr's native networking
-//! APIs via FFI. Zephyr uses CMake-based builds; this crate must be integrated
-//! into a Zephyr application's CMakeLists.txt for native networking support.
+//! # Kconfig Requirements
+//!
+//! - `CONFIG_NETWORKING=y` — enables networking stack
+//! - `CONFIG_POSIX_API=y` — enables POSIX socket API
+//! - `CONFIG_NET_TCP=y` — for TCP support
+//! - `CONFIG_NET_UDP=y` — for UDP support
+//! - For serial: `CONFIG_SERIAL=y`, `CONFIG_UART_INTERRUPT_DRIVEN=y`
 
 #![no_std]
 
 use zenoh_nostd::platform::*;
 
+mod serial;
+mod sockets;
+mod tcp;
+mod udp;
+
 pub struct ZephyrLinkManager;
+
+#[derive(ZLinkInfo, ZLinkTx, ZLinkRx, ZLink)]
+#[zenoh(ZLink = (ZephyrLinkTx, ZephyrLinkRx))]
+pub enum ZephyrLink {
+    Tcp(tcp::PlatformTcpLink),
+    Udp(udp::PlatformUdpLink),
+    Serial(serial::PlatformSerialLink),
+}
+
+#[derive(ZLinkInfo, ZLinkTx)]
+pub enum ZephyrLinkTx {
+    Tcp(tcp::PlatformTcpTx),
+    Udp(udp::PlatformUdpTx),
+    Serial(serial::PlatformSerialTx),
+}
+
+#[derive(ZLinkInfo, ZLinkRx)]
+pub enum ZephyrLinkRx {
+    Tcp(tcp::PlatformTcpRx),
+    Udp(udp::PlatformUdpRx),
+    Serial(serial::PlatformSerialRx),
+}
 
 impl ZLinkManager for ZephyrLinkManager {
     type Link<'a>
@@ -21,76 +52,35 @@ impl ZLinkManager for ZephyrLinkManager {
 
     fn connect(
         &self,
-        _endpoint: Endpoint<'_>,
+        endpoint: Endpoint<'_>,
     ) -> core::result::Result<Self::Link<'_>, LinkError> {
-        Err(LinkError::CouldNotConnect)
+        let protocol = endpoint.protocol();
+        let address = endpoint.address();
+
+        match protocol.as_str() {
+            "tcp" => Ok(Self::Link::Tcp(tcp::PlatformTcpLink::connect(address.as_str())?)),
+            "udp" => Ok(Self::Link::Udp(udp::PlatformUdpLink::connect(address.as_str())?)),
+            "serial" => Ok(Self::Link::Serial(serial::PlatformSerialLink)),
+            _ => zenoh::zbail!(LinkError::CouldNotParseProtocol),
+        }
     }
 
     fn listen(
         &self,
-        _endpoint: Endpoint<'_>,
+        endpoint: Endpoint<'_>,
     ) -> core::result::Result<Self::Link<'_>, LinkError> {
-        Err(LinkError::CouldNotConnect)
-    }
-}
+        let protocol = endpoint.protocol();
+        let address = endpoint.address();
 
-pub struct ZephyrLink;
-
-impl ZLinkInfo for ZephyrLink {
-    fn mtu(&self) -> u16 { 0 }
-    fn is_streamed(&self) -> bool { false }
-}
-
-impl ZLinkTx for ZephyrLink {
-    fn write_all(&mut self, _buffer: &[u8]) -> core::result::Result<(), LinkError> {
-        Err(LinkError::LinkTxFailed)
-    }
-}
-
-impl ZLinkRx for ZephyrLink {
-    fn read(&mut self, _buffer: &mut [u8]) -> core::result::Result<usize, LinkError> {
-        Err(LinkError::LinkRxFailed)
-    }
-
-    fn read_exact(&mut self, _buffer: &mut [u8]) -> core::result::Result<(), LinkError> {
-        Err(LinkError::LinkRxFailed)
-    }
-}
-
-impl ZLink for ZephyrLink {
-    type Tx<'a> = ZephyrLinkTx where Self: 'a;
-    type Rx<'a> = ZephyrLinkRx where Self: 'a;
-
-    fn split(&mut self) -> (Self::Tx<'_>, Self::Rx<'_>) {
-        (ZephyrLinkTx, ZephyrLinkRx)
-    }
-}
-
-pub struct ZephyrLinkTx;
-pub struct ZephyrLinkRx;
-
-impl ZLinkInfo for ZephyrLinkTx {
-    fn mtu(&self) -> u16 { 0 }
-    fn is_streamed(&self) -> bool { false }
-}
-
-impl ZLinkTx for ZephyrLinkTx {
-    fn write_all(&mut self, _buffer: &[u8]) -> core::result::Result<(), LinkError> {
-        Err(LinkError::LinkTxFailed)
-    }
-}
-
-impl ZLinkInfo for ZephyrLinkRx {
-    fn mtu(&self) -> u16 { 0 }
-    fn is_streamed(&self) -> bool { false }
-}
-
-impl ZLinkRx for ZephyrLinkRx {
-    fn read(&mut self, _buffer: &mut [u8]) -> core::result::Result<usize, LinkError> {
-        Err(LinkError::LinkRxFailed)
-    }
-
-    fn read_exact(&mut self, _buffer: &mut [u8]) -> core::result::Result<(), LinkError> {
-        Err(LinkError::LinkRxFailed)
+        match protocol.as_str() {
+            "tcp" => Ok(Self::Link::Tcp(tcp::PlatformTcpLink::listen(address.as_str())?)),
+            "udp" => {
+                // TODO: Implement UDP bind
+                let _ = address;
+                Err(LinkError::CouldNotListen)
+            }
+            "serial" => Ok(Self::Link::Serial(serial::PlatformSerialLink)),
+            _ => zenoh::zbail!(LinkError::CouldNotParseProtocol),
+        }
     }
 }

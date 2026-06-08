@@ -1,17 +1,50 @@
 //! Zenoh platform support for Raspberry Pi Pico (RP2040/RP2350)
 //!
-//! This crate provides ZLinkManager, ZLink, ZLinkTx, ZLinkRx implementations
-//! for the Raspberry Pi Pico family (RP2040, RP2350).
+//! Provides ZLinkManager, ZLink, ZLinkTx, ZLinkRx implementations via
+//! Pico SDK's LWIP socket API (standard BSD sockets on RP2040).
 //!
-//! NOTE: This is a stub. Full implementation requires the `rp2040-hal` or
-//! `rp235x-hal` networking abstractions (e.g., `embassy-net` with `cyw43`
-//! WiFi driver for Pico W, or `embassy-net` with `smoltcp` for wired).
+//! The Raspberry Pi Pico W uses the CYW43439 WiFi chip (cyw43 driver)
+//! with LWIP for TCP/IP networking. This provides a POSIX-compatible
+//! socket API via FFI.
+//!
+//! # Pico SDK Requirements (CMakeLists.txt / pico_sdk_import.cmake)
+//!
+//! - `pico_cyw43_arch_lwip_threadsafe_backoff` or `pico_cyw43_arch_lwip_sys_freertos`
+//! - `lwip` (included with Pico SDK)
+//! - `pico_stdlib`
 
 #![no_std]
 
 use zenoh_nostd::platform::*;
 
+mod serial;
+mod sockets;
+mod tcp;
+mod udp;
+
 pub struct Rp2040LinkManager;
+
+#[derive(ZLinkInfo, ZLinkTx, ZLinkRx, ZLink)]
+#[zenoh(ZLink = (Rp2040LinkTx, Rp2040LinkRx))]
+pub enum Rp2040Link {
+    Tcp(tcp::Rp2040TcpLink),
+    Udp(udp::Rp2040UdpLink),
+    Serial(serial::Rp2040SerialLink),
+}
+
+#[derive(ZLinkInfo, ZLinkTx)]
+pub enum Rp2040LinkTx {
+    Tcp(tcp::Rp2040TcpTx),
+    Udp(udp::Rp2040UdpTx),
+    Serial(serial::Rp2040SerialTx),
+}
+
+#[derive(ZLinkInfo, ZLinkRx)]
+pub enum Rp2040LinkRx {
+    Tcp(tcp::Rp2040TcpRx),
+    Udp(udp::Rp2040UdpRx),
+    Serial(serial::Rp2040SerialRx),
+}
 
 impl ZLinkManager for Rp2040LinkManager {
     type Link<'a>
@@ -21,76 +54,34 @@ impl ZLinkManager for Rp2040LinkManager {
 
     fn connect(
         &self,
-        _endpoint: Endpoint<'_>,
+        endpoint: Endpoint<'_>,
     ) -> core::result::Result<Self::Link<'_>, LinkError> {
-        Err(LinkError::CouldNotConnect)
+        let protocol = endpoint.protocol();
+        let address = endpoint.address();
+
+        match protocol.as_str() {
+            "tcp" => Ok(Self::Link::Tcp(tcp::Rp2040TcpLink::connect(address.as_str())?)),
+            "udp" => Ok(Self::Link::Udp(udp::Rp2040UdpLink::connect(address.as_str())?)),
+            "serial" => Ok(Self::Link::Serial(serial::Rp2040SerialLink)),
+            _ => Err(LinkError::CouldNotParseProtocol),
+        }
     }
 
     fn listen(
         &self,
-        _endpoint: Endpoint<'_>,
+        endpoint: Endpoint<'_>,
     ) -> core::result::Result<Self::Link<'_>, LinkError> {
-        Err(LinkError::CouldNotConnect)
-    }
-}
+        let protocol = endpoint.protocol();
+        let address = endpoint.address();
 
-pub struct Rp2040Link;
-
-impl ZLinkInfo for Rp2040Link {
-    fn mtu(&self) -> u16 { 0 }
-    fn is_streamed(&self) -> bool { false }
-}
-
-impl ZLinkTx for Rp2040Link {
-    fn write_all(&mut self, _buffer: &[u8]) -> core::result::Result<(), LinkError> {
-        Err(LinkError::LinkTxFailed)
-    }
-}
-
-impl ZLinkRx for Rp2040Link {
-    fn read(&mut self, _buffer: &mut [u8]) -> core::result::Result<usize, LinkError> {
-        Err(LinkError::LinkRxFailed)
-    }
-
-    fn read_exact(&mut self, _buffer: &mut [u8]) -> core::result::Result<(), LinkError> {
-        Err(LinkError::LinkRxFailed)
-    }
-}
-
-impl ZLink for Rp2040Link {
-    type Tx<'a> = Rp2040LinkTx where Self: 'a;
-    type Rx<'a> = Rp2040LinkRx where Self: 'a;
-
-    fn split(&mut self) -> (Self::Tx<'_>, Self::Rx<'_>) {
-        (Rp2040LinkTx, Rp2040LinkRx)
-    }
-}
-
-pub struct Rp2040LinkTx;
-pub struct Rp2040LinkRx;
-
-impl ZLinkInfo for Rp2040LinkTx {
-    fn mtu(&self) -> u16 { 0 }
-    fn is_streamed(&self) -> bool { false }
-}
-
-impl ZLinkTx for Rp2040LinkTx {
-    fn write_all(&mut self, _buffer: &[u8]) -> core::result::Result<(), LinkError> {
-        Err(LinkError::LinkTxFailed)
-    }
-}
-
-impl ZLinkInfo for Rp2040LinkRx {
-    fn mtu(&self) -> u16 { 0 }
-    fn is_streamed(&self) -> bool { false }
-}
-
-impl ZLinkRx for Rp2040LinkRx {
-    fn read(&mut self, _buffer: &mut [u8]) -> core::result::Result<usize, LinkError> {
-        Err(LinkError::LinkRxFailed)
-    }
-
-    fn read_exact(&mut self, _buffer: &mut [u8]) -> core::result::Result<(), LinkError> {
-        Err(LinkError::LinkRxFailed)
+        match protocol.as_str() {
+            "tcp" => Ok(Self::Link::Tcp(tcp::Rp2040TcpLink::listen(address.as_str())?)),
+            "udp" => {
+                let _ = address;
+                Err(LinkError::CouldNotListen)
+            }
+            "serial" => Ok(Self::Link::Serial(serial::Rp2040SerialLink)),
+            _ => Err(LinkError::CouldNotParseProtocol),
+        }
     }
 }

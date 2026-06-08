@@ -1,16 +1,48 @@
 //! Zenoh platform support for Arduino framework (ESP32, etc.)
 //!
-//! This crate provides ZLinkManager, ZLink, ZLinkTx, ZLinkRx implementations
-//! for Arduino-compatible boards (ESP32, ESP8266, etc.).
+//! Provides ZLinkManager, ZLink, ZLinkTx, ZLinkRx implementations via
+//! ESP-IDF's LWIP socket API (standard BSD sockets on ESP32).
 //!
-//! NOTE: This is a stub. Full implementation requires Arduino WiFi/Ethernet
-//! library bindings via FFI.
+//! On ESP32 Arduino, the ESP-IDF provides a POSIX-compatible socket API
+//! via LWIP. This module uses FFI to access those C functions.
+//!
+//! # Requirements
+//!
+//! - ESP32 Arduino core with LWIP enabled (default)
+//! - For ESP8266: different WiFi library, but same socket pattern
 
 #![no_std]
 
 use zenoh_nostd::platform::*;
 
+mod serial;
+mod sockets;
+mod tcp;
+mod udp;
+
 pub struct ArduinoLinkManager;
+
+#[derive(ZLinkInfo, ZLinkTx, ZLinkRx, ZLink)]
+#[zenoh(ZLink = (ArduinoLinkTx, ArduinoLinkRx))]
+pub enum ArduinoLink {
+    Tcp(tcp::ArduinoTcpLink),
+    Udp(udp::ArduinoUdpLink),
+    Serial(serial::ArduinoSerialLink),
+}
+
+#[derive(ZLinkInfo, ZLinkTx)]
+pub enum ArduinoLinkTx {
+    Tcp(tcp::ArduinoTcpTx),
+    Udp(udp::ArduinoUdpTx),
+    Serial(serial::ArduinoSerialTx),
+}
+
+#[derive(ZLinkInfo, ZLinkRx)]
+pub enum ArduinoLinkRx {
+    Tcp(tcp::ArduinoTcpRx),
+    Udp(udp::ArduinoUdpRx),
+    Serial(serial::ArduinoSerialRx),
+}
 
 impl ZLinkManager for ArduinoLinkManager {
     type Link<'a>
@@ -20,76 +52,34 @@ impl ZLinkManager for ArduinoLinkManager {
 
     fn connect(
         &self,
-        _endpoint: Endpoint<'_>,
+        endpoint: Endpoint<'_>,
     ) -> core::result::Result<Self::Link<'_>, LinkError> {
-        Err(LinkError::CouldNotConnect)
+        let protocol = endpoint.protocol();
+        let address = endpoint.address();
+
+        match protocol.as_str() {
+            "tcp" => Ok(Self::Link::Tcp(tcp::ArduinoTcpLink::connect(address.as_str())?)),
+            "udp" => Ok(Self::Link::Udp(udp::ArduinoUdpLink::connect(address.as_str())?)),
+            "serial" => Ok(Self::Link::Serial(serial::ArduinoSerialLink)),
+            _ => Err(LinkError::CouldNotParseProtocol),
+        }
     }
 
     fn listen(
         &self,
-        _endpoint: Endpoint<'_>,
+        endpoint: Endpoint<'_>,
     ) -> core::result::Result<Self::Link<'_>, LinkError> {
-        Err(LinkError::CouldNotConnect)
-    }
-}
+        let protocol = endpoint.protocol();
+        let address = endpoint.address();
 
-pub struct ArduinoLink;
-
-impl ZLinkInfo for ArduinoLink {
-    fn mtu(&self) -> u16 { 0 }
-    fn is_streamed(&self) -> bool { false }
-}
-
-impl ZLinkTx for ArduinoLink {
-    fn write_all(&mut self, _buffer: &[u8]) -> core::result::Result<(), LinkError> {
-        Err(LinkError::LinkTxFailed)
-    }
-}
-
-impl ZLinkRx for ArduinoLink {
-    fn read(&mut self, _buffer: &mut [u8]) -> core::result::Result<usize, LinkError> {
-        Err(LinkError::LinkRxFailed)
-    }
-
-    fn read_exact(&mut self, _buffer: &mut [u8]) -> core::result::Result<(), LinkError> {
-        Err(LinkError::LinkRxFailed)
-    }
-}
-
-impl ZLink for ArduinoLink {
-    type Tx<'a> = ArduinoLinkTx where Self: 'a;
-    type Rx<'a> = ArduinoLinkRx where Self: 'a;
-
-    fn split(&mut self) -> (Self::Tx<'_>, Self::Rx<'_>) {
-        (ArduinoLinkTx, ArduinoLinkRx)
-    }
-}
-
-pub struct ArduinoLinkTx;
-pub struct ArduinoLinkRx;
-
-impl ZLinkInfo for ArduinoLinkTx {
-    fn mtu(&self) -> u16 { 0 }
-    fn is_streamed(&self) -> bool { false }
-}
-
-impl ZLinkTx for ArduinoLinkTx {
-    fn write_all(&mut self, _buffer: &[u8]) -> core::result::Result<(), LinkError> {
-        Err(LinkError::LinkTxFailed)
-    }
-}
-
-impl ZLinkInfo for ArduinoLinkRx {
-    fn mtu(&self) -> u16 { 0 }
-    fn is_streamed(&self) -> bool { false }
-}
-
-impl ZLinkRx for ArduinoLinkRx {
-    fn read(&mut self, _buffer: &mut [u8]) -> core::result::Result<usize, LinkError> {
-        Err(LinkError::LinkRxFailed)
-    }
-
-    fn read_exact(&mut self, _buffer: &mut [u8]) -> core::result::Result<(), LinkError> {
-        Err(LinkError::LinkRxFailed)
+        match protocol.as_str() {
+            "tcp" => Ok(Self::Link::Tcp(tcp::ArduinoTcpLink::listen(address.as_str())?)),
+            "udp" => {
+                let _ = address;
+                Err(LinkError::CouldNotListen)
+            }
+            "serial" => Ok(Self::Link::Serial(serial::ArduinoSerialLink)),
+            _ => Err(LinkError::CouldNotParseProtocol),
+        }
     }
 }

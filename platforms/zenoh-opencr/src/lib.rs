@@ -1,16 +1,49 @@
 //! Zenoh platform support for OpenCR board
 //!
-//! This crate provides ZLinkManager, ZLink, ZLinkTx, ZLinkRx implementations
-//! for the OpenCR board (STM32F7-based, used with ROS/ROS2).
+//! Provides ZLinkManager, ZLink, ZLinkTx, ZLinkRx implementations via
+//! LWIP's BSD socket API (`lwip/sockets.h`).
 //!
-//! NOTE: This is a stub. Full implementation requires OpenCR's networking
-//! capabilities via its STM32 HAL bindings (UART, USB CDC, or Ethernet).
+//! OpenCR is STM32F7-based. LWIP provides a standard POSIX-compatible socket
+//! API. Ethernet is typically used via STM32 HAL Ethernet driver + LWIP.
+//!
+//! # Requirements
+//!
+//! - LWIP stack enabled with `lwipopts.h` configuration
+//! - `LWIP_SOCKET=y` for socket API
+//! - STM32 HAL Ethernet driver initialized
 
 #![no_std]
 
 use zenoh_nostd::platform::*;
 
+mod serial;
+mod sockets;
+mod tcp;
+mod udp;
+
 pub struct OpencrLinkManager;
+
+#[derive(ZLinkInfo, ZLinkTx, ZLinkRx, ZLink)]
+#[zenoh(ZLink = (OpencrLinkTx, OpencrLinkRx))]
+pub enum OpencrLink {
+    Tcp(tcp::PlatformTcpLink),
+    Udp(udp::PlatformUdpLink),
+    Serial(serial::PlatformSerialLink),
+}
+
+#[derive(ZLinkInfo, ZLinkTx)]
+pub enum OpencrLinkTx {
+    Tcp(tcp::PlatformTcpTx),
+    Udp(udp::PlatformUdpTx),
+    Serial(serial::PlatformSerialTx),
+}
+
+#[derive(ZLinkInfo, ZLinkRx)]
+pub enum OpencrLinkRx {
+    Tcp(tcp::PlatformTcpRx),
+    Udp(udp::PlatformUdpRx),
+    Serial(serial::PlatformSerialRx),
+}
 
 impl ZLinkManager for OpencrLinkManager {
     type Link<'a>
@@ -20,76 +53,34 @@ impl ZLinkManager for OpencrLinkManager {
 
     fn connect(
         &self,
-        _endpoint: Endpoint<'_>,
+        endpoint: Endpoint<'_>,
     ) -> core::result::Result<Self::Link<'_>, LinkError> {
-        Err(LinkError::CouldNotConnect)
+        let protocol = endpoint.protocol();
+        let address = endpoint.address();
+
+        match protocol.as_str() {
+            "tcp" => Ok(Self::Link::Tcp(tcp::PlatformTcpLink::connect(address.as_str())?)),
+            "udp" => Ok(Self::Link::Udp(udp::PlatformUdpLink::connect(address.as_str())?)),
+            "serial" => Ok(Self::Link::Serial(serial::PlatformSerialLink)),
+            _ => zenoh::zbail!(LinkError::CouldNotParseProtocol),
+        }
     }
 
     fn listen(
         &self,
-        _endpoint: Endpoint<'_>,
+        endpoint: Endpoint<'_>,
     ) -> core::result::Result<Self::Link<'_>, LinkError> {
-        Err(LinkError::CouldNotConnect)
-    }
-}
+        let protocol = endpoint.protocol();
+        let address = endpoint.address();
 
-pub struct OpencrLink;
-
-impl ZLinkInfo for OpencrLink {
-    fn mtu(&self) -> u16 { 0 }
-    fn is_streamed(&self) -> bool { false }
-}
-
-impl ZLinkTx for OpencrLink {
-    fn write_all(&mut self, _buffer: &[u8]) -> core::result::Result<(), LinkError> {
-        Err(LinkError::LinkTxFailed)
-    }
-}
-
-impl ZLinkRx for OpencrLink {
-    fn read(&mut self, _buffer: &mut [u8]) -> core::result::Result<usize, LinkError> {
-        Err(LinkError::LinkRxFailed)
-    }
-
-    fn read_exact(&mut self, _buffer: &mut [u8]) -> core::result::Result<(), LinkError> {
-        Err(LinkError::LinkRxFailed)
-    }
-}
-
-impl ZLink for OpencrLink {
-    type Tx<'a> = OpencrLinkTx where Self: 'a;
-    type Rx<'a> = OpencrLinkRx where Self: 'a;
-
-    fn split(&mut self) -> (Self::Tx<'_>, Self::Rx<'_>) {
-        (OpencrLinkTx, OpencrLinkRx)
-    }
-}
-
-pub struct OpencrLinkTx;
-pub struct OpencrLinkRx;
-
-impl ZLinkInfo for OpencrLinkTx {
-    fn mtu(&self) -> u16 { 0 }
-    fn is_streamed(&self) -> bool { false }
-}
-
-impl ZLinkTx for OpencrLinkTx {
-    fn write_all(&mut self, _buffer: &[u8]) -> core::result::Result<(), LinkError> {
-        Err(LinkError::LinkTxFailed)
-    }
-}
-
-impl ZLinkInfo for OpencrLinkRx {
-    fn mtu(&self) -> u16 { 0 }
-    fn is_streamed(&self) -> bool { false }
-}
-
-impl ZLinkRx for OpencrLinkRx {
-    fn read(&mut self, _buffer: &mut [u8]) -> core::result::Result<usize, LinkError> {
-        Err(LinkError::LinkRxFailed)
-    }
-
-    fn read_exact(&mut self, _buffer: &mut [u8]) -> core::result::Result<(), LinkError> {
-        Err(LinkError::LinkRxFailed)
+        match protocol.as_str() {
+            "tcp" => Ok(Self::Link::Tcp(tcp::PlatformTcpLink::listen(address.as_str())?)),
+            "udp" => {
+                let _ = address;
+                Err(LinkError::CouldNotListen)
+            }
+            "serial" => Ok(Self::Link::Serial(serial::PlatformSerialLink)),
+            _ => zenoh::zbail!(LinkError::CouldNotParseProtocol),
+        }
     }
 }

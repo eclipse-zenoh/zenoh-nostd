@@ -1,16 +1,49 @@
 //! Zenoh platform support for FreeRTOS+TCP
 //!
-//! This crate provides ZLinkManager, ZLink, ZLinkTx, ZLinkRx implementations
-//! for FreeRTOS+TCP.
+//! Provides ZLinkManager, ZLink, ZLinkTx, ZLinkRx implementations via
+//! FreeRTOS+TCP's BSD socket API (`FreeRTOS_socket.h`).
 //!
-//! NOTE: This is a stub. Full implementation requires FreeRTOS+TCP socket APIs
-//! via FFI (FreeRTOS_send, FreeRTOS_recv, etc.).
+//! FreeRTOS+TCP provides a BSD sockets-compatible API with `FreeRTOS_`-prefixed
+//! function names (e.g., `FreeRTOS_socket`, `FreeRTOS_send`, `FreeRTOS_recv`).
+//!
+//! # Requirements
+//!
+//! - FreeRTOS+TCP component enabled in FreeRTOSConfig.h
+//! - `ipconfigUSE_TCP=y` for TCP support
+//! - `ipconfigUSE_UDP=y` for UDP support
 
 #![no_std]
 
 use zenoh_nostd::platform::*;
 
+mod serial;
+mod sockets;
+mod tcp;
+mod udp;
+
 pub struct FreeRtosLinkManager;
+
+#[derive(ZLinkInfo, ZLinkTx, ZLinkRx, ZLink)]
+#[zenoh(ZLink = (FreeRtosLinkTx, FreeRtosLinkRx))]
+pub enum FreeRtosLink {
+    Tcp(tcp::PlatformTcpLink),
+    Udp(udp::PlatformUdpLink),
+    Serial(serial::PlatformSerialLink),
+}
+
+#[derive(ZLinkInfo, ZLinkTx)]
+pub enum FreeRtosLinkTx {
+    Tcp(tcp::PlatformTcpTx),
+    Udp(udp::PlatformUdpTx),
+    Serial(serial::PlatformSerialTx),
+}
+
+#[derive(ZLinkInfo, ZLinkRx)]
+pub enum FreeRtosLinkRx {
+    Tcp(tcp::PlatformTcpRx),
+    Udp(udp::PlatformUdpRx),
+    Serial(serial::PlatformSerialRx),
+}
 
 impl ZLinkManager for FreeRtosLinkManager {
     type Link<'a>
@@ -20,76 +53,34 @@ impl ZLinkManager for FreeRtosLinkManager {
 
     fn connect(
         &self,
-        _endpoint: Endpoint<'_>,
+        endpoint: Endpoint<'_>,
     ) -> core::result::Result<Self::Link<'_>, LinkError> {
-        Err(LinkError::CouldNotConnect)
+        let protocol = endpoint.protocol();
+        let address = endpoint.address();
+
+        match protocol.as_str() {
+            "tcp" => Ok(Self::Link::Tcp(tcp::PlatformTcpLink::connect(address.as_str())?)),
+            "udp" => Ok(Self::Link::Udp(udp::PlatformUdpLink::connect(address.as_str())?)),
+            "serial" => Ok(Self::Link::Serial(serial::PlatformSerialLink)),
+            _ => zenoh::zbail!(LinkError::CouldNotParseProtocol),
+        }
     }
 
     fn listen(
         &self,
-        _endpoint: Endpoint<'_>,
+        endpoint: Endpoint<'_>,
     ) -> core::result::Result<Self::Link<'_>, LinkError> {
-        Err(LinkError::CouldNotConnect)
-    }
-}
+        let protocol = endpoint.protocol();
+        let address = endpoint.address();
 
-pub struct FreeRtosLink;
-
-impl ZLinkInfo for FreeRtosLink {
-    fn mtu(&self) -> u16 { 0 }
-    fn is_streamed(&self) -> bool { false }
-}
-
-impl ZLinkTx for FreeRtosLink {
-    fn write_all(&mut self, _buffer: &[u8]) -> core::result::Result<(), LinkError> {
-        Err(LinkError::LinkTxFailed)
-    }
-}
-
-impl ZLinkRx for FreeRtosLink {
-    fn read(&mut self, _buffer: &mut [u8]) -> core::result::Result<usize, LinkError> {
-        Err(LinkError::LinkRxFailed)
-    }
-
-    fn read_exact(&mut self, _buffer: &mut [u8]) -> core::result::Result<(), LinkError> {
-        Err(LinkError::LinkRxFailed)
-    }
-}
-
-impl ZLink for FreeRtosLink {
-    type Tx<'a> = FreeRtosLinkTx where Self: 'a;
-    type Rx<'a> = FreeRtosLinkRx where Self: 'a;
-
-    fn split(&mut self) -> (Self::Tx<'_>, Self::Rx<'_>) {
-        (FreeRtosLinkTx, FreeRtosLinkRx)
-    }
-}
-
-pub struct FreeRtosLinkTx;
-pub struct FreeRtosLinkRx;
-
-impl ZLinkInfo for FreeRtosLinkTx {
-    fn mtu(&self) -> u16 { 0 }
-    fn is_streamed(&self) -> bool { false }
-}
-
-impl ZLinkTx for FreeRtosLinkTx {
-    fn write_all(&mut self, _buffer: &[u8]) -> core::result::Result<(), LinkError> {
-        Err(LinkError::LinkTxFailed)
-    }
-}
-
-impl ZLinkInfo for FreeRtosLinkRx {
-    fn mtu(&self) -> u16 { 0 }
-    fn is_streamed(&self) -> bool { false }
-}
-
-impl ZLinkRx for FreeRtosLinkRx {
-    fn read(&mut self, _buffer: &mut [u8]) -> core::result::Result<usize, LinkError> {
-        Err(LinkError::LinkRxFailed)
-    }
-
-    fn read_exact(&mut self, _buffer: &mut [u8]) -> core::result::Result<(), LinkError> {
-        Err(LinkError::LinkRxFailed)
+        match protocol.as_str() {
+            "tcp" => Ok(Self::Link::Tcp(tcp::PlatformTcpLink::listen(address.as_str())?)),
+            "udp" => {
+                let _ = address;
+                Err(LinkError::CouldNotListen)
+            }
+            "serial" => Ok(Self::Link::Serial(serial::PlatformSerialLink)),
+            _ => zenoh::zbail!(LinkError::CouldNotParseProtocol),
+        }
     }
 }
