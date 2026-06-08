@@ -2,7 +2,8 @@ use crate::{
     Transport, ZTransportRx, ZTransportTx,
     transport::{TransportTx, establishment::State},
 };
-use core::{cell::RefCell, time::Duration};
+use core::cell::RefCell;
+use core::time::Duration;
 use zenoh_proto::{exts::*, fields::*, keyexpr, msgs::*};
 
 fn zid(val: u128) -> ZenohIdProto {
@@ -1266,6 +1267,7 @@ fn max_sn_before_wrap() {
 mod auth_tests {
     use crate::transport::establishment::State;
     use core::time::Duration;
+    use core::sync::atomic::{AtomicBool, Ordering};
     use zenoh_proto::{ZDecode, exts::Auth, fields::*, msgs::*, VERSION};
 
     fn zid(val: u128) -> ZenohIdProto {
@@ -1299,6 +1301,9 @@ mod auth_tests {
                 resolution: Resolution::default(),
                 batch_size: BatchSize(512),
             },
+            auth: Some(Auth {
+                payload: &[0x01, b'u', b's', b'e', b'r', 0x00, b'p', b'a', b's', b's'],
+            }),
             ..Default::default()
         };
 
@@ -1382,6 +1387,255 @@ mod auth_tests {
         assert!(decoded.auth.is_some());
         assert_eq!(decoded.auth.unwrap().payload, payload);
         assert_eq!(decoded.version, VERSION);
+    }
+
+    // ────── Auth verification tests ──────
+
+    /// Simulate a full handshake where server has an auth verifier and
+    /// client sends bad auth credentials. The server should reject and close.
+    #[test]
+    fn handshake_verifier_rejects_bad_auth() {
+        let socket = ([0u8; 2048], 0usize, 0usize);
+        let socket_ref = core::cell::RefCell::new(socket);
+
+        // Server: listener with verifier that only accepts b"valid"
+        let server = crate::Transport::builder([0u8; 2048])
+            .with_auth_verifier(|payload: &[u8]| payload == b"valid");
+
+        // Client: sends bad auth
+        let mut client_auth = heapless::Vec::<u8, 256>::new();
+        client_auth.extend_from_slice(b"bad_creds").unwrap();
+        let client = crate::Transport::builder([0u8; 2048])
+            .with_auth_payload(client_auth);
+
+        let read = |socket: &mut &core::cell::RefCell<([u8; 2048], usize, usize)>,
+                     bytes: &mut [u8]|
+         -> core::result::Result<usize, i32> {
+            let mut borrow_mut = socket.borrow_mut();
+            let to_read = bytes.len().min(borrow_mut.2);
+            if to_read == 0 { return Ok(0); }
+            let slice = &borrow_mut.0[borrow_mut.1..(to_read + borrow_mut.1)];
+            bytes[..slice.len()].copy_from_slice(slice);
+            borrow_mut.1 += to_read;
+            Ok(to_read)
+        };
+
+        let write = |socket: &mut &core::cell::RefCell<([u8; 2048], usize, usize)>,
+                      bytes: &[u8]|
+         -> core::result::Result<(), i32> {
+            let mut borrow_mut = socket.borrow_mut();
+            borrow_mut.0[..bytes.len()].copy_from_slice(bytes);
+            borrow_mut.1 = 0;
+            borrow_mut.2 = bytes.len();
+            Ok(())
+        };
+
+        let mut ha = server.listen(&socket_ref, &read, &write);
+        let mut hb = client.connect(&socket_ref, &read, &write);
+
+        // Client sends InitSyn (poll)
+        let result = hb.poll();
+        assert!(result.is_ok(), "client poll should succeed");
+
+        // Server receives InitSyn, verifier rejects → sends Close
+        let result = ha.poll();
+        assert!(result.is_ok(), "server poll should not error");
+        // After rejection, server handshake should still be PendingRecv
+        match &ha {
+            crate::Handshake::Ready { .. } | crate::Handshake::Opened => {
+                panic!("Server should NOT have opened transport after auth rejection");
+            }
+            _ => {}
+        }
+
+        // Client receives Close
+        let result = hb.poll();
+        assert!(result.is_ok(), "client poll should not error");
+    }
+
+    #[test]
+    fn handshake_verifier_accepts_good_auth() {
+        let socket = ([0u8; 2048], 0usize, 0usize);
+        let socket_ref = core::cell::RefCell::new(socket);
+
+        // Client sends valid auth
+        let mut client_auth = heapless::Vec::<u8, 256>::new();
+        client_auth.extend_from_slice(b"valid").unwrap();
+        let client = crate::Transport::builder([0u8; 2048])
+            .with_auth_payload(client_auth);
+
+        // Server accepts b"valid"
+        let server = crate::Transport::builder([0u8; 2048])
+            .with_auth_verifier(|payload: &[u8]| payload == b"valid");
+
+        let read = |socket: &mut &core::cell::RefCell<([u8; 2048], usize, usize)>,
+                     bytes: &mut [u8]|
+         -> core::result::Result<usize, i32> {
+            let mut borrow_mut = socket.borrow_mut();
+            let to_read = bytes.len().min(borrow_mut.2);
+            if to_read == 0 { return Ok(0); }
+            let slice = &borrow_mut.0[borrow_mut.1..(to_read + borrow_mut.1)];
+            bytes[..slice.len()].copy_from_slice(slice);
+            borrow_mut.1 += to_read;
+            Ok(to_read)
+        };
+
+        let write = |socket: &mut &core::cell::RefCell<([u8; 2048], usize, usize)>,
+                      bytes: &[u8]|
+         -> core::result::Result<(), i32> {
+            let mut borrow_mut = socket.borrow_mut();
+            borrow_mut.0[..bytes.len()].copy_from_slice(bytes);
+            borrow_mut.1 = 0;
+            borrow_mut.2 = bytes.len();
+            Ok(())
+        };
+
+        let mut ha = server.listen(&socket_ref, &read, &write);
+        let mut hb = client.connect(&socket_ref, &read, &write);
+
+        hb.poll().unwrap();
+        ha.poll().unwrap();
+        hb.poll().unwrap();
+        ha.poll().unwrap();
+        hb.poll().unwrap();
+
+        ha.poll()
+            .expect("Unexpected Error")
+            .expect("Server should open with good auth")
+            .open()
+            .unwrap();
+
+        hb.poll()
+            .expect("Unexpected Error")
+            .expect("Client should open with good auth")
+            .open()
+            .unwrap();
+    }
+
+    #[test]
+    fn handshake_no_verifier_accepts_any_auth() {
+        let socket = ([0u8; 2048], 0usize, 0usize);
+        let socket_ref = core::cell::RefCell::new(socket);
+
+        let mut client_auth = heapless::Vec::<u8, 256>::new();
+        client_auth.extend_from_slice(b"secret").unwrap();
+        let client = crate::Transport::builder([0u8; 2048])
+            .with_auth_payload(client_auth);
+
+        // No verifier set = accept all
+        let server = crate::Transport::builder([0u8; 2048]);
+
+        let read = |socket: &mut &core::cell::RefCell<([u8; 2048], usize, usize)>,
+                     bytes: &mut [u8]|
+         -> core::result::Result<usize, i32> {
+            let mut borrow_mut = socket.borrow_mut();
+            let to_read = bytes.len().min(borrow_mut.2);
+            if to_read == 0 { return Ok(0); }
+            let slice = &borrow_mut.0[borrow_mut.1..(to_read + borrow_mut.1)];
+            bytes[..slice.len()].copy_from_slice(slice);
+            borrow_mut.1 += to_read;
+            Ok(to_read)
+        };
+
+        let write = |socket: &mut &core::cell::RefCell<([u8; 2048], usize, usize)>,
+                      bytes: &[u8]|
+         -> core::result::Result<(), i32> {
+            let mut borrow_mut = socket.borrow_mut();
+            borrow_mut.0[..bytes.len()].copy_from_slice(bytes);
+            borrow_mut.1 = 0;
+            borrow_mut.2 = bytes.len();
+            Ok(())
+        };
+
+        let mut ha = server.listen(&socket_ref, &read, &write);
+        let mut hb = client.connect(&socket_ref, &read, &write);
+
+        hb.poll().unwrap();
+        ha.poll().unwrap();
+        hb.poll().unwrap();
+        ha.poll().unwrap();
+        hb.poll().unwrap();
+
+        ha.poll()
+            .expect("Unexpected Error")
+            .expect("Server should open even without verifier")
+            .open()
+            .unwrap();
+
+        hb.poll()
+            .expect("Unexpected Error")
+            .expect("Client should open")
+            .open()
+            .unwrap();
+    }
+
+    #[test]
+    fn verifier_called_with_auth_payload() {
+        let socket = ([0u8; 2048], 0usize, 0usize);
+        let socket_ref = core::cell::RefCell::new(socket);
+
+        static CALLED: AtomicBool = AtomicBool::new(false);
+        let expected_payload: &[u8] = &[0x01, b'u', b's', b'e', b'r', 0x00, b'p', b'a', b's', b's'];
+
+        let verifier = move |payload: &[u8]| {
+            CALLED.store(true, Ordering::SeqCst);
+            assert_eq!(payload, expected_payload, "verifier received wrong payload");
+            true
+        };
+
+        let mut auth_payload = heapless::Vec::<u8, 256>::new();
+        auth_payload.extend_from_slice(expected_payload).unwrap();
+
+        let client = crate::Transport::builder([0u8; 2048])
+            .with_auth_payload(auth_payload);
+
+        let server = crate::Transport::builder([0u8; 2048])
+            .with_auth_verifier(verifier);
+
+        let read = |socket: &mut &core::cell::RefCell<([u8; 2048], usize, usize)>,
+                     bytes: &mut [u8]|
+         -> core::result::Result<usize, i32> {
+            let mut borrow_mut = socket.borrow_mut();
+            let to_read = bytes.len().min(borrow_mut.2);
+            if to_read == 0 { return Ok(0); }
+            let slice = &borrow_mut.0[borrow_mut.1..(to_read + borrow_mut.1)];
+            bytes[..slice.len()].copy_from_slice(slice);
+            borrow_mut.1 += to_read;
+            Ok(to_read)
+        };
+
+        let write = |socket: &mut &core::cell::RefCell<([u8; 2048], usize, usize)>,
+                      bytes: &[u8]|
+         -> core::result::Result<(), i32> {
+            let mut borrow_mut = socket.borrow_mut();
+            borrow_mut.0[..bytes.len()].copy_from_slice(bytes);
+            borrow_mut.1 = 0;
+            borrow_mut.2 = bytes.len();
+            Ok(())
+        };
+
+        let mut ha = server.listen(&socket_ref, &read, &write);
+        let mut hb = client.connect(&socket_ref, &read, &write);
+
+        hb.poll().unwrap();
+        ha.poll().unwrap();
+        hb.poll().unwrap();
+        ha.poll().unwrap();
+        hb.poll().unwrap();
+
+        ha.poll()
+            .expect("Unexpected Error")
+            .expect("Server should open")
+            .open()
+            .unwrap();
+
+        hb.poll()
+            .expect("Unexpected Error")
+            .expect("Client should open")
+            .open()
+            .unwrap();
+
+        assert!(CALLED.load(Ordering::SeqCst), "verifier was called");
     }
 }
 

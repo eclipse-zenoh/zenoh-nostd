@@ -115,6 +115,20 @@ impl State {
                         syn.identifier.zid
                     );
 
+                    #[cfg(feature = "auth")]
+                    if let Some(expected) = mine_auth {
+                        let auth_ok = syn.auth.as_ref().map(|a| a.payload) == Some(expected.as_slice());
+                        if !auth_ok {
+                            return (
+                                Some(TransportMessage::Close(Close {
+                                    reason: 2,
+                                    behaviour: CloseBehaviour::Link,
+                                })),
+                                None,
+                            );
+                        }
+                    }
+
                     // Negotiate: use the smaller (more restrictive) of the two batch sizes
                     let batch_size = mine_batch_size.min(syn.resolution.batch_size.0);
                     let resolution = mine_resolution;
