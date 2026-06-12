@@ -152,7 +152,15 @@ export class Session {
         const attach = opts?.attachment
             ? ZBytes.from(opts.attachment).toBytes()
             : null;
-        await this._wasm.put(keyExpr.toString(), bytes, encId, attach);
+        await this._wasm.put(
+            keyExpr.toString(),
+            bytes,
+            encId,
+            attach,
+            opts?.priority,
+            opts?.congestionControl,
+            opts?.express,
+        );
     }
 
     /** Send a delete notification for `keyExpr`. */

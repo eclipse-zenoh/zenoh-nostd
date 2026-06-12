@@ -18,8 +18,12 @@ export class JsPublisher {
     key_expr(): string;
     /**
      * Publish `payload` to this publisher's key expression.
+     *
+     * QoS (`priority`, `congestion_control`, `express`, `reliability`) is
+     * resolved by the TS layer from the publisher's declared options and
+     * passed through on every put.
      */
-    put(payload: Uint8Array, encoding_id: number, attachment?: Uint8Array | null): Promise<void>;
+    put(payload: Uint8Array, encoding_id: number, attachment?: Uint8Array | null, priority?: number | null, congestion_control?: number | null, express?: boolean | null, reliability?: number | null): Promise<void>;
     /**
      * Undeclare this publisher (no-op; future: send interest cancellation).
      */
@@ -178,8 +182,11 @@ export class JsSession {
     static open(locator: string): Promise<JsSession>;
     /**
      * Publish data to `key_expr`. Returns `Promise<void>`.
+     *
+     * `priority`: 1-7 (5 = Data, the default). `congestion_control`: 0 = Drop
+     * (default), 1 = Block. `express`: defaults to `false`.
      */
-    put(key_expr: string, payload: Uint8Array, encoding_id: number, attachment?: Uint8Array | null): Promise<void>;
+    put(key_expr: string, payload: Uint8Array, encoding_id: number, attachment?: Uint8Array | null, priority?: number | null, congestion_control?: number | null, express?: boolean | null): Promise<void>;
 }
 
 /**
@@ -241,7 +248,7 @@ export interface InitOutput {
     readonly __wbg_set_jssample_payload: (a: number, b: number, c: number) => void;
     readonly jspublisher_delete: (a: number) => any;
     readonly jspublisher_key_expr: (a: number) => [number, number];
-    readonly jspublisher_put: (a: number, b: number, c: number, d: number, e: number, f: number) => any;
+    readonly jspublisher_put: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => any;
     readonly jspublisher_undeclare: (a: number) => void;
     readonly jsquerier_get: (a: number, b: any, c: number, d: number, e: number, f: number, g: number) => any;
     readonly jsquery_finalize: (a: number) => any;
@@ -257,7 +264,7 @@ export interface InitOutput {
     readonly jssession_delete: (a: number, b: number, c: number) => any;
     readonly jssession_get: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: any, i: number, j: number, k: number) => any;
     readonly jssession_open: (a: number, b: number) => any;
-    readonly jssession_put: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => any;
+    readonly jssession_put: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => any;
     readonly jssubscriber_undeclare: (a: number) => any;
     readonly ke_includes: (a: number, b: number, c: number, d: number) => number;
     readonly ke_intersects: (a: number, b: number, c: number, d: number) => number;

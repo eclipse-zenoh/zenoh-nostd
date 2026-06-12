@@ -211,3 +211,34 @@ fn test_zmsg_partial_exts() {
     };
     roundtrip!(ZMsgComplexOption, msg);
 }
+
+#[test]
+fn test_qos_from_parts() {
+    use crate::exts::QoS;
+    use crate::fields::{CongestionControl, Priority};
+
+    // Default Data priority, Drop, not express → matches QoS::default()/new().
+    assert_eq!(QoS::from_parts(5, false, false).inner, QoS::default().inner);
+    assert_eq!(
+        QoS::from_parts(5, false, false).inner,
+        QoS::new(Priority::Data, CongestionControl::Drop, false).inner
+    );
+
+    // Priority occupies the low 3 bits.
+    assert_eq!(QoS::from_parts(1, false, false).inner, 0b0000_0001);
+    assert_eq!(QoS::from_parts(7, false, false).inner, 0b0000_0111);
+
+    // `block` sets the D flag (bit 3); `express` sets the E flag (bit 4).
+    assert_eq!(QoS::from_parts(5, true, false).inner, 0b0000_1101);
+    assert_eq!(QoS::from_parts(5, false, true).inner, 0b0001_0101);
+    assert_eq!(QoS::from_parts(5, true, true).inner, 0b0001_1101);
+
+    // `block` matches QoS::new with CongestionControl::Block.
+    assert_eq!(
+        QoS::from_parts(5, true, false).inner,
+        QoS::new(Priority::Data, CongestionControl::Block, false).inner
+    );
+
+    // Priority is masked to 3 bits (out-of-range input cannot corrupt the flags).
+    assert_eq!(QoS::from_parts(0xFF, false, false).inner, 0b0000_0111);
+}

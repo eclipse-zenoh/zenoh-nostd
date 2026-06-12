@@ -18,7 +18,11 @@ use zenoh_nostd::session::{
     AllocGetCallbacks, AllocQueryableCallbacks, AllocSubCallbacks, GetResponse, Resources,
     Session, TransportLinkManager, ZSessionConfig,
 };
-use zenoh_proto::{exts::QueryTarget, fields::ConsolidationMode, keyexpr, Endpoint};
+use zenoh_proto::{
+    exts::{QoS, QueryTarget},
+    fields::{ConsolidationMode, Reliability},
+    keyexpr, Endpoint,
+};
 use zenoh_wasm::{WasmLink, WasmLinkManager};
 
 // ── WasmConfig ──────────────────────────────────────────────────────────────
@@ -128,6 +132,25 @@ fn intern_keyexpr(s: &str) -> Result<&'static keyexpr, JsValue> {
 
 fn js_err(e: impl core::fmt::Display) -> JsValue {
     JsValue::from_str(&format!("{e}"))
+}
+
+/// Build a `QoS` from the optional numeric QoS fields passed by the TS layer.
+///
+/// `priority`: 1-7 (defaults to 5 = Data). `congestion_control`: 0 = Drop
+/// (default), 1 = Block. `express`: defaults to `false`.
+fn qos_from(priority: Option<u8>, congestion_control: Option<u8>, express: Option<bool>) -> QoS {
+    let priority = priority.unwrap_or(5);
+    let block = matches!(congestion_control, Some(1));
+    QoS::from_parts(priority, block, express.unwrap_or(false))
+}
+
+/// Map the optional numeric reliability passed by the TS layer.
+/// 0 = BestEffort, anything else (incl. `None`) = Reliable (the default).
+fn reliability_from(reliability: Option<u8>) -> Reliability {
+    match reliability {
+        Some(0) => Reliability::BestEffort,
+        _ => Reliability::Reliable,
+    }
 }
 
 /// JS-native sleep: uses `globalThis.setTimeout` so it works in both browsers
@@ -306,22 +329,31 @@ impl JsSession {
     // ── Put / Delete ─────────────────────────────────────────────────────────
 
     /// Publish data to `key_expr`. Returns `Promise<void>`.
+    ///
+    /// `priority`: 1-7 (5 = Data, the default). `congestion_control`: 0 = Drop
+    /// (default), 1 = Block. `express`: defaults to `false`.
     pub async fn put(
         &self,
         key_expr: String,
         payload: Vec<u8>,
         encoding_id: u32,
         attachment: Option<Vec<u8>>,
+        priority: Option<u8>,
+        congestion_control: Option<u8>,
+        express: Option<bool>,
     ) -> Result<(), JsValue> {
         let session = require_session(self.slot)?;
         let ke = parse_keyexpr(&key_expr)?;
         let encoding_id =
             u16::try_from(encoding_id).map_err(|_| JsValue::from_str("Encoding id out of range"))?;
 
-        let mut builder = session.put(ke, &payload).encoding(zenoh_proto::fields::Encoding {
-            id: encoding_id,
-            schema: None,
-        });
+        let mut builder = session
+            .put(ke, &payload)
+            .encoding(zenoh_proto::fields::Encoding {
+                id: encoding_id,
+                schema: None,
+            })
+            .qos(qos_from(priority, congestion_control, express));
         if let Some(ref attachment) = attachment {
             builder = builder.attachment(attachment.as_slice());
         }
@@ -526,21 +558,33 @@ impl JsPublisher {
     }
 
     /// Publish `payload` to this publisher's key expression.
+    ///
+    /// QoS (`priority`, `congestion_control`, `express`, `reliability`) is
+    /// resolved by the TS layer from the publisher's declared options and
+    /// passed through on every put.
     pub async fn put(
         &self,
         payload: Vec<u8>,
         encoding_id: u32,
         attachment: Option<Vec<u8>>,
+        priority: Option<u8>,
+        congestion_control: Option<u8>,
+        express: Option<bool>,
+        reliability: Option<u8>,
     ) -> Result<(), JsValue> {
         let session = require_session(self.slot)?;
         let ke = parse_keyexpr(&self.ke)?;
         let encoding_id =
             u16::try_from(encoding_id).map_err(|_| JsValue::from_str("Encoding id out of range"))?;
 
-        let mut builder = session.put(ke, &payload).encoding(zenoh_proto::fields::Encoding {
-            id: encoding_id,
-            schema: None,
-        });
+        let mut builder = session
+            .put(ke, &payload)
+            .encoding(zenoh_proto::fields::Encoding {
+                id: encoding_id,
+                schema: None,
+            })
+            .qos(qos_from(priority, congestion_control, express))
+            .reliability(reliability_from(reliability));
         if let Some(ref attachment) = attachment {
             builder = builder.attachment(attachment.as_slice());
         }

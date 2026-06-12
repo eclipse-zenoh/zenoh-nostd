@@ -18,11 +18,20 @@ export class Parameters {
         return this._raw;
     }
 
+    /**
+     * Split a `key=value` pair on the first `=` only, so values may themselves
+     * contain `=`. A bare `key` (no `=`) yields an empty-string value.
+     */
+    private static splitPair(pair: string): [string, string] {
+        const i = pair.indexOf("=");
+        return i < 0 ? [pair, ""] : [pair.slice(0, i), pair.slice(i + 1)];
+    }
+
     /** Returns the value for the given key, or undefined if not present. */
     get(key: string): string | undefined {
         for (const pair of this._raw.split("&")) {
-            const [k, v] = pair.split("=", 2);
-            if (k === key) return v ?? "";
+            const [k, v] = Parameters.splitPair(pair);
+            if (k === key) return v;
         }
         return undefined;
     }
@@ -47,10 +56,7 @@ export class Parameters {
 
     iter(): [string, string][] {
         if (this._raw === "") return [];
-        return this._raw.split("&").map((pair) => {
-            const [k, v] = pair.split("=", 2);
-            return [k, v ?? ""] as [string, string];
-        });
+        return this._raw.split("&").map((pair) => Parameters.splitPair(pair));
     }
 
     values(): string[] {

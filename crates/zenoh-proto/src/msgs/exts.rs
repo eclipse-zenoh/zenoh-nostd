@@ -64,6 +64,24 @@ impl QoS {
         }
         Self { inner }
     }
+
+    /// Build a `QoS` from raw parts: a 3-bit `priority` (0-7, where 5 is the
+    /// default `Data` level), a `block` flag (`CongestionControl::Block` when
+    /// `true`, `Drop` when `false`), and `is_express`.
+    ///
+    /// Unlike [`QoS::new`], this accepts the full priority range, which the
+    /// wire format encodes in the low 3 bits but the [`Priority`] enum does not
+    /// yet enumerate.
+    pub const fn from_parts(priority: u8, block: bool, is_express: bool) -> Self {
+        let mut inner = priority & 0b0000_0111;
+        if block {
+            inner |= Self::D_FLAG;
+        }
+        if is_express {
+            inner |= Self::E_FLAG;
+        }
+        Self { inner }
+    }
 }
 
 #[derive(ZExt, Debug, PartialEq, Default)]

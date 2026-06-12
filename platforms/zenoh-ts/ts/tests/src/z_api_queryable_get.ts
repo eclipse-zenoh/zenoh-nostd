@@ -133,6 +133,9 @@ Deno.test("API - Session Get with Channel", async () => {
         query.finalize();
 
         let reply = await receiver1.receive();
+        if (!reply) {
+            throw new Error("Failed to get reply");
+        }
         const result = reply.result();
         assertEquals(result instanceof ReplyError, false, "Reply should be OK");
         if (!(result instanceof ReplyError)) {
@@ -155,6 +158,9 @@ Deno.test("API - Session Get with Channel", async () => {
         query2.finalize();
 
         reply = await receiver2.receive();
+        if (!reply) {
+            throw new Error("Failed to get reply");
+        }
         const result2 = reply.result();
         assertEquals(result2 instanceof ReplyError, true, "Reply should be an error");
         if (result2 instanceof ReplyError) {
@@ -196,7 +202,7 @@ Deno.test("API - Querier Get with Channel", async () => {
         await sleep(1000);
 
         querier = await session2.declareQuerier(selector, {
-            target: QueryTarget.BEST_MATCHING
+            target: QueryTarget.BestMatching
         });
 
         // First query with ok parameters
@@ -220,6 +226,9 @@ Deno.test("API - Querier Get with Channel", async () => {
         await sleep(100);
 
         let reply = await receiver1.receive();
+        if (!reply) {
+            throw new Error("Failed to get reply");
+        }
         let result = reply.result();
         assertEquals(result instanceof ReplyError, false, "Reply should be OK");
         if (!(result instanceof ReplyError)) {
@@ -247,6 +256,9 @@ Deno.test("API - Querier Get with Channel", async () => {
         await sleep(100);
 
         reply = await receiver2.receive();
+        if (!reply) {
+            throw new Error("Failed to get reply");
+        }
         result = reply.result();
         assertEquals(result instanceof ReplyError, true, "Reply should be an error");
         if (result instanceof ReplyError) {
@@ -289,7 +301,7 @@ Deno.test("API - Querier Get with Callback", async () => {
         await sleep(1000);
 
         querier = await session2.declareQuerier(selector, {
-            target: QueryTarget.BEST_MATCHING
+            target: QueryTarget.BestMatching
         });
 
         // First query with ok parameters
@@ -381,7 +393,7 @@ Deno.test("API - Session Get with multiple responses", async () => {
 
         queryable = await session1.declareQueryable(ke, { complete: true });
 
-        receiver1 = await session2.get(new Selector(selector, "ok"), { payload: "1", consolidation: ConsolidationMode.NONE });
+        receiver1 = await session2.get(new Selector(selector, "ok"), { payload: "1", consolidation: ConsolidationMode.None });
         if (!receiver1) {
             throw new Error("Failed to get receiver");
         }
@@ -418,7 +430,7 @@ Deno.test("API - Session Get with multiple responses", async () => {
         assertEquals(result.payload().toString(), "3", "Reply payload mismatch");
 
 
-        receiver2 = await session2.get(new Selector(selector, "ok"), { payload: "1", consolidation: ConsolidationMode.NONE });
+        receiver2 = await session2.get(new Selector(selector, "ok"), { payload: "1", consolidation: ConsolidationMode.None });
         if (!receiver2) {
             throw new Error("Failed to get receiver");
         }

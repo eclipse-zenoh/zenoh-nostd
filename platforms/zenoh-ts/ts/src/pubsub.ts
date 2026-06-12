@@ -48,12 +48,25 @@ export class Publisher {
         return this._handle.key_expr();
     }
 
-    /** Publish `payload` to this publisher's key expression. */
+    /**
+     * Publish `payload` to this publisher's key expression.
+     *
+     * QoS (`priority`, `congestionControl`, `express`, `reliability`) is taken
+     * from the options this publisher was declared with.
+     */
     async put(payload: IntoZBytes, opts?: { encoding?: Encoding; attachment?: IntoZBytes }): Promise<void> {
         const bytes = ZBytes.from(payload).toBytes();
         const encId = opts?.encoding?.id ?? this._opts?.encoding?.id ?? 0;
         const attach = opts?.attachment ? ZBytes.from(opts.attachment).toBytes() : undefined;
-        await this._handle.put(bytes, encId, attach ?? null);
+        await this._handle.put(
+            bytes,
+            encId,
+            attach ?? null,
+            this._opts?.priority,
+            this._opts?.congestionControl,
+            this._opts?.express,
+            this._opts?.reliability,
+        );
     }
 
     /** Send a delete notification via this publisher. */
@@ -137,6 +150,7 @@ export class Reply {
         private readonly _keyExpr: string,
         private readonly _payload: ZBytes,
         private readonly _encoding: Encoding,
+        private readonly _kind: SampleKind = SampleKind.Put,
     ) {}
 
     /** Returns `true` if this is a successful reply. */
@@ -156,7 +170,7 @@ export class Reply {
      */
     result(): Sample | ReplyError {
         if (this._isOk) {
-            return new Sample(this._keyExpr, this._payload, SampleKind.Put, this._encoding);
+            return new Sample(this._keyExpr, this._payload, this._kind, this._encoding);
         }
         return new ReplyError(this._payload, this._encoding);
     }
@@ -167,6 +181,7 @@ export class Reply {
             js.sample.key_expr,
             new ZBytes(js.sample.payload),
             new Encoding(js.sample.encoding_id),
+            js.sample.kind as SampleKind,
         );
     }
 }

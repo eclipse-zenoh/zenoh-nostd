@@ -52,17 +52,25 @@ export class JsPublisher {
     }
     /**
      * Publish `payload` to this publisher's key expression.
+     *
+     * QoS (`priority`, `congestion_control`, `express`, `reliability`) is
+     * resolved by the TS layer from the publisher's declared options and
+     * passed through on every put.
      * @param {Uint8Array} payload
      * @param {number} encoding_id
      * @param {Uint8Array | null} [attachment]
+     * @param {number | null} [priority]
+     * @param {number | null} [congestion_control]
+     * @param {boolean | null} [express]
+     * @param {number | null} [reliability]
      * @returns {Promise<void>}
      */
-    put(payload, encoding_id, attachment) {
+    put(payload, encoding_id, attachment, priority, congestion_control, express, reliability) {
         const ptr0 = passArray8ToWasm0(payload, wasm.__wbindgen_malloc);
         const len0 = WASM_VECTOR_LEN;
         var ptr1 = isLikeNone(attachment) ? 0 : passArray8ToWasm0(attachment, wasm.__wbindgen_malloc);
         var len1 = WASM_VECTOR_LEN;
-        const ret = wasm.jspublisher_put(this.__wbg_ptr, ptr0, len0, encoding_id, ptr1, len1);
+        const ret = wasm.jspublisher_put(this.__wbg_ptr, ptr0, len0, encoding_id, ptr1, len1, isLikeNone(priority) ? 0xFFFFFF : priority, isLikeNone(congestion_control) ? 0xFFFFFF : congestion_control, isLikeNone(express) ? 0xFFFFFF : express ? 1 : 0, isLikeNone(reliability) ? 0xFFFFFF : reliability);
         return ret;
     }
     /**
@@ -572,20 +580,26 @@ export class JsSession {
     }
     /**
      * Publish data to `key_expr`. Returns `Promise<void>`.
+     *
+     * `priority`: 1-7 (5 = Data, the default). `congestion_control`: 0 = Drop
+     * (default), 1 = Block. `express`: defaults to `false`.
      * @param {string} key_expr
      * @param {Uint8Array} payload
      * @param {number} encoding_id
      * @param {Uint8Array | null} [attachment]
+     * @param {number | null} [priority]
+     * @param {number | null} [congestion_control]
+     * @param {boolean | null} [express]
      * @returns {Promise<void>}
      */
-    put(key_expr, payload, encoding_id, attachment) {
+    put(key_expr, payload, encoding_id, attachment, priority, congestion_control, express) {
         const ptr0 = passStringToWasm0(key_expr, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
         const ptr1 = passArray8ToWasm0(payload, wasm.__wbindgen_malloc);
         const len1 = WASM_VECTOR_LEN;
         var ptr2 = isLikeNone(attachment) ? 0 : passArray8ToWasm0(attachment, wasm.__wbindgen_malloc);
         var len2 = WASM_VECTOR_LEN;
-        const ret = wasm.jssession_put(this.__wbg_ptr, ptr0, len0, ptr1, len1, encoding_id, ptr2, len2);
+        const ret = wasm.jssession_put(this.__wbg_ptr, ptr0, len0, ptr1, len1, encoding_id, ptr2, len2, isLikeNone(priority) ? 0xFFFFFF : priority, isLikeNone(congestion_control) ? 0xFFFFFF : congestion_control, isLikeNone(express) ? 0xFFFFFF : express ? 1 : 0);
         return ret;
     }
 }

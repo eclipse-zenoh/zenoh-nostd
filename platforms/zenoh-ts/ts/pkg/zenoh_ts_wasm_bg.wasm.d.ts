@@ -28,7 +28,7 @@ export const __wbg_set_jssample_kind: (a: number, b: number) => void;
 export const __wbg_set_jssample_payload: (a: number, b: number, c: number) => void;
 export const jspublisher_delete: (a: number) => any;
 export const jspublisher_key_expr: (a: number) => [number, number];
-export const jspublisher_put: (a: number, b: number, c: number, d: number, e: number, f: number) => any;
+export const jspublisher_put: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => any;
 export const jspublisher_undeclare: (a: number) => void;
 export const jsquerier_get: (a: number, b: any, c: number, d: number, e: number, f: number, g: number) => any;
 export const jsquery_finalize: (a: number) => any;
@@ -44,7 +44,7 @@ export const jssession_declare_subscriber: (a: number, b: number, c: number, d: 
 export const jssession_delete: (a: number, b: number, c: number) => any;
 export const jssession_get: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: any, i: number, j: number, k: number) => any;
 export const jssession_open: (a: number, b: number) => any;
-export const jssession_put: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => any;
+export const jssession_put: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => any;
 export const jssubscriber_undeclare: (a: number) => any;
 export const ke_includes: (a: number, b: number, c: number, d: number) => number;
 export const ke_intersects: (a: number, b: number, c: number, d: number) => number;

@@ -42,6 +42,8 @@ where
             encoding: self.encoding.clone(),
             timestamp: self.timestamp,
             attachment: self.attachment.clone(),
+            qos: QoS::default(),
+            reliability: Reliability::default(),
         }
     }
 
