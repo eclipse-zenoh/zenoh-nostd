@@ -112,7 +112,7 @@ where
         let sample = Sample::with_encoding_id(ke, payload, encoding_id);
         let mut state = self.session.state().await;
         for cb in state.sub_callbacks.intersects(ke) {
-            cb.call_try_sync(&sample).await;
+            cb.call(&sample).await;
         }
 
         Ok(())

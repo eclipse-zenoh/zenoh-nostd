@@ -309,7 +309,7 @@ where
             if let Some(cb) = state.get_callbacks.get(rid) {
                 let sample = Sample::new(ke, payload);
                 let response = GetResponse::Ok(sample);
-                cb.call_try_sync(&response).await;
+                cb.call(&response).await;
                 return Ok(());
             }
         }
@@ -350,7 +350,7 @@ where
             if let Some(cb) = state.get_callbacks.get(rid) {
                 let sample = Sample::new(ke, payload);
                 let response = GetResponse::Err(sample);
-                cb.call_try_sync(&response).await;
+                cb.call(&response).await;
                 return Ok(());
             }
         }
@@ -395,8 +395,11 @@ where
                 let is_local = state.get_callbacks.get(rid).is_some();
                 // decrease() returns true only when a counter entry existed and
                 // reached zero — i.e. the "pending remote" flag was consumed.
-                let pending_remote =
-                    if is_local { state.get_callbacks.decrease(rid) } else { false };
+                let pending_remote = if is_local {
+                    state.get_callbacks.decrease(rid)
+                } else {
+                    false
+                };
                 (is_local, pending_remote)
             };
 
@@ -406,7 +409,7 @@ where
                     let mut state = self.state().await;
                     let done = GetResponse::Done;
                     if let Some(cb) = state.get_callbacks.get(rid) {
-                        cb.call_try_sync(&done).await;
+                        cb.call(&done).await;
                     }
                     state.get_callbacks.remove(rid)?;
                 }

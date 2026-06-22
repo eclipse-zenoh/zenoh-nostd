@@ -43,7 +43,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-zenoh-nostd = { git = "https://github.com/eclipse-zenoh/zenoh-nostd" }
+zenoh-nostd = { git = "https://github.com/kydos/zenoh-nostd" }
 ```
 
 > For embedded systems, ensure your crate uses `#![no_std]`:

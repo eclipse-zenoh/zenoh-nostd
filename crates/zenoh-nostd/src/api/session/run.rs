@@ -20,11 +20,10 @@ where
                 match msg.body {
                     NetworkBody::Push(Push {
                         wire_expr,
-                        payload: PushBody::Put(Put {
-                            payload,
-                            encoding,
-                            ..
-                        }),
+                        payload:
+                            PushBody::Put(Put {
+                                payload, encoding, ..
+                            }),
                         ..
                     }) => {
                         let ke = wire_expr.suffix;
@@ -32,7 +31,7 @@ where
                         let sample = Sample::with_encoding_id(ke, payload, encoding.id);
 
                         for cb in state.sub_callbacks.intersects(ke) {
-                            cb.call_try_sync(&sample).await;
+                            cb.call(&sample).await;
                         }
                     }
                     NetworkBody::Response(Response {
@@ -45,27 +44,28 @@ where
                         let ke = keyexpr::new(ke)?;
                         let response = match payload {
                             ResponseBody::Reply(Reply {
-                                payload: PushBody::Put(Put {
-                                    payload,
-                                    encoding,
-                                    ..
-                                }),
+                                payload:
+                                    PushBody::Put(Put {
+                                        payload, encoding, ..
+                                    }),
                                 ..
-                            }) => GetResponse::Ok(Sample::with_encoding_id(ke, payload, encoding.id)),
+                            }) => {
+                                GetResponse::Ok(Sample::with_encoding_id(ke, payload, encoding.id))
+                            }
                             ResponseBody::Err(Err { payload, .. }) => {
                                 GetResponse::Err(Sample::new(ke, payload))
                             }
                         };
 
                         if let Some(cb) = state.get_callbacks.get(rid) {
-                            cb.call_try_sync(&response).await;
+                            cb.call(&response).await;
                         }
                     }
                     NetworkBody::ResponseFinal(ResponseFinal { rid, .. }) => {
                         // Signal completion to any callback/channel waiting on this get.
                         let done = GetResponse::Done;
                         if let Some(cb) = state.get_callbacks.get(rid) {
-                            cb.call_try_sync(&done).await;
+                            cb.call(&done).await;
                         }
                         state.get_callbacks.remove(rid)?;
                     }

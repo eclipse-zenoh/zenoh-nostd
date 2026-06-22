@@ -29,13 +29,14 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
 use zenoh_nostd::session::{
-    AllocGetCallbacks, AllocQueryableCallbacks, AllocSubCallbacks, GetResponse, Resources,
-    Session, TransportLinkManager, ZSessionConfig,
+    AllocGetCallbacks, AllocQueryableCallbacks, AllocSubCallbacks, GetResponse, Resources, Session,
+    TransportLinkManager, ZSessionConfig,
 };
 use zenoh_proto::{
+    Endpoint,
     exts::{QoS, QueryTarget},
     fields::{ConsolidationMode, Reliability},
-    keyexpr, Endpoint,
+    keyexpr,
 };
 use zenoh_wasm::{WasmLink, WasmLinkManager};
 
@@ -176,11 +177,7 @@ async fn js_sleep(ms: u32) {
             js_sys::Reflect::get(&global, &JsValue::from_str("setTimeout"))
                 .unwrap_or(JsValue::UNDEFINED)
                 .unchecked_into();
-        let _ = set_timeout.call2(
-            &JsValue::NULL,
-            resolve.unchecked_ref(),
-            &JsValue::from(ms),
-        );
+        let _ = set_timeout.call2(&JsValue::NULL, resolve.unchecked_ref(), &JsValue::from(ms));
     });
     let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
 }
@@ -290,8 +287,7 @@ impl JsSession {
         let resources: &'static mut Resources<'static, WasmConfig> =
             Box::leak(Box::new(Resources::default()));
 
-        let endpoint =
-            Endpoint::try_from(locator.as_str()).map_err(|e| js_err(e))?;
+        let endpoint = Endpoint::try_from(locator.as_str()).map_err(|e| js_err(e))?;
 
         let transport = config
             .transports()
@@ -358,8 +354,8 @@ impl JsSession {
     ) -> Result<(), JsValue> {
         let session = require_session(self.slot)?;
         let ke = parse_keyexpr(&key_expr)?;
-        let encoding_id =
-            u16::try_from(encoding_id).map_err(|_| JsValue::from_str("Encoding id out of range"))?;
+        let encoding_id = u16::try_from(encoding_id)
+            .map_err(|_| JsValue::from_str("Encoding id out of range"))?;
 
         let mut builder = session
             .put(ke, &payload)
@@ -400,7 +396,11 @@ impl JsSession {
             .map_err(|e| js_err(e))?;
 
         let id = pub_handle.id();
-        Ok(JsPublisher { slot: self.slot, ke: key_expr, id })
+        Ok(JsPublisher {
+            slot: self.slot,
+            ke: key_expr,
+            id,
+        })
     }
 
     // ── Subscriber ────────────────────────────────────────────────────────────
@@ -426,7 +426,10 @@ impl JsSession {
             .map_err(|e| js_err(e))?;
 
         let id = sub.id();
-        Ok(JsSubscriber { slot: self.slot, id })
+        Ok(JsSubscriber {
+            slot: self.slot,
+            id,
+        })
     }
 
     // ── Queryable ─────────────────────────────────────────────────────────────
@@ -461,20 +464,23 @@ impl JsSession {
             .map_err(|e| js_err(e))?;
 
         let id = queryable.id();
-        Ok(JsQueryable { slot: self.slot, id })
+        Ok(JsQueryable {
+            slot: self.slot,
+            id,
+        })
     }
 
     // ── Querier ───────────────────────────────────────────────────────────────
 
     /// Declare a querier for `key_expr` with default `timeout_ms`.
     /// Returns `JsQuerier` synchronously.
-    pub fn declare_querier(
-        &self,
-        key_expr: String,
-        timeout_ms: u32,
-    ) -> Result<JsQuerier, JsValue> {
+    pub fn declare_querier(&self, key_expr: String, timeout_ms: u32) -> Result<JsQuerier, JsValue> {
         let _ = parse_keyexpr(&key_expr)?;
-        Ok(JsQuerier { slot: self.slot, ke: key_expr, timeout_ms })
+        Ok(JsQuerier {
+            slot: self.slot,
+            ke: key_expr,
+            timeout_ms,
+        })
     }
 
     // ── Get ───────────────────────────────────────────────────────────────────
@@ -528,19 +534,23 @@ impl JsSession {
 
         let done_callback = done.clone();
         builder
-            .callback_sync(move |reply| {
-                match reply {
-                    GetResponse::Ok(s) => {
-                        let js_reply = JsReply { is_ok: true, sample: sample_to_js(s) };
-                        let _ = callback.call1(&JsValue::NULL, &JsValue::from(js_reply));
-                    }
-                    GetResponse::Err(s) => {
-                        let js_reply = JsReply { is_ok: false, sample: sample_to_js(s) };
-                        let _ = callback.call1(&JsValue::NULL, &JsValue::from(js_reply));
-                    }
-                    GetResponse::Done => {
-                        done_callback.set(true);
-                    }
+            .callback_sync(move |reply| match reply {
+                GetResponse::Ok(s) => {
+                    let js_reply = JsReply {
+                        is_ok: true,
+                        sample: sample_to_js(s),
+                    };
+                    let _ = callback.call1(&JsValue::NULL, &JsValue::from(js_reply));
+                }
+                GetResponse::Err(s) => {
+                    let js_reply = JsReply {
+                        is_ok: false,
+                        sample: sample_to_js(s),
+                    };
+                    let _ = callback.call1(&JsValue::NULL, &JsValue::from(js_reply));
+                }
+                GetResponse::Done => {
+                    done_callback.set(true);
                 }
             })
             .finish()
@@ -588,8 +598,8 @@ impl JsPublisher {
     ) -> Result<(), JsValue> {
         let session = require_session(self.slot)?;
         let ke = parse_keyexpr(&self.ke)?;
-        let encoding_id =
-            u16::try_from(encoding_id).map_err(|_| JsValue::from_str("Encoding id out of range"))?;
+        let encoding_id = u16::try_from(encoding_id)
+            .map_err(|_| JsValue::from_str("Encoding id out of range"))?;
 
         let mut builder = session
             .put(ke, &payload)
@@ -682,9 +692,7 @@ impl JsQuerier {
         let tms = timeout_ms.unwrap_or(self.timeout_ms);
         let done = Rc::new(Cell::new(false));
 
-        let mut builder = session
-            .get(ke)
-            .timeout(Duration::from_millis(tms as u64));
+        let mut builder = session.get(ke).timeout(Duration::from_millis(tms as u64));
 
         if let Some(ref params) = parameters {
             builder = builder.parameters(params.as_str());
@@ -696,19 +704,23 @@ impl JsQuerier {
 
         let done_callback = done.clone();
         builder
-            .callback_sync(move |reply| {
-                match reply {
-                    GetResponse::Ok(s) => {
-                        let js_reply = JsReply { is_ok: true, sample: sample_to_js(s) };
-                        let _ = callback.call1(&JsValue::NULL, &JsValue::from(js_reply));
-                    }
-                    GetResponse::Err(s) => {
-                        let js_reply = JsReply { is_ok: false, sample: sample_to_js(s) };
-                        let _ = callback.call1(&JsValue::NULL, &JsValue::from(js_reply));
-                    }
-                    GetResponse::Done => {
-                        done_callback.set(true);
-                    }
+            .callback_sync(move |reply| match reply {
+                GetResponse::Ok(s) => {
+                    let js_reply = JsReply {
+                        is_ok: true,
+                        sample: sample_to_js(s),
+                    };
+                    let _ = callback.call1(&JsValue::NULL, &JsValue::from(js_reply));
+                }
+                GetResponse::Err(s) => {
+                    let js_reply = JsReply {
+                        is_ok: false,
+                        sample: sample_to_js(s),
+                    };
+                    let _ = callback.call1(&JsValue::NULL, &JsValue::from(js_reply));
+                }
+                GetResponse::Done => {
+                    done_callback.set(true);
                 }
             })
             .finish()
@@ -760,10 +772,7 @@ impl JsQuery {
     pub async fn finalize(&mut self) -> Result<(), JsValue> {
         if !self.finalized {
             let session = require_session(self.slot)?;
-            session
-                .finalize(self.rid)
-                .await
-                .map_err(|e| js_err(e))?;
+            session.finalize(self.rid).await.map_err(|e| js_err(e))?;
             self.finalized = true;
         }
         Ok(())
@@ -815,8 +824,7 @@ fn ke_includes_chunks(a: &[&str], b: &[&str]) -> bool {
     match a.first() {
         None => b.is_empty(),
         Some(&"**") => {
-            ke_includes_chunks(&a[1..], b)
-                || (!b.is_empty() && ke_includes_chunks(a, &b[1..]))
+            ke_includes_chunks(&a[1..], b) || (!b.is_empty() && ke_includes_chunks(a, &b[1..]))
         }
         Some(&"*") => match b.first() {
             None => false,

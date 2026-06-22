@@ -204,7 +204,7 @@ impl<Tx: embedded_io_async::Write, Rx: embedded_io_async::Read> ZLink for Embedd
             is_streamed,
         } = self;
 
-        return (
+        (
             EmbeddedIOLinkTx {
                 tx,
                 mtu: *mtu,
@@ -215,6 +215,6 @@ impl<Tx: embedded_io_async::Write, Rx: embedded_io_async::Read> ZLink for Embedd
                 mtu: *mtu,
                 is_streamed: *is_streamed,
             },
-        );
+        )
     }
 }
