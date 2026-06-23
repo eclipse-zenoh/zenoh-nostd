@@ -600,6 +600,7 @@ dependencies = [
  "embassy-futures",
  "embassy-sync",
  "embassy-time",
+ "embedded-io-async 0.7.0",
  "heapless",
  "zenoh-derive",
  "zenoh-proto",
