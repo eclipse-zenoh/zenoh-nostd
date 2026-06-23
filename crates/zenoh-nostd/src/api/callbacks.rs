@@ -12,7 +12,7 @@ use crate::api::arg::ZArg;
 pub trait ZCallback {
     type Arg: ZArg;
 
-    #[dyn_trait(try_sync)]
+    #[dyn_trait(maybe_sync)]
     fn call(&mut self, arg: <Self::Arg as ZArg>::Of<'_>) -> impl Future<Output = ()>;
 }
 
