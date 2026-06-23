@@ -35,11 +35,10 @@ async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
     zenoh::info!("zenoh-nostd z_get example");
 
     let config = init_session_example(&spawner).await;
-    let mut resources = Resources::default();
     let session = if LISTEN {
-        zenoh::listen(&mut resources, &config, Endpoint::try_from(ENDPOINT)?).await?
+        zenoh::listen!(ExampleConfig: config, Endpoint::try_from(ENDPOINT)?)
     } else {
-        zenoh::connect(&mut resources, &config, Endpoint::try_from(ENDPOINT)?).await?
+        zenoh::connect!(ExampleConfig: config, Endpoint::try_from(ENDPOINT)?)
     };
 
     // In the following code we use the direct `callback` API. `zenoh` lets you provide either `sync` or `async` callbacks for your convenience.

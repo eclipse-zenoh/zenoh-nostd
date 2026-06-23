@@ -3,7 +3,7 @@
 //! This module generates code that calculates the encoded length of a struct.
 //!
 //! ## Purpose
-//! 
+//!
 //! This module generates implementations of:
 //! - `ZBodyLen::z_body_len()` - calculates body size only (without header)
 //! - `ZLen::z_len()` - calculates total size (header + body)

@@ -12,11 +12,10 @@ async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
     zenoh::info!("zenoh-nostd z_put example");
 
     let config = init_session_example(&spawner).await;
-    let mut resources = Resources::default();
     let session = if LISTEN {
-        zenoh::listen(&mut resources, &config, Endpoint::try_from(ENDPOINT)?).await?
+        zenoh::listen!(ExampleConfig: config, Endpoint::try_from(ENDPOINT)?)
     } else {
-        zenoh::connect(&mut resources, &config, Endpoint::try_from(ENDPOINT)?).await?
+        zenoh::connect!(ExampleConfig: config, Endpoint::try_from(ENDPOINT)?)
     };
 
     // In this example we don't care about maintaining the session alive but we do it anyway for demonstration purpose. Know
