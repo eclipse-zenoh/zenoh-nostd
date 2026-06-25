@@ -28,7 +28,7 @@ where
                         let sample = Sample::new(ke, payload);
 
                         for cb in state.sub_callbacks.intersects(ke) {
-                            cb.call_try_sync(&sample).await;
+                            cb.call(&sample).await;
                         }
                     }
                     NetworkBody::Response(Response {
@@ -50,7 +50,7 @@ where
                         };
 
                         if let Some(cb) = state.get_callbacks.get(rid) {
-                            cb.call_try_sync(&response).await;
+                            cb.call(&response).await;
                         }
                     }
                     NetworkBody::ResponseFinal(ResponseFinal { rid, .. }) => {
