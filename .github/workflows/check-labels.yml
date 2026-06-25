@@ -2,16 +2,22 @@ name: Check required labels
 
 on:
   pull_request_target:
-    types: [opened, synchronize, reopened, labeled]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
     branches: ["**"]
+
+permissions:
+  pull-requests: read
 
 jobs:
   check-labels:
     name: Check PR labels
-    uses: ZettaScaleLabs/ci/.github/workflows/check-labels.yml@main
-    with:
-      runner: ubuntu-runner-set
-    secrets:
-      github-token: ${{ secrets.GITHUB_TOKEN }}
-    permissions:
-      pull-requests: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require at least one changelog label
+        uses: mheap/github-action-required-labels@v5
+        with:
+          mode: minimum
+          count: 1
+          labels: >-
+            breaking-change, enhancement, new feature, bug,
+            documentation, dependencies, internal
