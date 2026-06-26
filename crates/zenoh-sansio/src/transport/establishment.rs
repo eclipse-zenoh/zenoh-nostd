@@ -29,6 +29,8 @@ pub(crate) enum State {
     WaitingInitSyn {
         /// Mine zid
         mine_zid: ZenohIdProto,
+        /// Mine whatami
+        mine_whatami: WhatAmI,
         /// Mine startup batch_size
         mine_batch_size: u16,
         /// Mine startup resolution
@@ -39,6 +41,8 @@ pub(crate) enum State {
     WaitingOpenSyn {
         /// Mine zid
         mine_zid: ZenohIdProto,
+        /// Mine whatami
+        mine_whatami: WhatAmI,
         /// Mine startup batch_size
         mine_batch_size: u16,
         /// Mine startup resolution
@@ -49,6 +53,8 @@ pub(crate) enum State {
     WaitingInitAck {
         /// Mine zid
         mine_zid: ZenohIdProto,
+        /// Mine whatami
+        mine_whatami: WhatAmI,
         /// Mine startup batch_size
         mine_batch_size: u16,
         /// Mine startup resolution
@@ -90,6 +96,7 @@ impl State {
             TransportMessage::InitSyn(syn) => match *self {
                 Self::WaitingInitSyn {
                     mine_zid,
+                    mine_whatami,
                     mine_batch_size,
                     mine_resolution,
                     mine_lease,
@@ -102,6 +109,7 @@ impl State {
 
                     *self = Self::WaitingOpenSyn {
                         mine_zid,
+                        mine_whatami,
                         mine_batch_size,
                         mine_resolution,
                         mine_lease,
@@ -111,7 +119,7 @@ impl State {
                         Some(TransportMessage::InitAck(InitAck {
                             identifier: InitIdentifier {
                                 zid: mine_zid,
-                                ..Default::default()
+                                whatami: mine_whatami,
                             },
                             resolution: InitResolution {
                                 resolution: mine_resolution,
@@ -123,12 +131,62 @@ impl State {
                         None,
                     )
                 }
+                Self::WaitingInitAck {
+                    mine_zid,
+                    mine_whatami,
+                    mine_batch_size,
+                    mine_resolution,
+                    mine_lease,
+                } => {
+                    if mine_zid > syn.identifier.zid {
+                        zenoh_proto::debug!(
+                            "Simultaneous open: {:?} yields to {:?} (higher ZID)",
+                            mine_zid,
+                            syn.identifier.zid
+                        );
+
+                        *self = Self::WaitingOpenSyn {
+                            mine_zid,
+                            mine_whatami,
+                            mine_batch_size,
+                            mine_resolution,
+                            mine_lease,
+                        };
+
+                        (
+                            Some(TransportMessage::InitAck(InitAck {
+                                identifier: InitIdentifier {
+                                    zid: mine_zid,
+                                    whatami: mine_whatami,
+                                },
+                                resolution: InitResolution {
+                                    resolution: mine_resolution,
+                                    batch_size: BatchSize(mine_batch_size),
+                                },
+                                cookie: buff, // TODO: cypher ChaCha20
+                                ..Default::default()
+                            })),
+                            None,
+                        )
+                    } else if mine_zid < syn.identifier.zid {
+                        zenoh_proto::debug!(
+                            "Simultaneous open: {:?} wins over {:?} (lower ZID)",
+                            mine_zid,
+                            syn.identifier.zid
+                        );
+
+                        (None, None)
+                    } else {
+                        zenoh_proto::zbail!(@ret (None, None), TransportError::InvalidAttribute)
+                    }
+                }
                 _ => zenoh_proto::zbail!(@ret (None, None), TransportError::InvalidState),
             },
             // Negotiate values, pass the cookie back
             TransportMessage::InitAck(ack) => match *self {
                 Self::WaitingInitAck {
                     mine_zid,
+                    mine_whatami: _,
                     mine_batch_size,
                     mine_resolution,
                     mine_lease,
@@ -197,6 +255,7 @@ impl State {
             TransportMessage::OpenSyn(open) => match *self {
                 Self::WaitingOpenSyn {
                     mine_zid,
+                    mine_whatami: _,
                     mine_batch_size,
                     mine_resolution,
                     mine_lease,

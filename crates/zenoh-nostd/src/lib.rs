@@ -13,6 +13,7 @@ pub mod session {
     pub use super::config::ZSessionConfig;
     pub use super::io::transport::TransportLinkManager;
     pub use super::resources::Resources;
+    pub use zenoh_proto::fields::WhatAmI;
     pub use zenoh_proto::{Endpoint, Error};
 
     pub use super::api::{
@@ -46,6 +47,7 @@ pub mod broker {
     pub use zenoh_proto::{Endpoint, Error};
 
     pub use super::api::broker::Broker;
+    pub use super::api::mesh::{MeshEntry, MeshState};
 
     pub mod zenoh {
         pub use zenoh_proto::{debug, error, info, keyexpr, trace, warn, zbail};
