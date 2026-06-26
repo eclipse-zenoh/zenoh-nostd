@@ -12,7 +12,8 @@
 <p align="center">
   <a href="https://github.com/eclipse-zenoh/zenoh-nostd/actions/workflows/ci.yml"><img src="https://github.com/eclipse-zenoh/zenoh-nostd/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="https://codecov.io/gh/eclipse-zenoh/zenoh-nostd"><img src="https://codecov.io/gh/eclipse-zenoh/zenoh-nostd/graph/badge.svg" alt="Code coverage" /></a>
-  <a href="https://cla-assistant.io/ZettaScaleLabs/zenoh-nostd"><img src="https://cla-assistant.io/readme/badge/ZettaScaleLabs/zenoh-nostd" alt="CLA assistant" /></a>
+  <img src="https://img.shields.io/badge/rustc-1.91.0%2B-orange.svg" alt="MSRV 1.91.0" />
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-EPL--2.0%20OR%20Apache--2.0-blue.svg" alt="License: EPL-2.0 OR Apache-2.0" /></a>
 </p>
 
 ---
@@ -43,7 +44,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-zenoh-nostd = { git = "https://github.com/kydos/zenoh-nostd" }
+zenoh-nostd = { git = "https://github.com/eclipse-zenoh/zenoh-nostd" }
 ```
 
 > For embedded systems, ensure your crate uses `#![no_std]`:
@@ -85,8 +86,8 @@ async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
 
 ## ⚠️ Current Limitations
 
-* No serial support yet. ([#9](https://github.com/eclipse-zenoh/zenoh-nostd/issues/9)
-* `Interest` protocol not implemented yet. ([#10](https://github.com/eclipse-zenoh/zenoh-nostd/issues/10)
+* No serial support yet. ([#11](https://github.com/eclipse-zenoh/zenoh-nostd/issues/11))
+* `Interest` protocol not implemented yet. ([#46](https://github.com/eclipse-zenoh/zenoh-nostd/issues/46))
 
 ---
 
@@ -112,7 +113,7 @@ Set the `ENDPOINT=<endpoint>` environment variable to specify the endpoint (defa
 
 For `esp32s3`, you must also provide:
 
-* `WIFI_SSID` (default is `WiFiPassword`).
+* `WIFI_SSID` (default is `Zenoh`).
 * `WIFI_PASSWORD` (no default, must be provided).
 
 See the ESP32 setup documentation for toolchain and target installation.
@@ -208,3 +209,11 @@ zenoh-nostd/            # Git repository root
 └── src/
     └── lib.rs          # Example lib.rs
 ```
+
+---
+
+## 📚 Documentation
+
+The base project has been implemented in ([#6](https://github.com/eclipse-zenoh/zenoh-nostd/pull/6))
+The structure and API have been reworked in ([#34](https://github.com/eclipse-zenoh/zenoh-nostd/pull/24))
+The API has been reworked ([#52](https://github.com/eclipse-zenoh/zenoh-nostd/pull/52))

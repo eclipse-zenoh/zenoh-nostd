@@ -9,7 +9,7 @@
 //! ### `#[derive(ZStruct)]`
 //!
 //! Derives codec traits for structured protocol messages. This is the primary macro for
-//! implementing the [`ZEncode`], [`ZDecode`], [`ZLen`], and related traits.
+//! implementing the `ZEncode`, `ZDecode`, `ZLen`, and related traits.
 //!
 //! #### Attributes
 //!
@@ -125,9 +125,9 @@ pub(crate) mod zerror;
 
 /// Derives Zenoh protocol codec traits for a struct.
 ///
-/// This macro implements [`ZEncode`], [`ZDecode`], [`ZLen`], [`ZBodyEncode`],
-/// [`ZBodyDecode`], and [`ZBodyLen`] for the annotated struct. It also implements
-/// [`ZHeader`] if a header format is specified, and [`ZExtCount`] if the struct
+/// This macro implements `ZEncode`, `ZDecode`, `ZLen`, `ZBodyEncode`,
+/// `ZBodyDecode`, and `ZBodyLen` for the annotated struct. It also implements
+/// `ZHeader` if a header format is specified, and `ZExtCount` if the struct
 /// contains extensions.
 ///
 /// # Attributes
@@ -175,7 +175,7 @@ pub fn derive_zstruct(input: proc_macro::TokenStream) -> proc_macro::TokenStream
 
 /// Derives Zenoh protocol extension traits for a struct.
 ///
-/// This macro implements [`ZExt`], [`ZEncode`], [`ZDecode`], and [`ZLen`] for
+/// This macro implements `ZExt`, `ZEncode`, `ZDecode`, and `ZLen` for
 /// protocol extensions. It automatically infers the extension kind based on
 /// the struct's fields:
 ///

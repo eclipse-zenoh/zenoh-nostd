@@ -14,18 +14,21 @@ async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
     // All channels that will be used must outlive `Resources`.
     // **Note**: as a direct implication, you may need to make static channels
     // if you want a `'static` session.
-    let channel = embassy_sync::channel::Channel::<
-        embassy_sync::blocking_mutex::raw::NoopRawMutex,
-        FixedCapacitySample<128, 128>,
-        8,
-    >::new();
+    use static_cell::StaticCell;
+    static CHANNEL: StaticCell<
+        embassy_sync::channel::Channel<
+            embassy_sync::blocking_mutex::raw::NoopRawMutex,
+            FixedCapacitySample<128, 128>,
+            8,
+        >,
+    > = StaticCell::new();
+    let channel: &'static _ = CHANNEL.init(embassy_sync::channel::Channel::new());
 
     let config = init_session_example(&spawner).await;
-    let mut resources = Resources::default();
     let session = if LISTEN {
-        zenoh::listen(&mut resources, &config, Endpoint::try_from(ENDPOINT)?).await?
+        zenoh::listen!(ExampleConfig: config, Endpoint::try_from(ENDPOINT)?)
     } else {
-        zenoh::connect(&mut resources, &config, Endpoint::try_from(ENDPOINT)?).await?
+        zenoh::connect!(ExampleConfig: config, Endpoint::try_from(ENDPOINT)?)
     };
 
     let subscriber = session
@@ -53,6 +56,7 @@ async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
 #[cfg_attr(feature = "std", embassy_executor::main)]
 #[cfg_attr(feature = "wasm", embassy_executor::main)]
 #[cfg_attr(feature = "esp32s3", esp_rtos::main)]
+
 async fn main(spawner: embassy_executor::Spawner) {
     if let Err(e) = entry(spawner).await {
         zenoh::error!("Error in main: {}", e);
