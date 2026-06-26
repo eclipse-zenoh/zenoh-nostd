@@ -290,13 +290,8 @@ where
         // directly to any queryable on this session whose key expression
         // intersects the get key expression.
         {
-            let query = QueryableQuery::new(
-                self.session,
-                rid,
-                self.ke,
-                self.parameters,
-                self.payload,
-            );
+            let query =
+                QueryableQuery::new(self.session, rid, self.ke, self.parameters, self.payload);
             let mut state = self.session.state().await;
             let local_count = state.queryable_callbacks.intersects(self.ke).count();
             if local_count > 0 {

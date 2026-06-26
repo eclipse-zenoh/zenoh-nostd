@@ -9,7 +9,10 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use futures_channel::mpsc::{UnboundedSender, unbounded};
-use futures_util::{SinkExt as _, StreamExt as _, stream::{SplitSink, SplitStream}};
+use futures_util::{
+    SinkExt as _, StreamExt as _,
+    stream::{SplitSink, SplitStream},
+};
 use js_sys;
 use wasm_bindgen::JsCast as _;
 use wasm_bindgen::prelude::*;
@@ -72,8 +75,7 @@ impl WasmWsLink {
     /// Connect to a WebSocket server at `url` (e.g. `"ws://127.0.0.1:7447"`).
     pub async fn connect(url: &str) -> core::result::Result<Self, LinkError> {
         // Create the browser WebSocket and configure binary transfer mode.
-        let ws =
-            web_sys::WebSocket::new(url).map_err(|_| LinkError::CouldNotConnect)?;
+        let ws = web_sys::WebSocket::new(url).map_err(|_| LinkError::CouldNotConnect)?;
         ws.set_binary_type(web_sys::BinaryType::Arraybuffer);
 
         // Unbounded channel: JS callbacks push frames; the BrowserWs stream pops them.
@@ -125,9 +127,9 @@ fn install_onmessage(ws: &web_sys::WebSocket, tx: UnboundedSender<Result<Vec<u8>
 fn install_onclose(ws: &web_sys::WebSocket, tx: UnboundedSender<Result<Vec<u8>, ()>>) {
     let onclose: Closure<dyn Fn(_)> = Closure::new(move |e: web_sys::CloseEvent| {
         if !e.was_clean() {
-            web_sys::console::warn_1(
-                &JsValue::from_str("WebSocket CloseEvent wasClean() == false"),
-            );
+            web_sys::console::warn_1(&JsValue::from_str(
+                "WebSocket CloseEvent wasClean() == false",
+            ));
         }
         // Signal EOF to the session run loop.
         let _ = tx.unbounded_send(Err(()));
@@ -155,7 +157,8 @@ async fn wait_for_open(ws: &web_sys::WebSocket) -> core::result::Result<(), Link
     ws.set_onerror(Some(onerror.as_ref().unchecked_ref()));
     onerror.forget();
 
-    rx.next().await
+    rx.next()
+        .await
         .unwrap_or(Err(()))
         .map_err(|()| LinkError::CouldNotConnect)
 }
@@ -267,8 +270,14 @@ impl ZLink for WasmWsLink {
 
     fn split(&mut self) -> (Self::Tx<'_>, Self::Rx<'_>) {
         (
-            WasmWsLinkTx { sink: &mut self.sink, mtu: self.mtu },
-            WasmWsLinkRx { stream: &mut self.stream, mtu: self.mtu },
+            WasmWsLinkTx {
+                sink: &mut self.sink,
+                mtu: self.mtu,
+            },
+            WasmWsLinkRx {
+                stream: &mut self.stream,
+                mtu: self.mtu,
+            },
         )
     }
 }

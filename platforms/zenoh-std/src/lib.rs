@@ -279,7 +279,9 @@ impl ZLinkManager for StdLinkManager {
                     .into_parts(|s| (s.clone(), s))
                     .map_err(|_| LinkError::CouldNotConnect)?;
 
-                Ok(Self::Link::WsServer(ws::StdWsLink::new(reader, writer, mtu)))
+                Ok(Self::Link::WsServer(ws::StdWsLink::new(
+                    reader, writer, mtu,
+                )))
             }
             _ => zenoh::zbail!(LinkError::CouldNotParseProtocol),
         }
