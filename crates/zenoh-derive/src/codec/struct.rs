@@ -156,12 +156,12 @@ pub fn derive_zstruct(input: &DeriveInput) -> syn::Result<TokenStream> {
 ///
 /// - **No attributes**: Returns `tk` as-is
 /// - **presence + default** OR **ext + default**:
-///   ```rust
+///   ```ignore
 ///   if field != &default { tk } else { 0 }  // if append
 ///   if field != &default { tk }              // if !append
 ///   ```
 /// - **presence only** OR **ext only**:
-///   ```rust
+///   ```ignore
 ///   if let Some(field) = field { tk } else { 0 }  // if append
 ///   if let Some(field) = field { tk }              // if !append
 ///   ```
@@ -228,15 +228,15 @@ pub fn enc_len_modifier(
 /// The function generates different code based on attribute combinations:
 ///
 /// - **No attributes**: Decode unconditionally
-///   ```rust
+///   ```ignore
 ///   let field = { decode_expr };
 ///   ```
 /// - **presence + default**: Use default if not present
-///   ```rust
+///   ```ignore
 ///   let field = if present { decode_expr } else { default };
 ///   ```
 /// - **presence only**: Wrap in Option
-///   ```rust
+///   ```ignore
 ///   let field = if present { Some(decode_expr) } else { None };
 ///   ```
 pub fn dec_modifier(
