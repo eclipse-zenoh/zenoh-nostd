@@ -115,7 +115,7 @@ Set the `ENDPOINT=<endpoint>` environment variable to specify the endpoint (defa
 
 For `esp32s3`, you must also provide:
 
-* `WIFI_SSID` (default is `ZettaScale`).
+* `WIFI_SSID` (default is `Zenoh`).
 * `WIFI_PASSWORD` (no default, must be provided).
 
 See the ESP32 setup documentation for toolchain and target installation.

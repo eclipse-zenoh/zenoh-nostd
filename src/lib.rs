@@ -335,7 +335,7 @@ async fn connection(mut controller: WifiController<'static>) {
         if !matches!(controller.is_started(), Ok(true)) {
             let client_config = ModeConfig::Client(
                 ClientConfig::default()
-                    .with_ssid(SSID.unwrap_or("ZettaScale").into())
+                    .with_ssid(SSID.unwrap_or("Zenoh").into())
                     .with_password(PASSWORD.into()),
             );
             controller.set_config(&client_config).unwrap();
