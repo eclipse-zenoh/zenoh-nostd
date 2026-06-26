@@ -13,7 +13,6 @@
   <a href="https://github.com/eclipse-zenoh/zenoh-nostd/actions/workflows/ci.yml"><img src="https://github.com/eclipse-zenoh/zenoh-nostd/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <img src="https://img.shields.io/badge/rustc-1.91.0%2B-orange.svg" alt="MSRV 1.91.0" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-EPL--2.0%20OR%20Apache--2.0-blue.svg" alt="License: EPL-2.0 OR Apache-2.0" /></a>
-  <a href="https://cla-assistant.io/eclipse-zenoh/zenoh-nostd"><img src="https://cla-assistant.io/readme/badge/eclipse-zenoh/zenoh-nostd" alt="CLA assistant" /></a>
 </p>
 
 ---
