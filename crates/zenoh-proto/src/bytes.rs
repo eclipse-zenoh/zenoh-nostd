@@ -82,7 +82,7 @@ pub trait ZWriteable {
     ///
     /// # Errors
     ///
-    /// Returns [`BytesError`] if writing fails.
+    /// Returns [`BytesError`](crate::BytesError) if writing fails.
     fn write(&mut self, src: &'_ [u8]) -> core::result::Result<usize, crate::BytesError>;
 
     /// Writes a single byte to the buffer.
@@ -93,7 +93,7 @@ pub trait ZWriteable {
     ///
     /// # Errors
     ///
-    /// Returns [`BytesError::DstIsFull`] if the buffer has no space remaining.
+    /// Returns [`BytesError::DstIsFull`](crate::BytesError::DstIsFull) if the buffer has no space remaining.
     fn write_u8(&mut self, value: u8) -> core::result::Result<(), crate::BytesError>;
 
     /// Writes all bytes from the source slice, failing if buffer is too small.
@@ -107,7 +107,7 @@ pub trait ZWriteable {
     ///
     /// # Errors
     ///
-    /// Returns [`BytesError::DstIsTooSmall`] if the buffer cannot hold all bytes.
+    /// Returns [`BytesError::DstIsTooSmall`](crate::BytesError::DstIsTooSmall) if the buffer cannot hold all bytes.
     fn write_exact(&mut self, src: &'_ [u8]) -> core::result::Result<(), crate::BytesError> {
         let len = src.len();
         let written = self.write(src)?;
@@ -142,7 +142,7 @@ pub trait ZWriteable {
     ///
     /// # Errors
     ///
-    /// Returns [`BytesError::DstIsTooSmall`] if the buffer has insufficient space
+    /// Returns [`BytesError::DstIsTooSmall`](crate::BytesError::DstIsTooSmall) if the buffer has insufficient space
     /// or if the writer function reports writing more bytes than allocated.
     fn write_slot(
         &mut self,
@@ -251,7 +251,7 @@ pub trait ZReadable<'a> {
     ///
     /// # Errors
     ///
-    /// Returns [`BytesError::SrcIsEmpty`] if the buffer is empty.
+    /// Returns [`BytesError::SrcIsEmpty`](crate::BytesError::SrcIsEmpty) if the buffer is empty.
     fn peek(&self) -> core::result::Result<u8, crate::BytesError>;
 
     /// Returns a borrowed slice of `len` bytes and advances the cursor.
@@ -264,7 +264,7 @@ pub trait ZReadable<'a> {
     ///
     /// # Errors
     ///
-    /// Returns [`BytesError::SrcIsTooSmall`] if the buffer has fewer than `len` bytes.
+    /// Returns [`BytesError::SrcIsTooSmall`](crate::BytesError::SrcIsTooSmall) if the buffer has fewer than `len` bytes.
     fn read_slice(&mut self, len: usize) -> core::result::Result<&'a [u8], crate::BytesError>;
 
     /// Returns true if there are bytes remaining to read.
@@ -276,7 +276,7 @@ pub trait ZReadable<'a> {
     ///
     /// # Errors
     ///
-    /// Returns [`BytesError::SrcIsEmpty`] if the buffer is empty.
+    /// Returns [`BytesError::SrcIsEmpty`](crate::BytesError::SrcIsEmpty) if the buffer is empty.
     fn read_u8(&mut self) -> core::result::Result<u8, crate::BytesError>;
 
     /// Reads exactly `dst.len()` bytes into the destination slice.
@@ -287,7 +287,7 @@ pub trait ZReadable<'a> {
     ///
     /// # Errors
     ///
-    /// Returns [`BytesError::SrcIsTooSmall`] if the buffer has insufficient bytes.
+    /// Returns [`BytesError::SrcIsTooSmall`](crate::BytesError::SrcIsTooSmall) if the buffer has insufficient bytes.
     fn read_exact(&mut self, dst: &'_ mut [u8]) -> core::result::Result<(), crate::BytesError> {
         let len = dst.len();
         if self.remaining() < len {

@@ -3611,6 +3611,7 @@ version = "0.1.0"
 dependencies = [
  "criterion",
  "defmt 1.0.1",
+ "getrandom",
  "log",
  "paste",
  "rand",
