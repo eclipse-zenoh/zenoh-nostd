@@ -9,7 +9,12 @@
 <p align="center">
   <code>async</code> • <code>bare-metal</code> • <code>no_std</code> • <code>zenoh</code>
 </p>
-<a href="https://cla-assistant.io/ZettaScaleLabs/zenoh-nostd"><img src="https://cla-assistant.io/readme/badge/ZettaScaleLabs/zenoh-nostd" alt="CLA assistant" /></a>
+<p align="center">
+  <a href="https://github.com/eclipse-zenoh/zenoh-nostd/actions/workflows/ci.yml"><img src="https://github.com/eclipse-zenoh/zenoh-nostd/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <img src="https://img.shields.io/badge/rustc-1.91.0%2B-orange.svg" alt="MSRV 1.91.0" />
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-EPL--2.0%20OR%20Apache--2.0-blue.svg" alt="License: EPL-2.0 OR Apache-2.0" /></a>
+  <a href="https://cla-assistant.io/eclipse-zenoh/zenoh-nostd"><img src="https://cla-assistant.io/readme/badge/eclipse-zenoh/zenoh-nostd" alt="CLA assistant" /></a>
+</p>
 
 ---
 
@@ -41,7 +46,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-zenoh-nostd = { git = "https://github.com/ZettaScaleLabs/zenoh-nostd" }
+zenoh-nostd = { git = "https://github.com/eclipse-zenoh/zenoh-nostd" }
 ```
 
 > For embedded systems, ensure your crate uses `#![no_std]`:
@@ -83,8 +88,8 @@ async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
 
 ## ⚠️ Limitations
 
-* No serial support yet. ([#11](https://github.com/ZettaScaleLabs/zenoh-nostd/issues/11))
-* `Interest` protocol not implemented yet. ([#46](https://github.com/ZettaScaleLabs/zenoh-nostd/issues/46))
+* No serial support yet. ([#11](https://github.com/eclipse-zenoh/zenoh-nostd/issues/11))
+* `Interest` protocol not implemented yet. ([#46](https://github.com/eclipse-zenoh/zenoh-nostd/issues/46))
 
 ---
 
@@ -210,6 +215,6 @@ zenoh-nostd/            # Git repository root
 
 ## 📚 Documentation
 
-The base project has been implemented in ([#6](https://github.com/ZettaScaleLabs/zenoh-nostd/pull/6))
-The structure and API have been reworked in ([#34](https://github.com/ZettaScaleLabs/zenoh-nostd/pull/24))
-The API has been reworked ([#52](https://github.com/ZettaScaleLabs/zenoh-nostd/pull/52))
+The base project has been implemented in ([#6](https://github.com/eclipse-zenoh/zenoh-nostd/pull/6))
+The structure and API have been reworked in ([#34](https://github.com/eclipse-zenoh/zenoh-nostd/pull/24))
+The API has been reworked ([#52](https://github.com/eclipse-zenoh/zenoh-nostd/pull/52))
