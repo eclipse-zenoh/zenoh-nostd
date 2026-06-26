@@ -77,7 +77,7 @@ pub trait ZBodyEncode {
     ///
     /// # Errors
     ///
-    /// Returns [`CodecError`] if encoding fails (e.g., buffer too small).
+    /// Returns [`CodecError`](crate::CodecError) if encoding fails (e.g., buffer too small).
     fn z_body_encode(
         &self,
         w: &mut impl crate::ZWriteable,
@@ -115,7 +115,7 @@ pub trait ZBodyDecode<'a>: Sized {
     ///
     /// # Errors
     ///
-    /// Returns [`CodecError`] if decoding fails (e.g., invalid data, buffer underflow).
+    /// Returns [`CodecError`](crate::CodecError) if decoding fails (e.g., invalid data, buffer underflow).
     fn z_body_decode(
         r: &mut impl crate::ZReadable<'a>,
         ctx: Self::Ctx,
@@ -156,7 +156,7 @@ pub trait ZEncode: ZBodyEncode {
     ///
     /// # Errors
     ///
-    /// Returns [`CodecError`] if encoding fails (e.g., buffer too small).
+    /// Returns [`CodecError`](crate::CodecError) if encoding fails (e.g., buffer too small).
     fn z_encode(
         &self,
         w: &mut impl crate::ZWriteable,
@@ -177,7 +177,7 @@ pub trait ZDecode<'a>: Sized + ZBodyDecode<'a> {
     ///
     /// # Errors
     ///
-    /// Returns [`CodecError`] if decoding fails (e.g., invalid data, buffer underflow).
+    /// Returns [`CodecError`](crate::CodecError) if decoding fails (e.g., invalid data, buffer underflow).
     fn z_decode(r: &mut impl crate::ZReadable<'a>)
     -> core::result::Result<Self, crate::CodecError>;
 }
