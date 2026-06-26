@@ -19,6 +19,7 @@ std = []
 log = ["std", "zenoh-proto/log"]
 web_console = ["std", "zenoh-proto/web_console"]
 defmt = ["zenoh-proto/defmt"]
+embedded = ["zenoh-proto/embedded"]
 
 [dependencies]
 zenoh-proto.workspace = true

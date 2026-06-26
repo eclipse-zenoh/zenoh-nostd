@@ -81,19 +81,19 @@ jobs:
         run: >
           cargo build
           -p zenoh-proto -p zenoh-sansio -p zenoh-nostd
-          --no-default-features
+          --no-default-features --features embedded
           --target thumbv7em-none-eabihf
       - name: Build no_std libs (defmt feature)
         run: >
           cargo build
           -p zenoh-proto -p zenoh-sansio -p zenoh-nostd
-          --no-default-features --features defmt
+          --no-default-features --features defmt,embedded
           --target thumbv7em-none-eabihf
       - name: Build zenoh-nostd (alloc feature)
         run: >
           cargo build
           -p zenoh-nostd
-          --no-default-features --features alloc
+          --no-default-features --features alloc,embedded
           --target thumbv7em-none-eabihf
 
   msrv:
