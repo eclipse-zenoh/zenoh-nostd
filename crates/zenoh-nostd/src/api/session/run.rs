@@ -10,9 +10,10 @@ use crate::{
     session::{GetResponse, Sample},
 };
 
-impl<'res, Config> Session<'res, Config>
+impl<'s, 'res, Config> Session<'s, 'res, Config>
 where
     Config: ZSessionConfig,
+    'res: 's,
 {
     pub async fn run(&self) -> core::result::Result<(), SessionError> {
         self.driver

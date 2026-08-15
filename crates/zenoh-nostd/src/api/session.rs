@@ -21,19 +21,21 @@ pub mod querier;
 pub mod queryable;
 pub mod sub;
 
-pub(crate) struct SessionState<'res, Config>
+pub(crate) struct SessionState<'s, 'res, Config>
 where
     Config: ZSessionConfig + 'res,
+    'res: 's,
 {
     next: u32,
     sub_callbacks: Config::SubCallbacks<'res>,
     get_callbacks: Config::GetCallbacks<'res>,
-    queryable_callbacks: Config::QueryableCallbacks<'res>,
+    queryable_callbacks: Config::QueryableCallbacks<'s, 'res>,
 }
 
-impl<'res, Config> SessionState<'res, Config>
+impl<'s, 'res, Config> SessionState<'s, 'res, Config>
 where
     Config: ZSessionConfig,
+    'res: 's,
 {
     pub fn new() -> Self {
         Self {
@@ -51,20 +53,33 @@ where
     }
 }
 
-pub struct Session<'res, Config>
+/// A zenoh session.
+///
+/// The two lifetimes are deliberately distinct. `'a` is how long the session borrows the
+/// [`Resources`] it was built from; `'res` is the lifetime of the link itself, which comes
+/// from the [`ZLinkManager`] inside the config.
+///
+/// Conflating them — as a single `'res` did — forces `&'res mut Resources<'res, Config>`,
+/// which is invariant and, because `Resources` has a destructor, makes the storage outlive
+/// itself. `'static` is then the only lifetime that typechecks, so a session can only ever
+/// be built once. Keeping them apart lets a session be scoped and rebuilt, which is what a
+/// client needs in order to reconnect after a dropped link.
+pub struct Session<'s, 'res, Config>
 where
     Config: ZSessionConfig,
+    'res: 's,
 {
-    driver: Driver<'res, <Config::LinkManager as ZLinkManager>::Link<'res>, Config::Buff>,
-    state: Mutex<NoopRawMutex, SessionState<'res, Config>>,
+    driver: Driver<'s, <Config::LinkManager as ZLinkManager>::Link<'res>, Config::Buff>,
+    state: Mutex<NoopRawMutex, SessionState<'s, 'res, Config>>,
 }
 
-impl<'res, Config> Session<'res, Config>
+impl<'s, 'res, Config> Session<'s, 'res, Config>
 where
     Config: ZSessionConfig,
+    'res: 's,
 {
     pub fn new(
-        transport: &'res mut TransportLink<
+        transport: &'s mut TransportLink<
             <Config::LinkManager as ZLinkManager>::Link<'res>,
             Config::Buff,
         >,
@@ -75,16 +90,16 @@ where
         }
     }
 
-    pub(crate) async fn state(&self) -> MutexGuard<'_, NoopRawMutex, SessionState<'res, Config>> {
+    pub(crate) async fn state(&self) -> MutexGuard<'_, NoopRawMutex, SessionState<'s, 'res, Config>> {
         self.state.lock().await
     }
 }
 
-pub async fn session_connect<'res, Config>(
-    resources: &'res mut Resources<'res, Config>,
+pub async fn session_connect<'s, 'res, Config>(
+    resources: &'s mut Resources<'res, Config>,
     config: &'res Config,
     endpoint: Endpoint<'_>,
-) -> core::result::Result<Session<'res, Config>, TransportLinkError>
+) -> core::result::Result<Session<'s, 'res, Config>, TransportLinkError>
 where
     Config: ZSessionConfig,
 {
@@ -93,11 +108,11 @@ where
     )))
 }
 
-pub async fn session_listen<'res, Config>(
-    resources: &'res mut Resources<'res, Config>,
+pub async fn session_listen<'s, 'res, Config>(
+    resources: &'s mut Resources<'res, Config>,
     config: &'res Config,
     endpoint: Endpoint<'_>,
-) -> core::result::Result<Session<'res, Config>, TransportLinkError>
+) -> core::result::Result<Session<'s, 'res, Config>, TransportLinkError>
 where
     Config: ZSessionConfig,
 {
@@ -155,11 +170,11 @@ macro_rules! __session_listen {
     }};
 }
 
-pub async fn session_connect_ignore_invalid_sn<'res, Config>(
-    resources: &'res mut Resources<'res, Config>,
+pub async fn session_connect_ignore_invalid_sn<'s, 'res, Config>(
+    resources: &'s mut Resources<'res, Config>,
     config: &'res Config,
     endpoint: Endpoint<'_>,
-) -> core::result::Result<Session<'res, Config>, TransportLinkError>
+) -> core::result::Result<Session<'s, 'res, Config>, TransportLinkError>
 where
     Config: ZSessionConfig,
 {
@@ -169,11 +184,11 @@ where
     Ok(Session::new(resources.init(transport)))
 }
 
-pub async fn session_listen_ignore_invalid_sn<'res, Config>(
-    resources: &'res mut Resources<'res, Config>,
+pub async fn session_listen_ignore_invalid_sn<'s, 'res, Config>(
+    resources: &'s mut Resources<'res, Config>,
     config: &'res Config,
     endpoint: Endpoint<'_>,
-) -> core::result::Result<Session<'res, Config>, TransportLinkError>
+) -> core::result::Result<Session<'s, 'res, Config>, TransportLinkError>
 where
     Config: ZSessionConfig,
 {

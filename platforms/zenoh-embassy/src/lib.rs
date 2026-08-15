@@ -130,19 +130,25 @@ impl<'net, const MTU: usize, const SOCKS: usize> ZLinkManager
                 let (idx, tx, rx) = self.allocate_buffers().ok_or(LinkError::CouldNotConnect)?;
                 let mut socket = TcpSocket::new(self.stack, rx, tx);
 
+                // Every early return from here on must hand the pool slot back: the slot is
+                // released by EmbassyTcpLink's Drop, and that link only exists once the
+                // connect below has succeeded. Leaking one starves the pool, which a
+                // connect-once caller never notices but a reconnecting one dies from.
                 let address: IpAddress = match dst_addr.ip() {
                     core::net::IpAddr::V4(v4) => IpAddress::Ipv4(v4),
                     core::net::IpAddr::V6(_) => {
+                        self.buffers.borrow_mut().release(idx);
                         zenoh::zbail!(LinkError::CouldNotConnect)
                     }
                 };
 
                 let ip_endpoint = IpEndpoint::new(address, dst_addr.port());
 
-                socket
-                    .connect(ip_endpoint)
-                    .await
-                    .map_err(|_| LinkError::CouldNotConnect)?;
+                if socket.connect(ip_endpoint).await.is_err() {
+                    drop(socket);
+                    self.buffers.borrow_mut().release(idx);
+                    zenoh::zbail!(LinkError::CouldNotConnect);
+                }
 
                 Ok(Self::Link::Tcp(tcp::EmbassyTcpLink::new(
                     socket,
@@ -160,11 +166,19 @@ impl<'net, const MTU: usize, const SOCKS: usize> ZLinkManager
                     .ok_or(LinkError::CouldNotConnect)?;
 
                 let mut socket = UdpSocket::new(self.stack, rm, rx, tm, tx);
-                socket.bind(0).map_err(|_| LinkError::CouldNotConnect)?;
+                if socket.bind(0).is_err() {
+                    drop(socket);
+                    self.buffers.borrow_mut().release(idx1);
+                    self.metadatas.borrow_mut().release(idx2);
+                    zenoh::zbail!(LinkError::CouldNotConnect);
+                }
 
                 let address: IpAddress = match dst_addr.ip() {
                     core::net::IpAddr::V4(v4) => IpAddress::Ipv4(v4),
                     core::net::IpAddr::V6(_) => {
+                        drop(socket);
+                        self.buffers.borrow_mut().release(idx1);
+                        self.metadatas.borrow_mut().release(idx2);
                         zenoh::zbail!(LinkError::CouldNotConnect)
                     }
                 };

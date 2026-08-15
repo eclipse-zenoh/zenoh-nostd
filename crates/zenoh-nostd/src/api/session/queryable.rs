@@ -23,23 +23,24 @@ use crate::{
 };
 
 pub type FixedCapacityQueryableCallbacks<
-    'a,
+    's,
+    'res,
     Config,
     const CAPACITY: usize,
     Callback = RawOrBox<16>,
     Future = RawOrBox<128>,
-> = FixedCapacityCallbacks<'a, QueryableQueryRef<'a, Config>, CAPACITY, Callback, Future>;
+> = FixedCapacityCallbacks<'s, QueryableQueryRef<'s, 'res, Config>, CAPACITY, Callback, Future>;
 
 #[cfg(feature = "alloc")]
-pub type AllocQueryableCallbacks<'a, Config, Callback = RawOrBox<16>, Future = RawOrBox<128>> =
-    AllocCallbacks<'a, QueryableQueryRef<'a, Config>, Callback, Future>;
+pub type AllocQueryableCallbacks<'s, 'res, Config, Callback = RawOrBox<16>, Future = RawOrBox<128>> =
+    AllocCallbacks<'s, QueryableQueryRef<'s, 'res, Config>, Callback, Future>;
 
 pub struct Queryable<Config, OwnedQuery = (), const CHANNEL: bool = false>
 where
     Config: ZSessionConfig + 'static,
     OwnedQuery: 'static,
 {
-    session: &'static Session<'static, Config>,
+    session: &'static Session<'static, 'static, Config>,
     id: u32,
     receiver: Option<DynamicReceiver<'static, OwnedQuery>>,
 }
@@ -93,15 +94,15 @@ where
 }
 
 type CallbackStorage<Config> =
-    <<Config as ZSessionConfig>::QueryableCallbacks<'static> as ZCallbacks<
+    <<Config as ZSessionConfig>::QueryableCallbacks<'static, 'static> as ZCallbacks<
         'static,
-        QueryableQueryRef<'static, Config>,
+        QueryableQueryRef<'static, 'static, Config>,
     >>::Callback;
 
 type FutureStorage<Config> =
-    <<Config as ZSessionConfig>::QueryableCallbacks<'static> as ZCallbacks<
+    <<Config as ZSessionConfig>::QueryableCallbacks<'static, 'static> as ZCallbacks<
         'static,
-        QueryableQueryRef<'static, Config>,
+        QueryableQueryRef<'static, 'static, Config>,
     >>::Future;
 
 pub struct QueryableBuilder<
@@ -113,7 +114,7 @@ pub struct QueryableBuilder<
     Config: ZSessionConfig + 'static,
     OwnedQuery: 'static,
 {
-    session: &'static Session<'static, Config>,
+    session: &'static Session<'static, 'static, Config>,
     ke: &'static keyexpr,
 
     callback: Option<
@@ -121,7 +122,7 @@ pub struct QueryableBuilder<
             'static,
             CallbackStorage<Config>,
             FutureStorage<Config>,
-            QueryableQueryRef<'static, Config>,
+            QueryableQueryRef<'static, 'static, Config>,
         >,
     >,
     receiver: Option<DynamicReceiver<'static, OwnedQuery>>,
@@ -131,7 +132,7 @@ impl<Config> QueryableBuilder<Config, (), false, false>
 where
     Config: ZSessionConfig,
 {
-    pub(crate) fn new(session: &'static Session<'static, Config>, ke: &'static keyexpr) -> Self {
+    pub(crate) fn new(session: &'static Session<'static, 'static, Config>, ke: &'static keyexpr) -> Self {
         Self {
             session,
             ke,
@@ -142,7 +143,7 @@ where
 
     pub fn callback(
         self,
-        callback: impl AsyncFnMut(&QueryableQuery<'_, 'static, Config>) + 'static,
+        callback: impl AsyncFnMut(&QueryableQuery<'_, 'static, 'static, Config>) + 'static,
     ) -> QueryableBuilder<Config, (), true, false> {
         QueryableBuilder {
             session: self.session,
@@ -154,7 +155,7 @@ where
 
     pub fn callback_sync(
         self,
-        callback: impl FnMut(&QueryableQuery<'_, 'static, Config>) + 'static,
+        callback: impl FnMut(&QueryableQuery<'_, 'static, 'static, Config>) + 'static,
     ) -> QueryableBuilder<Config, (), true, false> {
         QueryableBuilder {
             session: self.session,
@@ -177,8 +178,8 @@ where
     where
         OwnedQuery: for<'any> TryFrom<
                 (
-                    &'any QueryableQuery<'any, 'static, Config>,
-                    &'static Session<'static, Config>,
+                    &'any QueryableQuery<'any, 'static, 'static, Config>,
+                    &'static Session<'static, 'static, Config>,
                 ),
                 Error = E,
             >,
@@ -187,7 +188,7 @@ where
             session: self.session,
             ke: self.ke,
             callback: Some(DynObject::new(AsyncCallback::new(
-                async move |resp: &'_ QueryableQuery<'_, 'static, Config>| {
+                async move |resp: &'_ QueryableQuery<'_, 'static, 'static, Config>| {
                     if let Ok(resp) = OwnedQuery::try_from((resp, self.session)) {
                         sender.send(resp).await;
                     } else {
@@ -248,7 +249,7 @@ where
     }
 }
 
-impl<Config> Session<'static, Config>
+impl<Config> Session<'static, 'static, Config>
 where
     Config: ZSessionConfig,
 {
@@ -257,9 +258,10 @@ where
     }
 }
 
-impl<'res, Config> Session<'res, Config>
+impl<'s, 'res, Config> Session<'s, 'res, Config>
 where
     Config: ZSessionConfig,
+    'res: 's,
 {
     pub(crate) async fn reply(
         &self,

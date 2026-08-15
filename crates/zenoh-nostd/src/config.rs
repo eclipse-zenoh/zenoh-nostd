@@ -12,9 +12,10 @@ pub trait ZSessionConfig: Sized {
 
     type SubCallbacks<'res>: ZCallbacks<'res, SampleRef>;
     type GetCallbacks<'res>: ZCallbacks<'res, GetResponseRef>;
-    type QueryableCallbacks<'res>: ZCallbacks<'res, QueryableQueryRef<'res, Self>>
+    type QueryableCallbacks<'s, 'res>: ZCallbacks<'s, QueryableQueryRef<'s, 'res, Self>>
     where
-        Self: 'res;
+        Self: 'res,
+        'res: 's;
 
     fn transports(&self) -> &TransportLinkManager<Self::LinkManager>;
     fn buff(&self) -> Self::Buff;

@@ -2,11 +2,11 @@ use zenoh_proto::{exts::*, fields::*, msgs::*, *};
 
 use crate::{api::session::Session, config::ZSessionConfig, io::transport::ZTransportLinkTx};
 
-pub struct PutBuilder<'a, 'res, Config>
+pub struct PutBuilder<'a, 's, 'res, Config>
 where
     Config: ZSessionConfig,
 {
-    pub(crate) session: &'a Session<'res, Config>,
+    pub(crate) session: &'a Session<'s, 'res, Config>,
 
     pub(crate) ke: &'a keyexpr,
     pub(crate) payload: &'a [u8],
@@ -16,12 +16,12 @@ where
     pub(crate) attachment: Option<Attachment<'a>>,
 }
 
-impl<'a, 'res, Config> PutBuilder<'a, 'res, Config>
+impl<'a, 's, 'res, Config> PutBuilder<'a, 's, 'res, Config>
 where
     Config: ZSessionConfig,
 {
     pub(crate) fn new(
-        session: &'a Session<'res, Config>,
+        session: &'a Session<'s, 'res, Config>,
         ke: &'a keyexpr,
         payload: &'a [u8],
     ) -> Self {
@@ -83,11 +83,12 @@ where
     }
 }
 
-impl<'res, Config> Session<'res, Config>
+impl<'s, 'res, Config> Session<'s, 'res, Config>
 where
     Config: ZSessionConfig,
+    'res: 's,
 {
-    pub fn put<'a>(&'a self, ke: &'a keyexpr, payload: &'a [u8]) -> PutBuilder<'a, 'res, Config> {
+    pub fn put<'a>(&'a self, ke: &'a keyexpr, payload: &'a [u8]) -> PutBuilder<'a, 's, 'res, Config> {
         PutBuilder::new(self, ke, payload)
     }
 }

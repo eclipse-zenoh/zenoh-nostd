@@ -12,7 +12,7 @@ pub trait ZArg {
 
 pub struct GetResponseRef;
 pub struct SampleRef;
-pub struct QueryableQueryRef<'res, Config>(PhantomData<&'res Config>);
+pub struct QueryableQueryRef<'s, 'res, Config>(PhantomData<(&'s (), &'res Config)>);
 
 impl ZArg for GetResponseRef {
     type Of<'a> = &'a GetResponse<'a>;
@@ -22,12 +22,13 @@ impl ZArg for SampleRef {
     type Of<'a> = &'a Sample<'a>;
 }
 
-impl<'res, Config> ZArg for QueryableQueryRef<'res, Config>
+impl<'s, 'res, Config> ZArg for QueryableQueryRef<'s, 'res, Config>
 where
-    Config: ZSessionConfig,
+    Config: ZSessionConfig + 's,
+    'res: 's,
 {
     type Of<'a>
-        = &'a QueryableQuery<'a, 'res, Config>
+        = &'a QueryableQuery<'a, 's, 'res, Config>
     where
         Self: 'a;
 }

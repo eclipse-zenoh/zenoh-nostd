@@ -27,18 +27,18 @@ pub type FixedCapacitySubCallbacks<
 pub type AllocSubCallbacks<'a, Callback = RawOrBox<16>, Future = RawOrBox<128>> =
     AllocCallbacks<'a, SampleRef, Callback, Future>;
 
-pub struct Subscriber<'a, 'res, Config, OwnedSample = (), const CHANNEL: bool = false>
+pub struct Subscriber<'a, 's, 'res, Config, OwnedSample = (), const CHANNEL: bool = false>
 where
     Config: ZSessionConfig,
 {
     id: u32,
     ke: &'static keyexpr,
-    session: &'a Session<'res, Config>,
+    session: &'a Session<'s, 'res, Config>,
     receiver: Option<DynamicReceiver<'res, OwnedSample>>,
 }
 
-impl<'a, 'res, Config, OwnedSample, const CHANNEL: bool>
-    Subscriber<'a, 'res, Config, OwnedSample, CHANNEL>
+impl<'a, 's, 'res, Config, OwnedSample, const CHANNEL: bool>
+    Subscriber<'a, 's, 'res, Config, OwnedSample, CHANNEL>
 where
     Config: ZSessionConfig,
 {
@@ -73,7 +73,7 @@ where
     }
 }
 
-impl<'a, 'res, Config, OwnedSample> Subscriber<'a, 'res, Config, OwnedSample, true>
+impl<'a, 's, 'res, Config, OwnedSample> Subscriber<'a, 's, 'res, Config, OwnedSample, true>
 where
     Config: ZSessionConfig,
 {
@@ -94,6 +94,7 @@ type FutureStorage<'res, Config> =
 
 pub struct SubscriberBuilder<
     'a,
+    's,
     'res,
     Config,
     OwnedSample = (),
@@ -102,7 +103,7 @@ pub struct SubscriberBuilder<
 > where
     Config: ZSessionConfig,
 {
-    session: &'a Session<'res, Config>,
+    session: &'a Session<'s, 'res, Config>,
     ke: &'static keyexpr,
     callback: Option<
         DynCallback<'res, CallbackStorage<'res, Config>, FutureStorage<'res, Config>, SampleRef>,
@@ -110,11 +111,11 @@ pub struct SubscriberBuilder<
     receiver: Option<DynamicReceiver<'res, OwnedSample>>,
 }
 
-impl<'a, 'res, Config> SubscriberBuilder<'a, 'res, Config, (), false, false>
+impl<'a, 's, 'res, Config> SubscriberBuilder<'a, 's, 'res, Config, (), false, false>
 where
     Config: ZSessionConfig,
 {
-    pub(crate) fn new(session: &'a Session<'res, Config>, ke: &'static keyexpr) -> Self {
+    pub(crate) fn new(session: &'a Session<'s, 'res, Config>, ke: &'static keyexpr) -> Self {
         Self {
             session,
             ke,
@@ -126,7 +127,7 @@ where
     pub fn callback(
         self,
         callback: impl AsyncFnMut(&Sample<'_>) + 'res,
-    ) -> SubscriberBuilder<'a, 'res, Config, (), true, false> {
+    ) -> SubscriberBuilder<'a, 's, 'res, Config, (), true, false> {
         SubscriberBuilder {
             session: self.session,
             ke: self.ke,
@@ -138,7 +139,7 @@ where
     pub fn callback_sync(
         self,
         callback: impl FnMut(&Sample<'_>) + 'res,
-    ) -> SubscriberBuilder<'a, 'res, Config, (), true, false> {
+    ) -> SubscriberBuilder<'a, 's, 'res, Config, (), true, false> {
         SubscriberBuilder {
             session: self.session,
             ke: self.ke,
@@ -151,7 +152,7 @@ where
         self,
         sender: DynamicSender<'res, OwnedSample>,
         receiver: DynamicReceiver<'res, OwnedSample>,
-    ) -> SubscriberBuilder<'a, 'res, Config, OwnedSample, true, true>
+    ) -> SubscriberBuilder<'a, 's, 'res, Config, OwnedSample, true, true>
     where
         OwnedSample: for<'any> TryFrom<&'any Sample<'any>, Error = E>,
     {
@@ -175,14 +176,14 @@ where
     }
 }
 
-impl<'a, 'res, Config, OwnedSample, const CHANNEL: bool>
-    SubscriberBuilder<'a, 'res, Config, OwnedSample, true, CHANNEL>
+impl<'a, 's, 'res, Config, OwnedSample, const CHANNEL: bool>
+    SubscriberBuilder<'a, 's, 'res, Config, OwnedSample, true, CHANNEL>
 where
     Config: ZSessionConfig,
 {
     pub async fn finish(
         self,
-    ) -> core::result::Result<Subscriber<'a, 'res, Config, OwnedSample, CHANNEL>, SessionError>
+    ) -> core::result::Result<Subscriber<'a, 's, 'res, Config, OwnedSample, CHANNEL>, SessionError>
     {
         let mut state = self.session.state().await;
         let id = state.next();
@@ -219,11 +220,12 @@ where
     }
 }
 
-impl<'res, Config> Session<'res, Config>
+impl<'s, 'res, Config> Session<'s, 'res, Config>
 where
     Config: ZSessionConfig,
+    'res: 's,
 {
-    pub fn declare_subscriber(&self, ke: &'static keyexpr) -> SubscriberBuilder<'_, 'res, Config> {
+    pub fn declare_subscriber(&self, ke: &'static keyexpr) -> SubscriberBuilder<'_, 's, 'res, Config> {
         SubscriberBuilder::new(self, ke)
     }
 }

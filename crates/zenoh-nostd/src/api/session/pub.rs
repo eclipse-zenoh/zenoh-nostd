@@ -10,11 +10,11 @@ use crate::{
     config::ZSessionConfig,
 };
 
-pub struct Publisher<'a, 'res, Config>
+pub struct Publisher<'a, 's, 'res, Config>
 where
     Config: ZSessionConfig,
 {
-    session: &'a Session<'res, Config>,
+    session: &'a Session<'s, 'res, Config>,
 
     ke: &'a keyexpr,
 
@@ -23,11 +23,11 @@ where
     attachment: Option<Attachment<'a>>,
 }
 
-impl<'a, 'res, Config> Publisher<'a, 'res, Config>
+impl<'a, 's, 'res, Config> Publisher<'a, 's, 'res, Config>
 where
     Config: ZSessionConfig,
 {
-    pub fn put(&self, payload: &'a [u8]) -> PutBuilder<'a, 'res, Config> {
+    pub fn put(&self, payload: &'a [u8]) -> PutBuilder<'a, 's, 'res, Config> {
         PutBuilder {
             session: self.session,
             ke: self.ke,
@@ -48,11 +48,11 @@ where
     }
 }
 
-pub struct PublisherBuilder<'a, 'res, Config>
+pub struct PublisherBuilder<'a, 's, 'res, Config>
 where
     Config: ZSessionConfig,
 {
-    session: &'a Session<'res, Config>,
+    session: &'a Session<'s, 'res, Config>,
 
     ke: &'a keyexpr,
     encoding: Encoding<'a>,
@@ -60,11 +60,11 @@ where
     attachment: Option<Attachment<'a>>,
 }
 
-impl<'a, 'res, Config> PublisherBuilder<'a, 'res, Config>
+impl<'a, 's, 'res, Config> PublisherBuilder<'a, 's, 'res, Config>
 where
     Config: ZSessionConfig,
 {
-    pub(crate) fn new(session: &'a Session<'res, Config>, ke: &'a keyexpr) -> Self {
+    pub(crate) fn new(session: &'a Session<'s, 'res, Config>, ke: &'a keyexpr) -> Self {
         Self {
             session,
             ke,
@@ -94,7 +94,7 @@ where
         self
     }
 
-    pub async fn finish(self) -> core::result::Result<Publisher<'a, 'res, Config>, SessionError> {
+    pub async fn finish(self) -> core::result::Result<Publisher<'a, 's, 'res, Config>, SessionError> {
         // TODO: send interest msg
         Ok(Publisher {
             session: self.session,
@@ -106,11 +106,12 @@ where
     }
 }
 
-impl<'res, Config> Session<'res, Config>
+impl<'s, 'res, Config> Session<'s, 'res, Config>
 where
     Config: ZSessionConfig,
+    'res: 's,
 {
-    pub fn declare_publisher<'a>(&'a self, ke: &'a keyexpr) -> PublisherBuilder<'a, 'res, Config> {
+    pub fn declare_publisher<'a>(&'a self, ke: &'a keyexpr) -> PublisherBuilder<'a, 's, 'res, Config> {
         PublisherBuilder::new(self, ke)
     }
 }

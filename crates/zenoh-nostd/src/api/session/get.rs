@@ -78,6 +78,7 @@ type FutureStorage<'res, Config> =
 
 pub struct GetBuilder<
     'a,
+    's,
     'res,
     Config,
     OwnedResponse = (),
@@ -86,7 +87,7 @@ pub struct GetBuilder<
 > where
     Config: ZSessionConfig,
 {
-    pub(crate) session: &'a Session<'res, Config>,
+    pub(crate) session: &'a Session<'s, 'res, Config>,
     pub(crate) ke: &'static keyexpr,
     pub(crate) parameters: Option<&'a str>,
     pub(crate) payload: Option<&'a [u8]>,
@@ -102,11 +103,11 @@ pub struct GetBuilder<
     pub(crate) receiver: Option<DynamicReceiver<'res, OwnedResponse>>,
 }
 
-impl<'a, 'res, Config> GetBuilder<'a, 'res, Config, (), false, false>
+impl<'a, 's, 'res, Config> GetBuilder<'a, 's, 'res, Config, (), false, false>
 where
     Config: ZSessionConfig,
 {
-    pub(crate) fn new(session: &'a Session<'res, Config>, ke: &'static keyexpr) -> Self {
+    pub(crate) fn new(session: &'a Session<'s, 'res, Config>, ke: &'static keyexpr) -> Self {
         Self {
             session,
             ke,
@@ -121,7 +122,7 @@ where
     pub fn callback(
         self,
         callback: impl AsyncFnMut(&GetResponse<'_>) + 'res,
-    ) -> GetBuilder<'a, 'res, Config, (), true> {
+    ) -> GetBuilder<'a, 's, 'res, Config, (), true> {
         GetBuilder {
             session: self.session,
             ke: self.ke,
@@ -136,7 +137,7 @@ where
     pub fn callback_sync(
         self,
         callback: impl FnMut(&GetResponse<'_>) + 'res,
-    ) -> GetBuilder<'a, 'res, Config, (), true> {
+    ) -> GetBuilder<'a, 's, 'res, Config, (), true> {
         GetBuilder {
             session: self.session,
             ke: self.ke,
@@ -152,7 +153,7 @@ where
         self,
         sender: DynamicSender<'res, OwnedResponse>,
         receiver: DynamicReceiver<'res, OwnedResponse>,
-    ) -> GetBuilder<'a, 'res, Config, OwnedResponse, true, true>
+    ) -> GetBuilder<'a, 's, 'res, Config, OwnedResponse, true, true>
     where
         OwnedResponse: for<'any> TryFrom<&'any GetResponse<'any>, Error = E>,
     {
@@ -179,8 +180,8 @@ where
     }
 }
 
-impl<'a, 'res, Config, OwnedResponse, const READY: bool, const CHANNEL: bool>
-    GetBuilder<'a, 'res, Config, OwnedResponse, READY, CHANNEL>
+impl<'a, 's, 'res, Config, OwnedResponse, const READY: bool, const CHANNEL: bool>
+    GetBuilder<'a, 's, 'res, Config, OwnedResponse, READY, CHANNEL>
 where
     Config: ZSessionConfig,
 {
@@ -205,8 +206,8 @@ where
     }
 }
 
-impl<'a, 'res, Config, OwnedResponse, const CHANNEL: bool>
-    GetBuilder<'a, 'res, Config, OwnedResponse, true, CHANNEL>
+impl<'a, 's, 'res, Config, OwnedResponse, const CHANNEL: bool>
+    GetBuilder<'a, 's, 'res, Config, OwnedResponse, true, CHANNEL>
 where
     Config: ZSessionConfig,
 {
@@ -264,11 +265,12 @@ where
     }
 }
 
-impl<'res, Config> Session<'res, Config>
+impl<'s, 'res, Config> Session<'s, 'res, Config>
 where
     Config: ZSessionConfig,
+    'res: 's,
 {
-    pub fn get(&self, ke: &'static keyexpr) -> GetBuilder<'_, 'res, Config> {
+    pub fn get(&self, ke: &'static keyexpr) -> GetBuilder<'_, 's, 'res, Config> {
         GetBuilder::new(self, ke)
     }
 }
