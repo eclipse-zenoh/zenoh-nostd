@@ -20,12 +20,18 @@ where
                 match msg.body {
                     NetworkBody::Push(Push {
                         wire_expr,
-                        payload: PushBody::Put(Put { payload, .. }),
+                        payload:
+                            PushBody::Put(Put {
+                                payload,
+                                attachment,
+                                ..
+                            }),
                         ..
                     }) => {
                         let ke = wire_expr.suffix;
                         let ke = keyexpr::new(ke)?;
-                        let sample = Sample::new(ke, payload);
+                        let sample = Sample::new(ke, payload)
+                            .with_attachment(attachment.as_ref().map(|a| a.buffer));
 
                         for cb in state.sub_callbacks.intersects(ke) {
                             cb.call(&sample).await;
