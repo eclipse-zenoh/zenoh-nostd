@@ -31,6 +31,31 @@ where
                             cb.call(&sample).await;
                         }
                     }
+                    NetworkBody::Declare(Declare { body, .. }) => {
+                        // Liveliness subscribers get a sample with payload `[1]` when a token
+                        // appears and `[0]` when it is dropped.
+                        let (suffix, alive) = match body {
+                            DeclareBody::DeclareToken(DeclareToken { wire_expr, .. }) => {
+                                (wire_expr.suffix, true)
+                            }
+                            DeclareBody::UndeclareToken(UndeclareToken {
+                                wire_expr: Some(wire_expr),
+                                ..
+                            }) => (wire_expr.suffix, false),
+                            _ => return Ok(()),
+                        };
+
+                        // Without a key (an alias, or an undeclaration that only names the token id)
+                        // there is nothing to match subscribers against: skip it.
+                        if !suffix.is_empty()
+                            && let Ok(ke) = keyexpr::new(suffix)
+                        {
+                            let sample = Sample::new(ke, if alive { &[1] } else { &[0] });
+                            for cb in state.sub_callbacks.intersects(ke) {
+                                cb.call(&sample).await;
+                            }
+                        }
+                    }
                     NetworkBody::Response(Response {
                         rid,
                         wire_expr,
