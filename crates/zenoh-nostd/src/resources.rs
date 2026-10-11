@@ -22,6 +22,8 @@ where
 
 type Link<'res, Config> = <<Config as ZSessionConfig>::LinkManager as ZLinkManager>::Link<'res>;
 
+// `Uninit` only lives until the transport is opened, and boxing needs `alloc`.
+#[allow(clippy::large_enum_variant)]
 #[derive(Default)]
 pub enum ResourcesInner<'res, Config>
 where
