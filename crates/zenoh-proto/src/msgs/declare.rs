@@ -62,7 +62,7 @@ pub struct DeclareSubscriber<'a> {
 pub struct UndeclareSubscriber<'a> {
     pub id: u32,
     #[zenoh(ext = 0x0f)]
-    pub wire_expr: Option<WireExpr<'a>>,
+    pub wire_expr: Option<WireExprExt<'a>>,
 }
 
 #[derive(ZStruct, Debug, PartialEq, Default)]
@@ -81,7 +81,7 @@ pub struct DeclareQueryable<'a> {
 pub struct UndeclareQueryable<'a> {
     pub id: u32,
     #[zenoh(ext = 0x0f)]
-    pub wire_expr: Option<WireExpr<'a>>,
+    pub wire_expr: Option<WireExprExt<'a>>,
 }
 
 #[derive(ZStruct, Debug, PartialEq, Default)]
@@ -97,7 +97,7 @@ pub struct DeclareToken<'a> {
 pub struct UndeclareToken<'a> {
     pub id: u32,
     #[zenoh(ext = 0x0f)]
-    pub wire_expr: Option<WireExpr<'a>>,
+    pub wire_expr: Option<WireExprExt<'a>>,
 }
 
 #[derive(ZStruct, Debug, PartialEq, Default)]
