@@ -20,6 +20,7 @@ pub mod put;
 pub mod querier;
 pub mod queryable;
 pub mod sub;
+pub mod token;
 
 pub(crate) struct SessionState<'res, Config>
 where
