@@ -388,6 +388,20 @@ pub struct WireExpr<'a> {
     pub suffix: &'a str,
 }
 
+/// The key expression extension of undeclarations. Unlike [`WireExpr`], zenoh writes its suffix
+/// without a length prefix: it fills the rest of the extension.
+#[derive(ZExt, Debug, PartialEq, Default)]
+#[zenoh(header = "_:6|M|N|")]
+pub struct WireExprExt<'a> {
+    pub scope: u16,
+
+    #[zenoh(header = M)]
+    pub mapping: Mapping,
+
+    #[zenoh(presence = header(N), default = "", size = remain)]
+    pub suffix: &'a str,
+}
+
 impl<'a> From<&'a keyexpr> for WireExpr<'a> {
     fn from(ke: &'a keyexpr) -> Self {
         Self {

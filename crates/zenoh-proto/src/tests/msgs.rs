@@ -104,3 +104,23 @@ roundtrips!(
     OpenSyn,
     OpenAck
 );
+
+/// zenoh writes the key expression suffix of the `WireExpr` extension without a length prefix:
+/// it fills the rest of the extension.
+#[test]
+fn network_proto_undeclare_wire_expr_ext_from_zenoh() {
+    // UndeclareToken { id: 5, ext 0x0f (mandatory, ZBuf, len 5): flags N|M, scope 0, "a/b" }
+    let data = [0x87, 0x05, 0x5f, 0x05, 0x03, 0x00, b'a', b'/', b'b'];
+
+    let token = <UndeclareToken as crate::ZDecode>::z_decode(&mut &data[..]).unwrap();
+    let wire_expr = token.wire_expr.as_ref().unwrap();
+    assert_eq!(token.id, 5);
+    assert_eq!(wire_expr.scope, 0);
+    assert_eq!(wire_expr.suffix, "a/b");
+
+    let mut buf = [0u8; 16];
+    let len = crate::ZLen::z_len(&token);
+    crate::ZEncode::z_encode(&token, &mut &mut buf[..]).unwrap();
+    // Same extension body; zenoh also sets the mandatory bit in the extension header.
+    assert_eq!(&buf[3..len], &data[3..]);
+}
