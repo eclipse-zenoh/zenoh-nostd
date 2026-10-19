@@ -105,6 +105,20 @@ async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
 
 This project uses [`just`](https://github.com/casey/just) for task management. Use `just check` to check the project and examples, `just test` to run the tests and `just bench` to run the benchmarks.
 
+### Nix development environment
+
+With Nix flakes enabled, enter the development environment from this directory:
+
+```bash
+nix develop
+```
+
+If flakes are not enabled, you can enable them for this command with:
+
+```bash
+nix --extra-experimental-features 'nix-command flakes' develop
+```
+
 > 🔍 Pull requests that slow down the bench should be avoided.
 
 ### Testing Examples
