@@ -18,11 +18,13 @@ async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
 
     zenoh::info!("zenoh-nostd z_open example");
 
+    let endpoint = Endpoint::try_from(ENDPOINT)?;
     let config = init_session_example(&spawner).await;
+    let builder = zenoh::session!(ExampleConfig: config);
     let session = if LISTEN {
-        zenoh::listen!(ExampleConfig: config, Endpoint::try_from(ENDPOINT)?)
+        builder.listen(endpoint).await?
     } else {
-        zenoh::connect!(ExampleConfig: config, Endpoint::try_from(ENDPOINT)?)
+        builder.connect(endpoint).await?
     };
 
     // In this example we care about maintaining the session alive, we then have two choices:

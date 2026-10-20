@@ -194,6 +194,7 @@ macro_rules! __broker {
         static BROKER: static_cell::StaticCell<$crate::broker::Broker<$CONFIG>> =
             static_cell::StaticCell::new();
 
-        BROKER.init($crate::broker::Broker::new(config)) as &'static $crate::broker::Broker<$CONFIG>
+        BROKER.init_with(|| $crate::broker::Broker::new(config))
+            as &'static $crate::broker::Broker<$CONFIG>
     }};
 }

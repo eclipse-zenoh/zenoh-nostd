@@ -2,6 +2,7 @@
 #![cfg_attr(feature = "esp32s3", no_main)]
 #![cfg_attr(feature = "wasm", no_main)]
 
+use static_cell::StaticCell;
 use zenoh_examples::*;
 use zenoh_nostd::session::*;
 
@@ -43,28 +44,32 @@ async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
 
     zenoh::info!("zenoh-nostd z_sub_thr example");
 
-    let close =
-        embassy_sync::signal::Signal::<embassy_sync::blocking_mutex::raw::NoopRawMutex, ()>::new();
+    type CloseSignal =
+        embassy_sync::signal::Signal<embassy_sync::blocking_mutex::raw::NoopRawMutex, ()>;
+    static CLOSE: StaticCell<CloseSignal> = StaticCell::new();
+    let close: &'static CloseSignal = CLOSE.init_with(CloseSignal::new);
 
+    let endpoint = Endpoint::try_from(ENDPOINT)?;
     let config = init_session_example(&spawner).await;
-    let mut resources = Resources::default();
+    zenoh::session!(ExampleConfig: config => builder);
+    let builder = builder.ignore_invalid_sn();
     let session = if LISTEN {
-        zenoh::listen_ignore_invalid_sn(&mut resources, &config, Endpoint::try_from(ENDPOINT)?)
-            .await?
+        builder.listen(endpoint).await?
     } else {
-        zenoh::connect_ignore_invalid_sn(&mut resources, &config, Endpoint::try_from(ENDPOINT)?)
-            .await?
+        builder.connect(endpoint).await?
     };
 
-    let mut stats = Stats {
+    // Capture a pointer so the callback fits the fixed storage's alignment on 32-bit targets.
+    static STATS: StaticCell<Stats> = StaticCell::new();
+    let stats = STATS.init_with(|| Stats {
         round_count: 0,
         round_size: 100_000,
         finished_rounds: 0,
         round_start: embassy_time::Instant::now(),
         global_start: None,
-    };
+    });
 
-    let send = &close;
+    let send = close;
     session
         .declare_subscriber(zenoh::keyexpr::new("test/thr")?)
         .callback_sync(move |_| {

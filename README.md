@@ -64,9 +64,12 @@ Here’s a simple example of sending a payload with `zenoh-nostd`:
 
 ```rust
 async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
+    // Parsing the endpoint first so that the one-time cell is not consumed
+    // in the potentially static builder
+    let endpoint = Endpoint::try_from(ENDPOINT)?;
     let config = init_session_example(&spawner).await;
-    let mut resources = Resources::default();
-    let session = zenoh::connect(&mut resources, &config, Endpoint::try_from(ENDPOINT)?).await?;
+    zenoh::session!(ExampleConfig: config => builder);
+    let session = builder.connect().await?;
 
     let ke = zenoh::keyexpr::new("demo/example")?;
     let payload = b"Hello, from no-std!";

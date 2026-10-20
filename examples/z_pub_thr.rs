@@ -11,14 +11,14 @@ async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
 
     zenoh::info!("zenoh-nostd z_pub_thr example");
 
+    let endpoint = Endpoint::try_from(ENDPOINT)?;
     let config = init_session_example(&spawner).await;
-    let mut resources = Resources::default();
+    zenoh::session!(ExampleConfig: config => builder);
+    let builder = builder.ignore_invalid_sn();
     let session = if LISTEN {
-        zenoh::listen_ignore_invalid_sn(&mut resources, &config, Endpoint::try_from(ENDPOINT)?)
-            .await?
+        builder.listen(endpoint).await?
     } else {
-        zenoh::connect_ignore_invalid_sn(&mut resources, &config, Endpoint::try_from(ENDPOINT)?)
-            .await?
+        builder.connect(endpoint).await?
     };
 
     let payload: [u8; PAYLOAD] = core::array::from_fn(|i| (i % 10) as u8);

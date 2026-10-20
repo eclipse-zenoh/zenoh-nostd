@@ -3600,6 +3600,7 @@ dependencies = [
  "embassy-time",
  "embedded-io-async 0.7.0",
  "heapless 0.8.0",
+ "static_cell",
  "zenoh-derive",
  "zenoh-proto",
  "zenoh-sansio",
