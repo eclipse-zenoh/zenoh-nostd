@@ -87,9 +87,12 @@ where
 /// driver is constructed. Each builder is consumed by `connect` or `listen`.
 #[must_use = "a session builder must be connected or listened on"]
 pub struct SessionBuilder<'res, Config: ZSessionConfig> {
-    resources: &'res mut Resources<'res, Config>,
-    config: &'res Config,
-    ignore_invalid_sn: bool,
+    #[doc(hidden)]
+    pub resources: &'res mut Resources<'res, Config>,
+    #[doc(hidden)]
+    pub config: &'res Config,
+    #[doc(hidden)]
+    pub ignore_invalid_sn: bool,
 }
 
 impl<'res, Config: ZSessionConfig> SessionBuilder<'res, Config> {
@@ -196,26 +199,8 @@ impl<Config: ZSessionConfig + 'static> StaticSessionBuilder<Config> {
     }
 }
 
-/// Prepares a session builder.
-///
-/// The `=> builder` form uses local resources when the calling crate enables its
-/// `std` feature, and static storage otherwise. The expression form always uses
-/// static storage and is suitable for sessions passed to spawned tasks.
-/// Static storage can be initialized only once per call site, including when
-/// opening a session fails or is cancelled.
 #[macro_export]
-macro_rules! __session {
-    ($CONFIG:ty: $config:expr => $builder:ident $(,)?) => {
-        // builder init in std
-        #[cfg(feature = "std")]
-        let mut resources = $crate::session::Resources::default();
-        #[cfg(feature = "std")]
-        let $builder = $crate::session::SessionBuilder::new(&mut resources, &$config);
-
-        // builder init in no-std
-        #[cfg(not(feature = "std"))]
-        let $builder = $crate::__session!($CONFIG: $config);
-    };
+macro_rules! __static_session {
     ($CONFIG:ty: $config:expr $(,)?) => {{
         static CONFIG: $crate::session::__StaticCell<$CONFIG> =
             $crate::session::__StaticCell::new();
@@ -230,5 +215,39 @@ macro_rules! __session {
             CONFIG.init($config),
             &SESSION,
         )
+    }};
+}
+
+/// Prepares a session builder.
+///
+/// The expression form uses local resources except on ESP32-S3, where it uses
+/// static storage. Use the `static` form for sessions passed to spawned tasks.
+/// Static storage can be initialized only once per call site, including when
+/// opening a session fails or is cancelled.
+#[macro_export]
+macro_rules! __session {
+    (static $CONFIG:ty: $config:expr $(,)?) => {
+        $crate::__static_session!($CONFIG: $config)
+    };
+    ($CONFIG:ty: $config:expr $(,)?) => {{
+        #[cfg(not(feature = "esp32s3"))]
+        macro_rules! __session_for_platform {
+            () => {
+                $crate::session::SessionBuilder::<$CONFIG> {
+                    resources: &mut $crate::session::Resources::default(),
+                    config: &$config,
+                    ignore_invalid_sn: false,
+                }
+            };
+        }
+
+        #[cfg(feature = "esp32s3")]
+        macro_rules! __session_for_platform {
+            () => {
+                $crate::__static_session!($CONFIG: $config)
+            };
+        }
+
+        __session_for_platform!()
     }};
 }

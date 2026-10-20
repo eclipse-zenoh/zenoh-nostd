@@ -20,17 +20,12 @@ async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
 
     let endpoint = Endpoint::try_from(ENDPOINT)?;
     let config = init_session_example(&spawner).await;
-    let builder = zenoh::session!(ExampleConfig: config);
+    let builder = zenoh::session!(static ExampleConfig: config);
     let session = if LISTEN {
         builder.listen(endpoint).await?
     } else {
         builder.connect(endpoint).await?
     };
-
-    // In this example we care about maintaining the session alive, we then have two choices:
-    //  1) Spawn a new task to run the `session.run()` in background, but it requires the `session` to be `'static`.
-    //  2) Use `select` or `join` to run both the session and the subscriber in the same task.
-    // Here we use the first approach. For a demonstration of the second approach, see the `z_put` example.
 
     spawner.spawn(session_task(session)).unwrap();
 

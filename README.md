@@ -68,8 +68,14 @@ async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
     // in the potentially static builder
     let endpoint = Endpoint::try_from(ENDPOINT)?;
     let config = init_session_example(&spawner).await;
-    zenoh::session!(ExampleConfig: config => builder);
-    let session = builder.connect().await?;
+
+    // If you care about maintaining the session alive, then you have two choices:
+    //  1) Spawn a new task to run the `session.run()` in background, but it requires the `session` to be `'static`.
+    //     `let builder = zenoh::session!(static ExampleConfig: config);`
+    //     See the `z_open` example
+    //  2) Use `select` or `join` to run both the session and the subscriber in the same task. See the `z_put` example.
+    let builder = zenoh::session!(ExampleConfig: config);
+    let session = builder.connect(endpoint).await?;
 
     let ke = zenoh::keyexpr::new("demo/example")?;
     let payload = b"Hello, from no-std!";

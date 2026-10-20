@@ -13,7 +13,7 @@ async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
 
     let endpoint = Endpoint::try_from(ENDPOINT)?;
     let config = init_session_example(&spawner).await;
-    zenoh::session!(ExampleConfig: config => builder);
+    let builder = zenoh::session!(ExampleConfig: config);
     let session = if LISTEN {
         builder.listen(endpoint).await?
     } else {
