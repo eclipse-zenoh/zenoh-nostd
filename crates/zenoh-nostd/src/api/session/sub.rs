@@ -108,6 +108,9 @@ pub struct SubscriberBuilder<
         DynCallback<'res, CallbackStorage<'res, Config>, FutureStorage<'res, Config>, SampleRef>,
     >,
     receiver: Option<DynamicReceiver<'res, OwnedSample>>,
+    /// Subscribe to liveliness tokens instead of data: each token that appears or goes away on
+    /// `ke` is delivered as a sample with payload `[1]` (alive) or `[0]` (dropped).
+    liveliness: bool,
 }
 
 impl<'a, 'res, Config> SubscriberBuilder<'a, 'res, Config, (), false, false>
@@ -120,6 +123,7 @@ where
             ke,
             callback: None,
             receiver: None,
+            liveliness: false,
         }
     }
 
@@ -132,6 +136,7 @@ where
             ke: self.ke,
             callback: Some(DynObject::new(AsyncCallback::new(callback))),
             receiver: None,
+            liveliness: self.liveliness,
         }
     }
 
@@ -144,6 +149,7 @@ where
             ke: self.ke,
             callback: Some(DynObject::new(SyncCallback::new(callback))),
             receiver: None,
+            liveliness: self.liveliness,
         }
     }
 
@@ -171,6 +177,7 @@ where
                 },
             ))),
             receiver: Some(receiver),
+            liveliness: self.liveliness,
         }
     }
 }
@@ -191,12 +198,25 @@ where
             state.sub_callbacks.insert(id, self.ke, None, callback)?;
         }
 
-        let msg = Declare {
-            body: DeclareBody::DeclareSubscriber(DeclareSubscriber {
+        let body = if self.liveliness {
+            // Ask the router for the current and future tokens under `ke`.
+            NetworkBody::Interest(Interest {
                 id,
-                wire_expr: WireExpr::from(self.ke),
-            }),
-            ..Default::default()
+                mode: InterestMode::CurrentFuture,
+                inner: InterestInner {
+                    options: InterestOptions::TOKENS.options,
+                    wire_expr: Some(WireExpr::from(self.ke)),
+                },
+                ..Default::default()
+            })
+        } else {
+            NetworkBody::Declare(Declare {
+                body: DeclareBody::DeclareSubscriber(DeclareSubscriber {
+                    id,
+                    wire_expr: WireExpr::from(self.ke),
+                }),
+                ..Default::default()
+            })
         };
 
         self.session
@@ -206,7 +226,7 @@ where
             .send(core::iter::once(NetworkMessage {
                 reliability: Reliability::default(),
                 qos: QoS::default(),
-                body: NetworkBody::Declare(msg),
+                body,
             }))
             .await?;
 
@@ -225,5 +245,16 @@ where
 {
     pub fn declare_subscriber(&self, ke: &'static keyexpr) -> SubscriberBuilder<'_, 'res, Config> {
         SubscriberBuilder::new(self, ke)
+    }
+
+    /// Subscribes to liveliness tokens matching `ke`. Samples carry the token's key expression
+    /// and the payload `[1]` when the token appears, `[0]` when it is dropped.
+    pub fn declare_liveliness_subscriber(
+        &self,
+        ke: &'static keyexpr,
+    ) -> SubscriberBuilder<'_, 'res, Config> {
+        let mut builder = SubscriberBuilder::new(self, ke);
+        builder.liveliness = true;
+        builder
     }
 }
