@@ -37,17 +37,39 @@ pub type FixedCapacityGetCallbacks<
 pub type AllocGetCallbacks<'a, Callback = RawOrBox<16>, Future = RawOrBox<128>> =
     AllocCallbacks<'a, GetResponseRef, Callback, Future>;
 
-pub struct GetResponses<'a, 'transport, OwnedResponse = (), const CHANNEL: bool = false> {
+pub struct GetResponses<
+    'a,
+    'transport,
+    'resources: 'transport,
+    Config: ZSessionConfig,
+    OwnedResponse = (),
+    const CHANNEL: bool = false,
+> {
+    session: &'a Session<'transport, 'resources, Config>,
+    id: u32,
     ke: &'a keyexpr,
     timedout: Instant,
     receiver: Option<DynamicReceiver<'transport, OwnedResponse>>,
 }
 
-impl<'a, 'transport, OwnedResponse, const CHANNEL: bool>
-    GetResponses<'a, 'transport, OwnedResponse, CHANNEL>
+impl<
+    'a,
+    'transport,
+    'resources: 'transport,
+    Config: ZSessionConfig,
+    OwnedResponse,
+    const CHANNEL: bool,
+> GetResponses<'a, 'transport, 'resources, Config, OwnedResponse, CHANNEL>
 {
-    pub fn cancel(self) {
-        todo!()
+    /// Remove the callback. Late responses for this request are ignored.
+    pub async fn cancel(self) -> Result<(), SessionError> {
+        Ok(self.session.state().await.get_callbacks.remove(self.id)?)
+    }
+
+    pub async fn is_complete(&self) -> bool {
+        let mut state = self.session.state().await;
+        state.get_callbacks.drop_timedout();
+        state.get_callbacks.get(self.id).is_none()
     }
 
     pub fn keyexpr(&self) -> &keyexpr {
@@ -55,20 +77,30 @@ impl<'a, 'transport, OwnedResponse, const CHANNEL: bool>
     }
 }
 
-impl<'a, 'transport, OwnedResponse> GetResponses<'a, 'transport, OwnedResponse, true> {
+impl<'a, 'transport, 'resources: 'transport, Config: ZSessionConfig, OwnedResponse>
+    GetResponses<'a, 'transport, 'resources, Config, OwnedResponse, true>
+{
     pub fn try_recv(&self) -> Option<OwnedResponse> {
         self.receiver.as_ref().unwrap().try_receive().ok()
     }
 
     pub async fn recv(&self) -> Option<OwnedResponse> {
-        match select(
-            Timer::at(self.timedout),
-            self.receiver.as_ref().unwrap().receive(),
-        )
-        .await
-        {
-            Either::First(_) => None,
-            Either::Second(v) => Some(v),
+        loop {
+            if let Some(value) = self.try_recv() {
+                return Some(value);
+            }
+            if self.is_complete().await || Instant::now() >= self.timedout {
+                return None;
+            }
+            match select(
+                Timer::after(embassy_time::Duration::from_millis(10)),
+                self.receiver.as_ref().unwrap().receive(),
+            )
+            .await
+            {
+                Either::First(_) => {}
+                Either::Second(value) => return Some(value),
+            }
         }
     }
 }
@@ -233,8 +265,10 @@ where
 {
     pub async fn finish(
         self,
-    ) -> core::result::Result<GetResponses<'a, 'transport, OwnedResponse, CHANNEL>, SessionError>
-    {
+    ) -> core::result::Result<
+        GetResponses<'a, 'transport, 'resources, Config, OwnedResponse, CHANNEL>,
+        SessionError,
+    > {
         let timedout = Instant::now()
             + self
                 .timeout
@@ -267,7 +301,8 @@ where
             ..Default::default()
         };
 
-        self.session
+        let result = self
+            .session
             .driver
             .tx()
             .await
@@ -276,9 +311,15 @@ where
                 qos: QoS::default(),
                 body: NetworkBody::Request(msg),
             }))
-            .await?;
+            .await;
+        if let Err(error) = result {
+            state.get_callbacks.remove(rid)?;
+            return Err(error.into());
+        }
 
         Ok(GetResponses {
+            session: self.session,
+            id: rid,
             ke: self.ke,
             timedout,
             receiver: self.receiver,

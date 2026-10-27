@@ -38,9 +38,9 @@ where
         }
     }
 
-    #[allow(dead_code)]
-    async fn undeclare(self) -> core::result::Result<(), SessionError> {
-        todo!("send undeclare interest")
+    pub async fn undeclare(self) -> core::result::Result<(), SessionError> {
+        // No interest is sent by the current publisher implementation.
+        Ok(())
     }
 
     pub fn keyexpr(&self) -> &keyexpr {

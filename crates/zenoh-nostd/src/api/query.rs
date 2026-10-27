@@ -14,6 +14,7 @@ where
     parameters: Option<&'a str>,
     payload: Option<&'a [u8]>,
     finalized: bool,
+    pub(crate) rejected: core::cell::Cell<bool>,
 }
 
 impl<'a, 'transport, 'resources: 'transport, Config>
@@ -35,7 +36,19 @@ where
             parameters,
             payload,
             finalized: false,
+            rejected: core::cell::Cell::new(false),
         }
+    }
+
+    /// Decline a query when an application queue is full. The session sends a
+    /// final response once all matching handlers have either finalized or declined.
+    pub fn reject(&self) {
+        self.rejected.set(true);
+    }
+
+    /// Identifier for replying from an application-owned queue.
+    pub fn request_id(&self) -> u32 {
+        self.rid
     }
 
     pub fn keyexpr(&self) -> &keyexpr {

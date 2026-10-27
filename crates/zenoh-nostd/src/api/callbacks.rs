@@ -98,18 +98,11 @@ impl<
         Ok(())
     }
     fn drop_timedout(&mut self) {
-        self.entries.retain(|id, (_, _, timeout)| {
-            if timeout.is_some_and(|t| Instant::now() >= t) {
-                self.counters.remove(id);
-                false
-            } else {
-                true
-            }
-        });
+        self.entries
+            .retain(|_, (_, _, timeout)| timeout.is_none_or(|t| Instant::now() < t));
     }
     fn remove(&mut self, id: u32) -> Result<(), zenoh_proto::CollectionError> {
         self.entries.remove(&id);
-        self.counters.remove(&id);
         Ok(())
     }
     fn get(&mut self, id: u32) -> Option<&mut DynCallback<'a, Callback, Future, Arg>> {
@@ -123,13 +116,13 @@ impl<
     }
     fn decrease(&mut self, id: u32) -> bool {
         if let Some(value) = self.counters.get_mut(&id) {
-            if *value > 0 {
-                *value -= 1;
+            *value = value.saturating_sub(1);
+            if *value == 0 {
+                self.counters.remove(&id);
+                return true;
             }
-            *value == 0
-        } else {
-            false
         }
+        false
     }
     fn intersects<'r>(
         &'r mut self,
@@ -183,18 +176,11 @@ impl<'a, Arg: ZArg + 'a, Callback: Storage, Future: Storage> ZCallbacks<'a, Arg>
         Ok(())
     }
     fn drop_timedout(&mut self) {
-        self.entries.retain(|id, (_, _, timeout)| {
-            if timeout.is_some_and(|t| Instant::now() >= t) {
-                self.counters.remove(id);
-                false
-            } else {
-                true
-            }
-        });
+        self.entries
+            .retain(|_, (_, _, timeout)| timeout.is_none_or(|t| Instant::now() < t));
     }
     fn remove(&mut self, id: u32) -> Result<(), zenoh_proto::CollectionError> {
         self.entries.remove(&id);
-        self.counters.remove(&id);
         Ok(())
     }
     fn get(&mut self, id: u32) -> Option<&mut DynCallback<'a, Callback, Future, Arg>> {
@@ -206,13 +192,13 @@ impl<'a, Arg: ZArg + 'a, Callback: Storage, Future: Storage> ZCallbacks<'a, Arg>
     }
     fn decrease(&mut self, id: u32) -> bool {
         if let Some(value) = self.counters.get_mut(&id) {
-            if *value > 0 {
-                *value -= 1;
+            *value = value.saturating_sub(1);
+            if *value == 0 {
+                self.counters.remove(&id);
+                return true;
             }
-            *value == 0
-        } else {
-            false
         }
+        false
     }
     fn intersects<'r>(
         &'r mut self,
@@ -304,7 +290,7 @@ mod tests {
         }
     }
     #[test]
-    fn owned_key_insertion_preserves_existing_registrations() {
+    fn failed_inserts_are_atomic_and_request_counters_are_reclaimed() {
         let mut registry = Registry::empty();
         let long = keyexpr::new("this/key/is/too/long/for/the/registry/storage").unwrap();
         assert!(registry.insert(1, long, None, callback()).is_err());
@@ -324,6 +310,11 @@ mod tests {
                 .insert(1, keyexpr::new("b").unwrap(), None, callback())
                 .is_err()
         );
+        for id in 0..1000 {
+            registry.set_counter(id, 1).unwrap();
+            assert!(registry.decrease(id));
+            assert!(!registry.decrease(id));
+        }
         registry.remove(0).unwrap();
         registry.remove(1).unwrap();
         assert!(registry.get(0).is_none());

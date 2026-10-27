@@ -49,8 +49,7 @@ impl<'a, 'transport, 'resources: 'transport, Config, OwnedSample, const CHANNEL:
 where
     Config: ZSessionConfig,
 {
-    #[allow(dead_code)]
-    async fn undeclare(self) -> core::result::Result<(), SessionError> {
+    pub async fn undeclare(self) -> core::result::Result<(), SessionError> {
         let msg = Declare {
             body: DeclareBody::UndeclareSubscriber(UndeclareSubscriber {
                 id: self.id,
@@ -72,7 +71,7 @@ where
             }))
             .await?;
 
-        todo!("Also stop the channel if any")
+        Ok(())
     }
 
     pub fn keyexpr(&self) -> &keyexpr {
@@ -219,7 +218,8 @@ where
             ..Default::default()
         };
 
-        self.session
+        let result = self
+            .session
             .driver
             .tx()
             .await
@@ -228,7 +228,11 @@ where
                 qos: QoS::default(),
                 body: NetworkBody::Declare(msg),
             }))
-            .await?;
+            .await;
+        if let Err(error) = result {
+            state.sub_callbacks.remove(id)?;
+            return Err(error.into());
+        }
 
         Ok(Subscriber {
             ke: self.ke,

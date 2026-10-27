@@ -1,5 +1,7 @@
 use zenoh_proto::{exts::Value, msgs::*, *};
 
+use crate::io::transport::ZTransportLinkTx;
+
 use crate::{
     api::{
         callbacks::{ZCallbacks, ZDynCallback},
@@ -84,9 +86,46 @@ where
                         );
 
                         let count = state.queryable_callbacks.intersects(ke).count();
-                        state.queryable_callbacks.set_counter(id, count)?;
-                        for cb in state.queryable_callbacks.intersects(ke) {
-                            cb.call(&query).await;
+                        // Bounded handlers may decline work instead of blocking RX.
+                        // A saturated request table must not terminate the session.
+                        if count == 0 || state.queryable_callbacks.set_counter(id, count).is_err() {
+                            self.driver
+                                .tx()
+                                .await
+                                .send(core::iter::once(NetworkMessage {
+                                    reliability: fields::Reliability::default(),
+                                    qos: exts::QoS::default(),
+                                    body: NetworkBody::ResponseFinal(ResponseFinal {
+                                        rid: id,
+                                        ..Default::default()
+                                    }),
+                                }))
+                                .await?;
+                        } else {
+                            let mut rejected = 0;
+                            for cb in state.queryable_callbacks.intersects(ke) {
+                                query.rejected.set(false);
+                                cb.call(&query).await;
+                                if query.rejected.get() {
+                                    rejected += 1;
+                                }
+                            }
+                            for _ in 0..rejected {
+                                if state.queryable_callbacks.decrease(id) {
+                                    self.driver
+                                        .tx()
+                                        .await
+                                        .send(core::iter::once(NetworkMessage {
+                                            reliability: fields::Reliability::default(),
+                                            qos: exts::QoS::default(),
+                                            body: NetworkBody::ResponseFinal(ResponseFinal {
+                                                rid: id,
+                                                ..Default::default()
+                                            }),
+                                        }))
+                                        .await?;
+                                }
+                            }
                         }
                     }
                     _ => {}
