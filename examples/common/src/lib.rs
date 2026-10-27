@@ -83,44 +83,55 @@ impl<M: ZLinkManager, const BUFF_SIZE: usize> ZSessionConfig for ExampleConfig<M
     type Buff = alloc::vec::Vec<u8>;
 
     #[cfg(not(feature = "alloc"))]
-    type SubCallbacks<'res> = FixedCapacitySubCallbacks<
-        'res,
+    type SubCallbacks<'transport> = FixedCapacitySubCallbacks<
+        'transport,
         8,
         zenoh::storage::RawOrBox<56>,
         zenoh::storage::RawOrBox<600>,
     >;
 
     #[cfg(feature = "alloc")]
-    type SubCallbacks<'res> = AllocSubCallbacks<'res, zenoh::storage::Box, zenoh::storage::Box>;
+    type SubCallbacks<'transport> =
+        AllocSubCallbacks<'transport, zenoh::storage::Box, zenoh::storage::Box>;
 
     #[cfg(not(feature = "alloc"))]
-    type GetCallbacks<'res> = FixedCapacityGetCallbacks<
-        'res,
+    type GetCallbacks<'transport> = FixedCapacityGetCallbacks<
+        'transport,
         8,
         zenoh::storage::RawOrBox<16>,
         zenoh::storage::RawOrBox<32>,
     >;
 
     #[cfg(feature = "alloc")]
-    type GetCallbacks<'res> = AllocGetCallbacks<'res, zenoh::storage::Box, zenoh::storage::Box>;
+    type GetCallbacks<'transport> =
+        AllocGetCallbacks<'transport, zenoh::storage::Box, zenoh::storage::Box>;
 
     #[cfg(not(feature = "alloc"))]
-    type QueryableCallbacks<'res>
+    type QueryableCallbacks<'transport, 'resources>
         = FixedCapacityQueryableCallbacks<
-        'res,
+        'transport,
+        'resources,
         Self,
         8,
         zenoh::storage::RawOrBox<32>,
         zenoh::storage::RawOrBox<952>,
     >
     where
-        Self: 'res;
+        Self: 'resources,
+        'resources: 'transport;
 
     #[cfg(feature = "alloc")]
-    type QueryableCallbacks<'res>
-        = AllocQueryableCallbacks<'res, Self, zenoh::storage::Box, zenoh::storage::Box>
+    type QueryableCallbacks<'transport, 'resources>
+        = AllocQueryableCallbacks<
+        'transport,
+        'resources,
+        Self,
+        zenoh::storage::Box,
+        zenoh::storage::Box,
+    >
     where
-        Self: 'res;
+        Self: 'resources,
+        'resources: 'transport;
 
     fn buff(&self) -> Self::Buff {
         #[cfg(not(feature = "alloc"))]

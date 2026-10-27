@@ -3,22 +3,22 @@ use zenoh_proto::{SessionError, keyexpr};
 
 use crate::{api::session::Session, config::ZSessionConfig, session::GetBuilder};
 
-pub struct Querier<'a, 'res, Config>
+pub struct Querier<'a, 'transport, 'resources: 'transport, Config>
 where
     Config: ZSessionConfig,
 {
-    session: &'a Session<'res, Config>,
+    session: &'a Session<'transport, 'resources, Config>,
     ke: &'a keyexpr,
     parameters: Option<&'a str>,
     payload: Option<&'a [u8]>,
     timeout: Option<Duration>,
 }
 
-impl<'a, 'res, Config> Querier<'a, 'res, Config>
+impl<'a, 'transport, 'resources: 'transport, Config> Querier<'a, 'transport, 'resources, Config>
 where
     Config: ZSessionConfig,
 {
-    pub fn get(&self) -> GetBuilder<'a, 'res, Config> {
+    pub fn get(&self) -> GetBuilder<'a, 'transport, 'resources, Config> {
         GetBuilder {
             session: self.session,
             ke: self.ke,
@@ -40,22 +40,26 @@ where
     }
 }
 
-pub struct QuerierBuilder<'a, 'res, Config>
+pub struct QuerierBuilder<'a, 'transport, 'resources: 'transport, Config>
 where
     Config: ZSessionConfig,
 {
-    session: &'a Session<'res, Config>,
+    session: &'a Session<'transport, 'resources, Config>,
     ke: &'a keyexpr,
     parameters: Option<&'a str>,
     payload: Option<&'a [u8]>,
     timeout: Option<Duration>,
 }
 
-impl<'a, 'res, Config> QuerierBuilder<'a, 'res, Config>
+impl<'a, 'transport, 'resources: 'transport, Config>
+    QuerierBuilder<'a, 'transport, 'resources, Config>
 where
     Config: ZSessionConfig,
 {
-    pub(crate) fn new(session: &'a Session<'res, Config>, ke: &'a keyexpr) -> Self {
+    pub(crate) fn new(
+        session: &'a Session<'transport, 'resources, Config>,
+        ke: &'a keyexpr,
+    ) -> Self {
         Self {
             session,
             ke,
@@ -80,7 +84,9 @@ where
         self
     }
 
-    pub async fn finish(self) -> core::result::Result<Querier<'a, 'res, Config>, SessionError> {
+    pub async fn finish(
+        self,
+    ) -> core::result::Result<Querier<'a, 'transport, 'resources, Config>, SessionError> {
         // TODO: send interest msg
         Ok(Querier {
             session: self.session,
@@ -92,11 +98,14 @@ where
     }
 }
 
-impl<'res, Config> Session<'res, Config>
+impl<'transport, 'resources: 'transport, Config> Session<'transport, 'resources, Config>
 where
     Config: ZSessionConfig,
 {
-    pub fn declare_querier<'a>(&'a self, ke: &'a keyexpr) -> QuerierBuilder<'a, 'res, Config> {
+    pub fn declare_querier<'a>(
+        &'a self,
+        ke: &'a keyexpr,
+    ) -> QuerierBuilder<'a, 'transport, 'resources, Config> {
         QuerierBuilder::new(self, ke)
     }
 }

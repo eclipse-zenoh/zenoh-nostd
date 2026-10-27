@@ -10,7 +10,7 @@ use crate::{
     session::{GetResponse, Sample},
 };
 
-impl<'res, Config> Session<'res, Config>
+impl<'transport, 'resources: 'transport, Config> Session<'transport, 'resources, Config>
 where
     Config: ZSessionConfig,
 {
