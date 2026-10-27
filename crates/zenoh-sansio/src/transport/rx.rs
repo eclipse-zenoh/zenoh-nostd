@@ -29,6 +29,9 @@ pub struct TransportRx<Buff> {
     state: State,
 
     ignore_invalid_sn: bool,
+
+    /// The peer sent a Close: it no longer wants this session.
+    peer_closed: bool,
 }
 
 impl<Buff> TransportRx<Buff> {
@@ -52,6 +55,7 @@ impl<Buff> TransportRx<Buff> {
 
             state: State::Opened,
             ignore_invalid_sn: false,
+            peer_closed: false,
         }
     }
 
@@ -88,6 +92,11 @@ impl<Buff> TransportRx<Buff> {
     }
 
     pub fn sync(&mut self, tx: Option<&TransportTx<Buff>>, now: Duration) {
+        if self.peer_closed {
+            self.state = State::Closed;
+            return;
+        }
+
         if let Some(tx) = tx
             && tx.closed()
         {
@@ -119,7 +128,7 @@ impl<Buff> TransportRx<Buff> {
     }
 
     pub fn closed(&self) -> bool {
-        matches!(self.state, State::Closed)
+        self.peer_closed || matches!(self.state, State::Closed)
     }
 
     pub(crate) fn decode<'a>(
@@ -439,17 +448,60 @@ where
         let sn = &mut self.sn;
         let resolution = self.resolution;
         let ignore = self.ignore_invalid_sn;
+        let peer_closed = &mut self.peer_closed;
 
         core::iter::from_fn(move || {
             Self::decode(&mut reader, &mut last_frame, sn, resolution, ignore)
         })
-        .filter_map(|m| match m.0 {
+        .filter_map(move |m| match m.0 {
             Message::Network(msg) => Some((msg, m.1)),
+            // A Close ends the session; there is nothing to hand on.
+            Message::Transport(TransportMessage::Close(_)) => {
+                *peer_closed = true;
+                None
+            }
             _ => None,
         })
     }
 
     fn clear(&mut self) {
         self.cursor = 0;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ZTransportRx;
+
+    /// A peer that no longer knows our session (a restarted router) answers every datagram with a
+    /// Close. The transport must end, or a client keeps sending into a session the peer forgot.
+    #[test]
+    fn a_close_from_the_peer_closes_the_transport() {
+        let mut rx = TransportRx::new(
+            [0u8; 64],
+            64,
+            0,
+            Resolution::default(),
+            Duration::from_secs(10),
+        );
+        assert!(!rx.closed());
+        rx.decode_raw(&[0x23, 0x00]).unwrap(); // Close, session behaviour, reason 0
+        assert_eq!(rx.flush().count(), 0, "a Close is not a network message");
+        assert!(rx.closed());
+    }
+
+    #[test]
+    fn a_frame_without_messages_does_not_close_the_transport() {
+        let mut rx = TransportRx::new(
+            [0u8; 64],
+            64,
+            0,
+            Resolution::default(),
+            Duration::from_secs(10),
+        );
+        rx.decode_raw(&[0x25, 0x00]).unwrap(); // a frame header, nothing in it
+        assert_eq!(rx.flush().count(), 0);
+        assert!(!rx.closed());
     }
 }
