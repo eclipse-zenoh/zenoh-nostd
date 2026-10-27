@@ -30,19 +30,20 @@ pub type FixedCapacityGetCallbacks<
     const CAPACITY: usize,
     Callback = RawOrBox<16>,
     Future = RawOrBox<128>,
-> = FixedCapacityCallbacks<'a, GetResponseRef, CAPACITY, Callback, Future>;
+    const MAX_KEYEXPR: usize = 128,
+> = FixedCapacityCallbacks<'a, GetResponseRef, CAPACITY, Callback, Future, MAX_KEYEXPR>;
 
 #[cfg(feature = "alloc")]
 pub type AllocGetCallbacks<'a, Callback = RawOrBox<16>, Future = RawOrBox<128>> =
     AllocCallbacks<'a, GetResponseRef, Callback, Future>;
 
-pub struct GetResponses<'res, OwnedResponse = (), const CHANNEL: bool = false> {
-    ke: &'static keyexpr,
+pub struct GetResponses<'a, 'res, OwnedResponse = (), const CHANNEL: bool = false> {
+    ke: &'a keyexpr,
     timedout: Instant,
     receiver: Option<DynamicReceiver<'res, OwnedResponse>>,
 }
 
-impl<'res, OwnedResponse, const CHANNEL: bool> GetResponses<'res, OwnedResponse, CHANNEL> {
+impl<'a, 'res, OwnedResponse, const CHANNEL: bool> GetResponses<'a, 'res, OwnedResponse, CHANNEL> {
     pub fn cancel(self) {
         todo!()
     }
@@ -52,7 +53,7 @@ impl<'res, OwnedResponse, const CHANNEL: bool> GetResponses<'res, OwnedResponse,
     }
 }
 
-impl<'res, OwnedResponse> GetResponses<'res, OwnedResponse, true> {
+impl<'a, 'res, OwnedResponse> GetResponses<'a, 'res, OwnedResponse, true> {
     pub fn try_recv(&self) -> Option<OwnedResponse> {
         self.receiver.as_ref().unwrap().try_receive().ok()
     }
@@ -87,7 +88,7 @@ pub struct GetBuilder<
     Config: ZSessionConfig,
 {
     pub(crate) session: &'a Session<'res, Config>,
-    pub(crate) ke: &'static keyexpr,
+    pub(crate) ke: &'a keyexpr,
     pub(crate) parameters: Option<&'a str>,
     pub(crate) payload: Option<&'a [u8]>,
     pub(crate) timeout: Option<Duration>,
@@ -106,7 +107,7 @@ impl<'a, 'res, Config> GetBuilder<'a, 'res, Config, (), false, false>
 where
     Config: ZSessionConfig,
 {
-    pub(crate) fn new(session: &'a Session<'res, Config>, ke: &'static keyexpr) -> Self {
+    pub(crate) fn new(session: &'a Session<'res, Config>, ke: &'a keyexpr) -> Self {
         Self {
             session,
             ke,
@@ -184,7 +185,7 @@ impl<'a, 'res, Config, OwnedResponse, const READY: bool, const CHANNEL: bool>
 where
     Config: ZSessionConfig,
 {
-    pub fn keyexpr(mut self, ke: &'static keyexpr) -> Self {
+    pub fn keyexpr(mut self, ke: &'a keyexpr) -> Self {
         self.ke = ke;
         self
     }
@@ -212,7 +213,7 @@ where
 {
     pub async fn finish(
         self,
-    ) -> core::result::Result<GetResponses<'res, OwnedResponse, CHANNEL>, SessionError> {
+    ) -> core::result::Result<GetResponses<'a, 'res, OwnedResponse, CHANNEL>, SessionError> {
         let timedout = Instant::now()
             + self
                 .timeout
@@ -268,7 +269,7 @@ impl<'res, Config> Session<'res, Config>
 where
     Config: ZSessionConfig,
 {
-    pub fn get(&self, ke: &'static keyexpr) -> GetBuilder<'_, 'res, Config> {
+    pub fn get<'a>(&'a self, ke: &'a keyexpr) -> GetBuilder<'a, 'res, Config> {
         GetBuilder::new(self, ke)
     }
 }
