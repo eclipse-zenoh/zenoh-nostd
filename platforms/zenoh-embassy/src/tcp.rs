@@ -62,6 +62,13 @@ impl<'net> ZLinkInfo for EmbassyTcpLinkRx<'net> {
 }
 
 impl<'net> ZLinkTx for EmbassyTcpLink<'net> {
+    async fn flush(&mut self) -> Result<(), LinkError> {
+        self.socket
+            .flush()
+            .await
+            .map_err(|_| LinkError::LinkTxFailed)
+    }
+
     async fn write_all(&mut self, buffer: &[u8]) -> core::result::Result<(), LinkError> {
         self.socket
             .write_all(buffer)
@@ -71,6 +78,13 @@ impl<'net> ZLinkTx for EmbassyTcpLink<'net> {
 }
 
 impl<'net> ZLinkTx for EmbassyTcpLinkTx<'net> {
+    async fn flush(&mut self) -> Result<(), LinkError> {
+        self.socket
+            .flush()
+            .await
+            .map_err(|_| LinkError::LinkTxFailed)
+    }
+
     async fn write_all(&mut self, buffer: &[u8]) -> core::result::Result<(), LinkError> {
         self.socket
             .write_all(buffer)

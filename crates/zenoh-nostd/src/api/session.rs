@@ -52,6 +52,12 @@ where
     }
 }
 
+/// A session borrowing its transport and link resources.
+///
+/// Cancelling an operation or encountering a transport write error requires
+/// stopping the driver and dropping the session and its transport before any
+/// further network I/O. Reconnect with a new transport to continue. Use
+/// [`Self::flush`] for normal completion, not to recover an interrupted write.
 pub struct Session<'transport, 'resources: 'transport, Config>
 where
     Config: ZSessionConfig + 'resources,
@@ -242,6 +248,17 @@ macro_rules! __session {
             ignore_invalid_sn: false,
         }
     }};
+}
+
+impl<'transport, 'resources: 'transport, Config: ZSessionConfig>
+    Session<'transport, 'resources, Config>
+{
+    /// Drain adapter-owned TX buffers before closing a finite application.
+    /// The session driver should keep being polled while this completes.
+    pub async fn flush(&self) -> Result<(), zenoh_proto::SessionError> {
+        use crate::io::transport::ZTransportLinkTx;
+        self.driver.tx().await.flush().await.map_err(Into::into)
+    }
 }
 
 #[cfg(test)]
