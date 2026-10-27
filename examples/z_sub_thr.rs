@@ -51,7 +51,16 @@ async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
 
     let endpoint = Endpoint::try_from(ENDPOINT)?;
     let config = init_session_example(&spawner).await;
-    let builder = zenoh::session!(ExampleConfig: config);
+    let builder = {
+        #[cfg(feature = "esp32s3")]
+        {
+            zenoh::session!(static ExampleConfig: config)
+        }
+        #[cfg(not(feature = "esp32s3"))]
+        {
+            zenoh::session!(ExampleConfig: config)
+        }
+    };
     let builder = builder.ignore_invalid_sn();
     let session = if LISTEN {
         builder.listen(endpoint).await?
