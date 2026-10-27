@@ -10,6 +10,8 @@ check-examples:
     cd examples/wasm && cargo clippy --locked --bins && cargo clippy --locked --bins --features alloc
     cd examples/embassy/esp/esp32s3-wifi && WIFI_PASSWORD=ci-placeholder ENDPOINT=tcp/192.0.2.1:7447 cargo +esp check --locked --bins
     cd examples/embassy/esp/esp32s3-wifi && WIFI_PASSWORD=ci-placeholder ENDPOINT=tcp/192.0.2.1:7447 cargo +esp check --locked --bins --features alloc
+    cd examples/embassy/esp/esp32c6-pico-wifi && WIFI_PASSWORD=ci-placeholder ENDPOINT=tcp/192.0.2.1:7447 cargo check --locked --bins
+    cd examples/embassy/esp/esp32c6-pico-wifi && WIFI_PASSWORD=ci-placeholder ENDPOINT=tcp/192.0.2.1:7447 cargo check --locked --bins --features alloc
 
 [working-directory: repository_root]
 fmt-examples:
@@ -17,6 +19,7 @@ fmt-examples:
     cargo fmt --manifest-path examples/native/Cargo.toml
     cargo fmt --manifest-path examples/wasm/Cargo.toml
     cargo fmt --manifest-path examples/embassy/esp/esp32s3-wifi/Cargo.toml
+    cargo fmt --manifest-path examples/embassy/esp/esp32c6-pico-wifi/Cargo.toml
     rustfmt --edition 2024 examples/common/legacy/*.rs
 
 [working-directory: repository_root]
@@ -64,6 +67,14 @@ esp32s3 example="z_put" features="":
 [working-directory: repository_root]
 build-esp32s3 example="z_put" features="":
     cd examples/embassy/esp/esp32s3-wifi && cargo +esp build --locked --release --bin {{ example }} --features="{{ features }}"
+
+[working-directory: repository_root]
+esp32c6 example="z_put" features="":
+    cd examples/embassy/esp/esp32c6-pico-wifi && cargo run --locked --release --bin {{ example }} --features="{{ features }}"
+
+[working-directory: repository_root]
+build-esp32c6 example="z_put" features="":
+    cd examples/embassy/esp/esp32c6-pico-wifi && cargo build --locked --release --bin {{ example }} --features="{{ features }}"
 
 [working-directory: repository_root]
 build-firmware-esp32s3 features="" mode="cli":

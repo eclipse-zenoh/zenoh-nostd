@@ -13,6 +13,7 @@ exclude = [
     "examples/native",
     "examples/wasm",
     "examples/embassy/esp/esp32s3-wifi",
+    "examples/embassy/esp/esp32c6-pico-wifi",
 ]
 resolver = "3"
 

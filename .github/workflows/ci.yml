@@ -28,7 +28,7 @@ jobs:
           components: rustfmt
       - run: |
           cargo fmt --all --check
-          for project in platforms/* examples/common examples/native examples/wasm examples/embassy/esp/esp32s3-wifi; do
+          for project in platforms/* examples/common examples/native examples/wasm examples/embassy/esp/esp32s3-wifi examples/embassy/esp/esp32c6-pico-wifi; do
             cargo fmt --manifest-path "$project/Cargo.toml" --check
           done
           rustfmt --edition 2024 --check examples/common/legacy/*.rs
@@ -172,7 +172,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        board: [esp32s3-wifi]
+        board: [esp32s3-wifi, esp32c6-pico-wifi]
         features: ["", alloc]
         mode: [cli]
     steps:

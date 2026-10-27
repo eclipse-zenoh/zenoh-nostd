@@ -135,18 +135,19 @@ Use the following command structure:
 just <platform> <example> [optional features]
 ```
 
-* **Platforms**: `std`, `wasm`, `esp32s3`
+* **Platforms**: `std`, `wasm`, `esp32s3`, `esp32c6`
 * **Examples**: `z_get`, `z_open`, `z_ping`, `z_pong`, `z_pub`, `z_pub_thr`, `z_put`, `z_querier`, `z_queryable`, `z_sub`, , `z_sub_thr`,
 * **Broker**: `z_broker` (with `alloc` feature)
 
 Set the `ENDPOINT=<endpoint>` environment variable to specify the endpoint (default is `tcp/127.0.0.1:7447`). Set `LISTEN=1` to specify the connection method.
 
-For `esp32s3`, you must also provide:
+For `esp32s3` and `esp32c6`, you must also provide:
 
 * `WIFI_SSID` (default is `Zenoh`).
 * `WIFI_PASSWORD` (no default, must be provided).
 
 See the [ESP32-S3 setup documentation](examples/embassy/esp/esp32s3-wifi/README.md) for toolchain and target installation.
+The [ESP32-C6-Pico project](examples/embassy/esp/esp32c6-pico-wifi/README.md) uses stable Rust and a RISC-V target.
 
 Example of few commands:
 
@@ -218,7 +219,8 @@ zenoh-nostd/            # Git repository root
 │   ├── wasm/           # Browser project, including web/index.html
 │   ├── embassy/
 │   │   └── esp/        # Shared ESP startup and Wi-Fi support
-│   │       └── esp32s3-wifi/ # ESP32-S3 project
+│   │       ├── esp32s3-wifi/ # ESP32-S3 project
+│   │       └── esp32c6-pico-wifi/ # ESP32-C6-Pico project
 │   └── justfile        # Example recipes imported by the root justfile
 │
 ├── platforms/          # Platform-specific implementations
