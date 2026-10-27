@@ -8,5 +8,6 @@ Add `alloc` after the scenario for allocated Zenoh storage.
 - [wasm](wasm/README.md)
 - [embassy/esp/esp32s3-wifi](embassy/esp/esp32s3-wifi/README.md)
 - [embassy/esp/esp32c6-pico-wifi](embassy/esp/esp32c6-pico-wifi/README.md)
+- [embassy/stm32/nucleo-h753zi-ethernet](embassy/stm32/nucleo-h753zi-ethernet/README.md)
 
 Build-only recipes never flash. ESP32-S3 uses `cargo +esp`; other projects use stable Rust.

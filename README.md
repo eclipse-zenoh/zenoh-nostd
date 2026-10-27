@@ -135,7 +135,7 @@ Use the following command structure:
 just <platform> <example> [optional features]
 ```
 
-* **Platforms**: `std`, `wasm`, `esp32s3`, `esp32c6`
+* **Platforms**: `std`, `wasm`, `esp32s3`, `esp32c6`, `stm32`
 * **Examples**: `z_get`, `z_open`, `z_ping`, `z_pong`, `z_pub`, `z_pub_thr`, `z_put`, `z_querier`, `z_queryable`, `z_sub`, , `z_sub_thr`,
 * **Broker**: `z_broker` (with `alloc` feature)
 
@@ -148,6 +148,8 @@ For `esp32s3` and `esp32c6`, you must also provide:
 
 See the [ESP32-S3 setup documentation](examples/embassy/esp/esp32s3-wifi/README.md) for toolchain and target installation.
 The [ESP32-C6-Pico project](examples/embassy/esp/esp32c6-pico-wifi/README.md) uses stable Rust and a RISC-V target.
+The [NUCLEO-H753ZI project](examples/embassy/stm32/nucleo-h753zi-ethernet/README.md) uses Ethernet and an ARM target.
+This firmware has not been tested on a physical NUCLEO-H753ZI board.
 
 Example of few commands:
 
@@ -218,9 +220,11 @@ zenoh-nostd/            # Git repository root
 │   ├── native/         # Native application project
 │   ├── wasm/           # Browser project, including web/index.html
 │   ├── embassy/
-│   │   └── esp/        # Shared ESP startup and Wi-Fi support
-│   │       ├── esp32s3-wifi/ # ESP32-S3 project
-│   │       └── esp32c6-pico-wifi/ # ESP32-C6-Pico project
+│   │   ├── esp/        # Shared ESP startup and Wi-Fi support
+│   │   │   ├── esp32s3-wifi/ # ESP32-S3 project
+│   │   │   └── esp32c6-pico-wifi/ # ESP32-C6-Pico project
+│   │   └── stm32/
+│   │       └── nucleo-h753zi-ethernet/ # NUCLEO-H753ZI project
 │   └── justfile        # Example recipes imported by the root justfile
 │
 ├── platforms/          # Platform-specific implementations

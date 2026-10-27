@@ -55,6 +55,7 @@
               git
               just
               pkg-config
+              probe-rs-tools
               wasm-bindgen-cli
               python3
               rustup

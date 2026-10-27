@@ -14,6 +14,7 @@ exclude = [
     "examples/wasm",
     "examples/embassy/esp/esp32s3-wifi",
     "examples/embassy/esp/esp32c6-pico-wifi",
+    "examples/embassy/stm32/nucleo-h753zi-ethernet",
 ]
 resolver = "3"
 
