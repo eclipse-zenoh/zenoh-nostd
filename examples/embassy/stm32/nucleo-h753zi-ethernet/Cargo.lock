@@ -105,6 +105,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "convert_case"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec182b0ca2f35d8fc196cf3404988fd8b8c739a4d270ff118a398feb0cbec1ca"
+dependencies = [
+ "unicode-segmentation",
+]
+
+[[package]]
 name = "cortex-m"
 version = "0.7.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -565,6 +574,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "embedded-cli"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e08e0bae60fe7389ddcb0a95e5ed1bf007e4c2a13d3925bd2db6f4c4923c08af"
+dependencies = [
+ "bitflags 2.13.2",
+ "embedded-cli-macros",
+ "embedded-io 0.6.1",
+ "ufmt",
+]
+
+[[package]]
+name = "embedded-cli-macros"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c10085b0b308f1fb243fb19c739766a13030ddd7b281bc8034acc431932522bf"
+dependencies = [
+ "convert_case",
+ "darling",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "embedded-hal"
 version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1017,6 +1051,17 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
 name = "syn"
+version = "1.0.109"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72b64191b275b66ffe2469e8af2c1cfe3bafa67b529ead792a6d0160888b4237"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "unicode-ident",
+]
+
+[[package]]
+name = "syn"
 version = "2.0.119"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "872831b642d1a07999a962a351ed35b955ea2cfc8f3862091e2a240a84f17297"
@@ -1070,6 +1115,33 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "214ca0b2191785cbc06209b9ca1861e048e39b5ba33574b3cedd58363d5bb5f6"
 
 [[package]]
+name = "ufmt"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1a64846ec02b57e9108d6469d98d1648782ad6bb150a95a9baac26900bbeab9d"
+dependencies = [
+ "ufmt-macros",
+ "ufmt-write",
+]
+
+[[package]]
+name = "ufmt-macros"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d337d3be617449165cb4633c8dece429afd83f84051024079f97ad32a9663716"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "ufmt-write"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e87a2ed6b42ec5e28cc3b94c09982969e9227600b2e3dcbc1db927a84c06bd69"
+
+[[package]]
 name = "uhlc"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1084,6 +1156,12 @@ name = "unicode-ident"
 version = "1.0.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563"
+
+[[package]]
+name = "unicode-segmentation"
+version = "1.13.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c6f5d3c3b1bf09027a88a6bc961fc00497d651009560b5463668dc81b0fa87a8"
 
 [[package]]
 name = "vcell"
@@ -1143,6 +1221,9 @@ dependencies = [
  "embassy-futures",
  "embassy-sync 0.7.2",
  "embassy-time",
+ "embedded-cli",
+ "embedded-io 0.6.1",
+ "embedded-io-async 0.7.0",
  "heapless 0.8.0",
  "zenoh-nostd",
 ]
@@ -1171,6 +1252,7 @@ dependencies = [
  "embassy-sync 0.7.2",
  "embassy-time",
  "embedded-alloc",
+ "embedded-io-async 0.6.1",
  "getrandom",
  "panic-probe",
  "static_cell",

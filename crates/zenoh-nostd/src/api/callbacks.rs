@@ -32,6 +32,10 @@ where
         callback: DynCallback<'a, Self::Callback, Self::Future, Arg>,
     ) -> core::result::Result<(), zenoh_proto::CollectionError>;
     fn drop_timedout(&mut self);
+    fn pop(&mut self) -> Option<u32>;
+    #[cfg(test)]
+    fn is_empty(&self) -> bool;
+    fn clear(&mut self);
     fn get(&mut self, id: u32) -> Option<&mut DynCallback<'a, Self::Callback, Self::Future, Arg>>;
     fn remove(&mut self, id: u32) -> core::result::Result<(), zenoh_proto::CollectionError>;
     fn set_counter(
@@ -100,6 +104,19 @@ impl<
     fn drop_timedout(&mut self) {
         self.entries
             .retain(|_, (_, _, timeout)| timeout.is_none_or(|t| Instant::now() < t));
+    }
+    fn pop(&mut self) -> Option<u32> {
+        let id = self.entries.keys().next().copied()?;
+        self.entries.remove(&id);
+        Some(id)
+    }
+    #[cfg(test)]
+    fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+    fn clear(&mut self) {
+        self.entries.clear();
+        self.counters.clear();
     }
     fn remove(&mut self, id: u32) -> Result<(), zenoh_proto::CollectionError> {
         self.entries.remove(&id);
@@ -178,6 +195,19 @@ impl<'a, Arg: ZArg + 'a, Callback: Storage, Future: Storage> ZCallbacks<'a, Arg>
     fn drop_timedout(&mut self) {
         self.entries
             .retain(|_, (_, _, timeout)| timeout.is_none_or(|t| Instant::now() < t));
+    }
+    fn pop(&mut self) -> Option<u32> {
+        let id = self.entries.keys().next().copied()?;
+        self.entries.remove(&id);
+        Some(id)
+    }
+    #[cfg(test)]
+    fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+    fn clear(&mut self) {
+        self.entries.clear();
+        self.counters.clear();
     }
     fn remove(&mut self, id: u32) -> Result<(), zenoh_proto::CollectionError> {
         self.entries.remove(&id);
@@ -285,8 +315,8 @@ mod tests {
                     .count(),
                 1
             );
-            registry.remove(id).unwrap();
-            assert!(registry.get(id).is_none());
+            assert_eq!(registry.pop(), Some(id));
+            assert!(registry.is_empty());
         }
     }
     #[test]
@@ -294,7 +324,7 @@ mod tests {
         let mut registry = Registry::empty();
         let long = keyexpr::new("this/key/is/too/long/for/the/registry/storage").unwrap();
         assert!(registry.insert(1, long, None, callback()).is_err());
-        assert!(registry.get(1).is_none());
+        assert!(registry.is_empty());
         for id in 0..2 {
             registry
                 .insert(id, keyexpr::new("a").unwrap(), None, callback())
@@ -315,14 +345,57 @@ mod tests {
             assert!(registry.decrease(id));
             assert!(!registry.decrease(id));
         }
-        registry.remove(0).unwrap();
-        registry.remove(1).unwrap();
-        assert!(registry.get(0).is_none());
-        assert!(registry.get(1).is_none());
-        registry
-            .insert(2, keyexpr::new("reused/key").unwrap(), None, callback())
-            .unwrap();
+        registry.clear();
+        assert!(registry.is_empty());
     }
+    fn exercise_pop<R: ZCallbacks<'static, SampleRef, Callback = Raw<16>, Future = Raw<32>>>() {
+        let mut registry = R::empty();
+        assert!(registry.is_empty());
+        assert_eq!(registry.pop(), None);
+        for id in [7, 9] {
+            registry
+                .insert(id, keyexpr::new("a").unwrap(), None, callback())
+                .unwrap();
+        }
+        registry.set_counter(7, 2).unwrap();
+
+        let first = registry.pop().unwrap();
+        assert!(matches!(first, 7 | 9));
+        assert!(registry.get(first).is_none());
+        assert!(!registry.is_empty());
+        assert_eq!(registry.intersects(keyexpr::new("a").unwrap()).count(), 1);
+        let second = registry.pop().unwrap();
+        assert!(matches!(second, 7 | 9));
+        assert_ne!(first, second);
+        assert!(registry.get(second).is_none());
+        assert!(registry.is_empty());
+        assert_eq!(registry.pop(), None);
+
+        // Popping registration 7 must preserve the independent request counter 7.
+        assert!(!registry.decrease(7));
+        assert!(registry.decrease(7));
+        assert!(!registry.decrease(7));
+        registry
+            .insert(11, keyexpr::new("reused/key").unwrap(), None, callback())
+            .unwrap();
+        registry.set_counter(11, 1).unwrap();
+        registry.clear();
+        assert!(registry.is_empty());
+        assert_eq!(registry.pop(), None);
+        assert!(!registry.decrease(11));
+    }
+
+    #[test]
+    fn fixed_pop_removes_registrations_and_preserves_request_counters() {
+        exercise_pop::<Registry>();
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn allocated_pop_removes_registrations_and_preserves_request_counters() {
+        exercise_pop::<AllocCallbacks<'static, SampleRef, Raw<16>, Raw<32>>>();
+    }
+
     #[test]
     fn expired_get_releases_key_and_callback() {
         let mut registry = Registry::empty();
@@ -335,6 +408,6 @@ mod tests {
             )
             .unwrap();
         registry.drop_timedout();
-        assert!(registry.get(1).is_none());
+        assert!(registry.is_empty());
     }
 }

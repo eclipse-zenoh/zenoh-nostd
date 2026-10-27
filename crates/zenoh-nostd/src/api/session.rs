@@ -259,6 +259,52 @@ impl<'transport, 'resources: 'transport, Config: ZSessionConfig>
         use crate::io::transport::ZTransportLinkTx;
         self.driver.tx().await.flush().await.map_err(Into::into)
     }
+
+    /// Remove application declarations and pending gets after their owners
+    /// finish successfully. After cancellation or a transport write error,
+    /// discard the session and transport instead of attempting this cleanup.
+    pub async fn clear_declarations(&self) -> Result<(), zenoh_proto::SessionError> {
+        use crate::io::transport::ZTransportLinkTx;
+        use zenoh_proto::{fields::*, msgs::*};
+        let mut state = self.state().await;
+        state.get_callbacks.clear();
+        while let Some(id) = state.sub_callbacks.pop() {
+            self.driver
+                .tx()
+                .await
+                .send(core::iter::once(NetworkMessage {
+                    reliability: Reliability::default(),
+                    qos: zenoh_proto::exts::QoS::default(),
+                    body: NetworkBody::Declare(Declare {
+                        body: DeclareBody::UndeclareSubscriber(UndeclareSubscriber {
+                            id,
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    }),
+                }))
+                .await?;
+        }
+        while let Some(id) = state.queryable_callbacks.pop() {
+            self.driver
+                .tx()
+                .await
+                .send(core::iter::once(NetworkMessage {
+                    reliability: Reliability::default(),
+                    qos: zenoh_proto::exts::QoS::default(),
+                    body: NetworkBody::Declare(Declare {
+                        body: DeclareBody::UndeclareQueryable(UndeclareQueryable {
+                            id,
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    }),
+                }))
+                .await?;
+        }
+        state.queryable_callbacks.clear();
+        Ok(())
+    }
 }
 
 #[cfg(test)]

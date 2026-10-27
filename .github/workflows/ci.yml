@@ -31,7 +31,7 @@ jobs:
           for project in platforms/* examples/common examples/embassy examples/native examples/wasm examples/embassy/esp/esp32s3-wifi examples/embassy/esp/esp32c6-pico-wifi examples/embassy/stm32/nucleo-h753zi-ethernet; do
             cargo fmt --manifest-path "$project/Cargo.toml" --check
           done
-          rustfmt --edition 2024 --check examples/*/src/headless.rs examples/embassy/*/*/src/headless.rs
+          rustfmt --edition 2024 --check examples/*/src/console.rs examples/*/src/headless.rs examples/embassy/*/*/src/console.rs examples/embassy/*/*/src/headless.rs
 
   clippy:
     name: Clippy
@@ -130,12 +130,6 @@ jobs:
           cargo clippy --bins -- -D warnings
           cargo clippy --bins --features alloc -- -D warnings
 
-      - name: Test shared scenarios and frontend
-        working-directory: examples/common
-        run: |
-          cargo test --locked
-          cargo test --locked --features alloc
-
   platform-wasm:
     name: Build platform (zenoh-wasm)
     runs-on: ubuntu-latest
@@ -171,6 +165,24 @@ jobs:
           cargo clippy --locked --no-default-features --features udp,medium-ip -- -D warnings
           cargo clippy --locked --features medium-ethernet,defmt -- -D warnings
 
+  cli:
+    name: CLI lifecycles
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: Swatinem/rust-cache@v2
+      - name: Runtime keys, cancellation, reconnect, and broker forwarding
+        run: nix develop -c just test-cli
+      - name: Unattended scenarios without CLI dependencies
+        run: nix develop -c just test-headless
+      - name: Headless target builds and dependency isolation
+        run: nix develop -c just check-headless
+      - name: Parser and bounded input handling
+        run: nix develop -c cargo test --locked --manifest-path examples/common/Cargo.toml
+
   firmware:
     name: Firmware (${{ matrix.board }}, ${{ matrix.mode }}, ${{ matrix.features || 'default' }})
     runs-on: ubuntu-latest
@@ -180,7 +192,7 @@ jobs:
       matrix:
         board: [esp32s3-wifi, esp32c6-pico-wifi, nucleo-h753zi-ethernet]
         features: ["", alloc]
-        mode: [headless]
+        mode: [cli, headless]
     steps:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v31
@@ -217,6 +229,7 @@ jobs:
       - platform-std
       - platform-wasm
       - platform-embassy
+      - cli
       - firmware
     if: always()
     steps:

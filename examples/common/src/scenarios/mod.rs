@@ -10,6 +10,8 @@ pub use context::{Context, Ready, ReportFn, Reporter};
 use embassy_futures::yield_now;
 use embassy_time::{Duration, Instant, Timer, with_timeout};
 use heapless::{String, Vec};
+#[cfg(all(feature = "alloc", feature = "cli"))]
+pub(crate) use runner::broker;
 pub use runner::run;
 use zenoh_nostd::session::ZSessionConfig;
 use zenoh_nostd::session::{GetResponse, Session, zenoh};

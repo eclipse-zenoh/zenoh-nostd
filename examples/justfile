@@ -29,8 +29,7 @@ fmt-examples:
     cargo fmt --manifest-path examples/embassy/esp/esp32s3-wifi/Cargo.toml
     cd examples/embassy/esp/esp32c6-pico-wifi && cargo fmt
     cd examples/embassy/stm32/nucleo-h753zi-ethernet && cargo fmt
-
-    rustfmt --edition 2024 examples/*/src/headless.rs examples/embassy/*/*/src/headless.rs
+    rustfmt --edition 2024 examples/*/src/console.rs examples/*/src/headless.rs examples/embassy/*/*/src/console.rs examples/embassy/*/*/src/headless.rs
 
 [working-directory: repository_root]
 fix-examples:
@@ -53,6 +52,36 @@ build-firmware board features="" mode="cli":
 build-firmware-esp32s3 features="" mode="cli":
     cd examples/embassy/esp/esp32s3-wifi && WIFI_PASSWORD=ci-placeholder ENDPOINT=tcp/192.0.2.1:7447 cargo +esp build {{ if mode == "headless" { "--no-default-features" } else { "" } }} --locked --release --bins --features="{{ features }}"
 
+[working-directory: repository_root]
+ping:
+    RUST_LOG=trace just std z_ping
+
+[working-directory: repository_root]
+pong:
+    RUST_LOG=trace just std z_pong
+
+[working-directory: repository_root]
+pub_thr:
+    RUST_LOG=trace just std z_pub_thr
+
+[working-directory: repository_root]
+sub_thr:
+    RUST_LOG=trace just std z_sub_thr
+
+[working-directory: repository_root]
+broker:
+    RUST_LOG=trace just std-alloc z_broker
+
+# One native application accepts either process arguments or interactive stdin.
+[working-directory: repository_root]
+std *args:
+    cd examples/native && RUST_LOG="${RUST_LOG:-info}" cargo run --locked --bin zenoh-app -- "$@"
+
+[working-directory: repository_root]
+std-alloc *args:
+    cd examples/native && RUST_LOG="${RUST_LOG:-info}" cargo run --locked --bin zenoh-app --features=alloc -- "$@"
+
+# Board commands select compile-time capabilities; scenarios run at the prompt.
 [working-directory: repository_root]
 esp32s3 features="":
     cd examples/embassy/esp/esp32s3-wifi && cargo +esp run --locked --release --bin zenoh-app --features="{{ features }}"
@@ -77,6 +106,34 @@ stm32 features="":
 build-stm32 features="":
     cd examples/embassy/stm32/nucleo-h753zi-ethernet && cargo build --locked --release --bin zenoh-app --features="{{ features }}"
 
+[working-directory: repository_root]
+terminal port:
+    python3 examples/common/serial_terminal.py "{{ port }}"
+
+[working-directory: repository_root]
+wasm features="":
+    just build-wasm "{{ features }}"
+    python3 -m http.server 8000 --bind 127.0.0.1 --directory ./examples/wasm/web
+
+[working-directory: repository_root]
+build-wasm features="":
+    cd examples/wasm && cargo build --locked --bin zenoh-app --features="{{ features }}"
+    wasm-bindgen --target web --out-dir ./examples/wasm/web/ ./target/wasm32-unknown-unknown/debug/zenoh-app.wasm --out-name z_example
+
+# Starts/stops an isolated router; never uses .envrc or changes a running router.
+[working-directory: repository_root]
+test-cli router="zenohd":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cli_tmp_dir=$(mktemp -d)
+    trap 'rm -rf "$cli_tmp_dir"' EXIT
+    cargo build --locked --manifest-path examples/native/Cargo.toml --bin zenoh-app
+    cp target/debug/zenoh-app "$cli_tmp_dir/fixed"
+    cargo build --locked --manifest-path examples/native/Cargo.toml --bin zenoh-app --features=alloc
+    cp target/debug/zenoh-app "$cli_tmp_dir/alloc"
+    PYTHONDONTWRITEBYTECODE=1 python3 examples/native/tests/cli_smoke.py --cli "$cli_tmp_dir/fixed" --alloc-cli "$cli_tmp_dir/alloc" --router "{{ router }}"
+
+# Unattended scenarios use typed settings, never command strings or a terminal.
 [working-directory: repository_root]
 std-headless features="":
     cd examples/native && cargo run --locked --no-default-features --features="{{ features }}" --bin zenoh-app
@@ -115,3 +172,16 @@ wasm-headless scenario="pub" features="":
     just build-wasm-headless "{{ scenario }}" "{{ features }}"
     python3 -m http.server 8000 --bind 127.0.0.1 --directory ./examples/wasm/web
 
+[working-directory: repository_root]
+test-headless router="zenohd":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    test_tmp_dir=$(mktemp -d)
+    trap 'rm -rf "$test_tmp_dir"' EXIT
+    cargo build --locked --manifest-path examples/native/Cargo.toml --bin zenoh-app --target-dir target/headless-test --features=alloc
+    cp target/headless-test/debug/zenoh-app "$test_tmp_dir/host"
+    cargo build --locked --manifest-path examples/native/Cargo.toml --bin zenoh-app --target-dir target/headless-test --no-default-features
+    cp target/headless-test/debug/zenoh-app "$test_tmp_dir/fixed"
+    cargo build --locked --manifest-path examples/native/Cargo.toml --bin zenoh-app --target-dir target/headless-test --no-default-features --features=alloc
+    cp target/headless-test/debug/zenoh-app "$test_tmp_dir/alloc"
+    PYTHONDONTWRITEBYTECODE=1 python3 examples/native/tests/headless_smoke.py --host "$test_tmp_dir/host" --fixed "$test_tmp_dir/fixed" --alloc "$test_tmp_dir/alloc" --router "{{ router }}"

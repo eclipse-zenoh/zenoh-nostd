@@ -129,16 +129,24 @@ their own Cargo projects under [examples/](examples/README.md); their `just`
 recipes remain available from the repository root. When using Cargo directly,
 run it from the application's directory to load its `.cargo/config.toml`.
 
-Each target builds one `zenoh-app`. Select a startup scenario instead of a separate binary:
+Each target builds one `zenoh-app`, with the optional `cli` feature enabled by default:
+
+```bash
+just std
+just std z_put demo/example "hello world"
+```
+
+Use `help` at the prompt for commands. `just wasm`, `just esp32s3`, `just esp32c6`,
+and `just stm32` start the other applications. MCU consoles use UART by default.
+Prefix MCU recipes with `build-` to build without flashing.
+
+To run a startup scenario without the CLI:
 
 ```bash
 SCENARIO=pub COUNT=3 just std-headless
-COUNT=3 just esp32s3-headless sub
 ```
 
-Use `wasm-headless`, `esp32c6-headless`, or `stm32-headless` for other targets;
-prefix MCU recipes with `build-` to build without flashing. See
-[startup settings](examples/README.md) for scenarios and optional features.
+See [application commands and headless recipes](examples/README.md) for other scenarios and optional features.
 
 Set `ENDPOINT=<endpoint>` to specify the endpoint (default `tcp/127.0.0.1:7447`).
 Set `LISTEN=1` to listen. Native settings are read at startup; MCU/browser settings
@@ -157,11 +165,11 @@ This firmware has not been tested on a physical NUCLEO-H753ZI board.
 Example of few commands:
 
 ```bash
-ENDPOINT=tcp/127.0.0.1:7447 SCENARIO=pub just std-headless
+ENDPOINT=tcp/127.0.0.1:7447 just std z_pub demo/example "hello"
 ```
 
 ```bash
-WIFI_PASSWORD=* ENDPOINT=tcp/192.168.21.1:7447 just esp32s3-headless sub
+WIFI_PASSWORD=* ENDPOINT=tcp/192.168.21.1:7447 just esp32s3
 ```
 
 ### Example: Local TCP
@@ -176,10 +184,10 @@ In two terminals:
 
 ```bash
 # Terminal 1
-SCENARIO=pub just std-headless
+just std z_pub demo/example "hello"
 
 # Terminal 2
-SCENARIO=sub just std-headless
+just std z_sub demo/example
 ```
 
 ### Example: WebSocket + WASM
@@ -194,17 +202,17 @@ Then:
 
 ```bash
 # Terminal 1 (WASM)
-ENDPOINT=ws/127.0.0.1:7446 just wasm-headless pub
+ENDPOINT=ws/127.0.0.1:7446 just wasm
 
 # Terminal 2 (STD)
-SCENARIO=sub just std-headless
+just std z_sub demo/example
 ```
 
 > 📦 Note: For WASM, ensure you have:
 >
 > * `wasm32-unknown-unknown` target
 > * `wasm-bindgen-cli`
-> * Python 3 (used by `just wasm-headless` to serve the browser example)
+> * Python 3 (used by `just wasm` to serve the browser example)
 
 ---
 

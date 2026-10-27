@@ -1,5 +1,7 @@
 #![no_std]
 
+#[cfg(feature = "cli")]
+pub mod cli;
 pub mod scenarios;
 
 #[cfg(feature = "alloc")]

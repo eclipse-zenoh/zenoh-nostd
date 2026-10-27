@@ -1,3 +1,3 @@
 # wasm
 
-See [startup scenarios](../../examples/README.md). Run Cargo from this directory to use the local target configuration.
+See [application commands](../../examples/README.md). The default CLI is optional; headless entry points share the same typed operations.

@@ -11,10 +11,12 @@ default-run = "zenoh-app"
 resolver = "3"
 
 [features]
-default = []
+default = ["cli"]
+cli = ["zenoh-examples-common/cli", "dep:libc"]
 alloc = ["zenoh-nostd/alloc", "zenoh-examples-common/alloc"]
 
 [dependencies]
+libc = { version = "0.2", optional = true }
 zenoh-nostd = { path = "../../crates/zenoh-nostd", default-features = false, features = ["log"] }
 zenoh-examples-common = { path = "../common", default-features = false }
 static_cell = "2.1.1"

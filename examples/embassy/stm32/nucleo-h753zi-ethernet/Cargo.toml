@@ -11,11 +11,13 @@ default-run = "zenoh-app"
 resolver = "3"
 
 [features]
-default = []
+default = ["cli"]
+cli = ["zenoh-examples-common/cli", "zenoh-examples-embassy/cli", "dep:embedded-io-async-06"]
 alloc = ["zenoh-nostd/alloc", "zenoh-examples-embassy/alloc", "zenoh-examples-common/alloc", "dep:embedded-alloc"]
 
 [dependencies]
 zenoh-examples-embassy = { path = "../..", default-features = false }
+embedded-io-async-06 = { package = "embedded-io-async", version = "0.6.1", optional = true }
 zenoh-nostd = { path = "../../../../crates/zenoh-nostd", default-features = false, features = ["embedded", "defmt"] }
 zenoh-examples-common = { path = "../../../common", default-features = false }
 static_cell = "2.1.1"

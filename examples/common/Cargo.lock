@@ -3,6 +3,12 @@
 version = 4
 
 [[package]]
+name = "bitflags"
+version = "2.13.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
+
+[[package]]
 name = "block-buffer"
 version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -33,6 +39,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "convert_case"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec182b0ca2f35d8fc196cf3404988fd8b8c739a4d270ff118a398feb0cbec1ca"
+dependencies = [
+ "unicode-segmentation",
+]
+
+[[package]]
 name = "cpufeatures"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -55,6 +70,41 @@ checksum = "78c8292055d1c1df0cce5d180393dc8cce0abec0a7102adb6c7b1eef6016d60a"
 dependencies = [
  "generic-array",
  "typenum",
+]
+
+[[package]]
+name = "darling"
+version = "0.20.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fc7f46116c46ff9ab3eb1597a45688b6715c6e628b5c133e288e709a29bcb4ee"
+dependencies = [
+ "darling_core",
+ "darling_macro",
+]
+
+[[package]]
+name = "darling_core"
+version = "0.20.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0d00b9596d185e565c2207a0b01f8bd1a135483d02d9b7b0a54b11da8d53412e"
+dependencies = [
+ "fnv",
+ "ident_case",
+ "proc-macro2",
+ "quote",
+ "strsim",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "darling_macro"
+version = "0.20.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fc34b93ccb385b40dc71c6fceac4b2ad23662c7eeb248cf10d529b7e055b6ead"
+dependencies = [
+ "darling_core",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -96,7 +146,7 @@ dependencies = [
  "heck",
  "proc-macro2",
  "quote",
- "syn",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -168,6 +218,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "embedded-cli"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e08e0bae60fe7389ddcb0a95e5ed1bf007e4c2a13d3925bd2db6f4c4923c08af"
+dependencies = [
+ "bitflags",
+ "embedded-cli-macros",
+ "embedded-io 0.6.1",
+ "ufmt",
+]
+
+[[package]]
+name = "embedded-cli-macros"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c10085b0b308f1fb243fb19c739766a13030ddd7b281bc8034acc431932522bf"
+dependencies = [
+ "convert_case",
+ "darling",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "embedded-hal"
 version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -221,6 +296,12 @@ checksum = "2564b9f813c544241430e147d8bc454815ef9ac998878d30cc3055449f7fd4c0"
 dependencies = [
  "embedded-io 0.7.1",
 ]
+
+[[package]]
+name = "fnv"
+version = "1.0.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 
 [[package]]
 name = "futures-core"
@@ -289,6 +370,12 @@ name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
+
+[[package]]
+name = "ident_case"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
 
 [[package]]
 name = "keccak"
@@ -400,6 +487,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "strsim"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
+
+[[package]]
+name = "syn"
+version = "1.0.109"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72b64191b275b66ffe2469e8af2c1cfe3bafa67b529ead792a6d0160888b4237"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "unicode-ident",
+]
+
+[[package]]
 name = "syn"
 version = "2.0.119"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -423,6 +527,33 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "214ca0b2191785cbc06209b9ca1861e048e39b5ba33574b3cedd58363d5bb5f6"
 
 [[package]]
+name = "ufmt"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1a64846ec02b57e9108d6469d98d1648782ad6bb150a95a9baac26900bbeab9d"
+dependencies = [
+ "ufmt-macros",
+ "ufmt-write",
+]
+
+[[package]]
+name = "ufmt-macros"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d337d3be617449165cb4633c8dece429afd83f84051024079f97ad32a9663716"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "ufmt-write"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e87a2ed6b42ec5e28cc3b94c09982969e9227600b2e3dcbc1db927a84c06bd69"
+
+[[package]]
 name = "uhlc"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -437,6 +568,12 @@ name = "unicode-ident"
 version = "1.0.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563"
+
+[[package]]
+name = "unicode-segmentation"
+version = "1.13.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c6f5d3c3b1bf09027a88a6bc961fc00497d651009560b5463668dc81b0fa87a8"
 
 [[package]]
 name = "version_check"
@@ -462,7 +599,7 @@ version = "0.1.0"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -472,6 +609,9 @@ dependencies = [
  "embassy-futures",
  "embassy-sync",
  "embassy-time",
+ "embedded-cli",
+ "embedded-io 0.6.1",
+ "embedded-io-async 0.7.0",
  "heapless 0.8.0",
  "zenoh-nostd",
 ]
