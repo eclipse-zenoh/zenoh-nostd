@@ -4,6 +4,7 @@ use zenoh_nostd::session::zenoh;
 use embassy_net::{DhcpConfig, Runner, StackResources};
 use embassy_time::{Duration, Timer};
 use esp_hal::{clock::CpuClock, rng::Rng, timer::timg::TimerGroup};
+#[cfg(not(feature = "console-usb"))]
 use esp_println as _;
 use esp_radio::{
     Controller,

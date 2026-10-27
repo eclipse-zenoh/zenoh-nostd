@@ -19,3 +19,7 @@ pub(crate) fn init_wifi_heap() {
     // C6 reclaimed RAM is smaller than the radio heap; use ordinary internal SRAM.
     esp_alloc::heap_allocator!(size: 73744);
 }
+
+#[cfg(feature = "console-usb")]
+#[path = "../../usb_serial_jtag.rs"]
+pub mod usb_serial_jtag;

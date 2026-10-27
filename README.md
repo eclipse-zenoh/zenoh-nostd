@@ -137,7 +137,8 @@ just std z_put demo/example "hello world"
 ```
 
 Use `help` at the prompt for commands. `just wasm`, `just esp32s3`, `just esp32c6`,
-and `just stm32` start the other applications. MCU consoles use UART by default.
+and `just stm32` start the other applications. MCU consoles use UART by default; select `console-usb` for USB
+(see the [application guide](examples/README.md)).
 Prefix MCU recipes with `build-` to build without flashing.
 
 To run a startup scenario without the CLI:

@@ -20,8 +20,12 @@ pub fn init_board() -> embassy_stm32::Peripherals {
     runtime::init_heap();
     let mut config = embassy_stm32::Config::default();
     config.rcc.hsi48 = Some(embassy_stm32::rcc::Hsi48Config {
-        sync_from_usb: false,
+        sync_from_usb: cfg!(feature = "console-usb"),
     });
+    #[cfg(feature = "console-usb")]
+    {
+        config.rcc.mux.usbsel = embassy_stm32::rcc::mux::Usbsel::HSI48;
+    }
     embassy_stm32::init(config)
 }
 pub async fn init_session_example(spawner: &embassy_executor::Spawner) -> ExampleConfig {

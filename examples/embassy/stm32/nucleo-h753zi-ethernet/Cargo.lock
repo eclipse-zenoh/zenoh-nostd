@@ -414,6 +414,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "embassy-net-driver-channel"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b7b2739fbcf6cd206ae08779c7d709087b16577d255f2ea4a45bc4bbbf305b3f"
+dependencies = [
+ "embassy-futures",
+ "embassy-net-driver",
+ "embassy-sync 0.7.2",
+]
+
+[[package]]
 name = "embassy-stm32"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -525,6 +536,21 @@ checksum = "168297bf80aaf114b3c9ad589bf38b01b3009b9af7f97cd18086c5bbf96f5693"
 dependencies = [
  "embassy-executor-timer-queue",
  "heapless 0.9.3",
+]
+
+[[package]]
+name = "embassy-usb"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc4462e48b19a4f401a11901bdd981aab80c6a826608016a0bdc73cbbab31954"
+dependencies = [
+ "defmt 1.2.0",
+ "embassy-futures",
+ "embassy-net-driver-channel",
+ "embassy-sync 0.7.2",
+ "embassy-usb-driver",
+ "embedded-io-async 0.6.1",
+ "heapless 0.8.0",
 ]
 
 [[package]]
@@ -1232,6 +1258,7 @@ dependencies = [
 name = "zenoh-examples-embassy"
 version = "0.1.0"
 dependencies = [
+ "embassy-usb",
  "static_cell",
  "zenoh-examples-common",
 ]
@@ -1251,6 +1278,7 @@ dependencies = [
  "embassy-stm32",
  "embassy-sync 0.7.2",
  "embassy-time",
+ "embassy-usb",
  "embedded-alloc",
  "embedded-io-async 0.6.1",
  "getrandom",

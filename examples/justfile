@@ -7,7 +7,7 @@ export CARGO_TARGET_DIR := repository_root / "target"
 
 [working-directory: repository_root]
 check-examples:
-    cd examples/embassy && cargo test --locked  && cargo clippy --locked  -- -D warnings
+    cd examples/embassy && cargo test --locked --features usb-console && cargo clippy --locked --features usb-console -- -D warnings
     cd examples/common && cargo test && cargo test --features=alloc && cargo clippy && cargo clippy --features=alloc
     cd examples/native && cargo clippy --bins && cargo clippy --bins --features=alloc
     cd examples/wasm && cargo clippy --bins && cargo clippy --bins --features=alloc
@@ -15,10 +15,15 @@ check-examples:
     cd examples/embassy/esp/esp32s3-wifi && WIFI_PASSWORD=ci-placeholder ENDPOINT=tcp/192.0.2.1:7447 cargo +esp check --locked --bins --features=alloc
     cd examples/embassy/esp/esp32c6-pico-wifi && WIFI_PASSWORD=ci-placeholder ENDPOINT=tcp/192.0.2.1:7447 cargo clippy --locked --bins
     cd examples/embassy/esp/esp32c6-pico-wifi && WIFI_PASSWORD=ci-placeholder ENDPOINT=tcp/192.0.2.1:7447 cargo clippy --locked --bins --features=alloc
+    cd examples/embassy/esp/esp32s3-wifi && WIFI_PASSWORD=ci-placeholder cargo +esp check --locked --bin zenoh-app --features=console-usb
+    cd examples/embassy/esp/esp32s3-wifi && WIFI_PASSWORD=ci-placeholder cargo +esp check --locked --bin zenoh-app --features=alloc,console-usb
+    cd examples/embassy/esp/esp32c6-pico-wifi && WIFI_PASSWORD=ci-placeholder cargo clippy --locked --bin zenoh-app --features=console-usb
+    cd examples/embassy/esp/esp32c6-pico-wifi && WIFI_PASSWORD=ci-placeholder cargo clippy --locked --bin zenoh-app --features=alloc,console-usb
     cd examples/embassy/stm32/nucleo-h753zi-ethernet && ENDPOINT=tcp/192.0.2.1:7447 cargo clippy --locked --bins
     cd examples/embassy/stm32/nucleo-h753zi-ethernet && ENDPOINT=tcp/192.0.2.1:7447 cargo clippy --locked --bins --features=alloc
+    cd examples/embassy/stm32/nucleo-h753zi-ethernet && ENDPOINT=tcp/192.0.2.1:7447 cargo clippy --locked --bins --features=console-usb
+    cd examples/embassy/stm32/nucleo-h753zi-ethernet && ENDPOINT=tcp/192.0.2.1:7447 cargo clippy --locked --bins --features=alloc,console-usb
     just check-headless
-
 
 [working-directory: repository_root]
 fmt-examples:

@@ -180,6 +180,8 @@ jobs:
         run: nix develop -c just test-headless
       - name: Headless target builds and dependency isolation
         run: nix develop -c just check-headless
+      - name: Shared CDC packet handling
+        run: nix develop -c cargo test --locked --manifest-path examples/embassy/Cargo.toml --features usb-console
       - name: Parser and bounded input handling
         run: nix develop -c cargo test --locked --manifest-path examples/common/Cargo.toml
 
@@ -191,8 +193,13 @@ jobs:
       fail-fast: false
       matrix:
         board: [esp32s3-wifi, esp32c6-pico-wifi, nucleo-h753zi-ethernet]
-        features: ["", alloc]
+        features: ["", alloc, console-usb, "alloc,console-usb"]
         mode: [cli, headless]
+        exclude:
+          - mode: headless
+            features: console-usb
+          - mode: headless
+            features: "alloc,console-usb"
     steps:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v31
