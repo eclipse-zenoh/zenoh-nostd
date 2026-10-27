@@ -220,34 +220,19 @@ macro_rules! __static_session {
 
 /// Prepares a session builder.
 ///
-/// The expression form uses local resources except on ESP32-S3, where it uses
-/// static storage. Use the `static` form for sessions passed to spawned tasks.
-/// Static storage can be initialized only once per call site, including when
-/// opening a session fails or is cancelled.
+/// The expression form uses local resources. Use the `static` form when the
+/// session needs static storage. Static storage can be initialized only once per call site,
+/// including when opening a session fails or is cancelled.
 #[macro_export]
 macro_rules! __session {
     (static $CONFIG:ty: $config:expr $(,)?) => {
         $crate::__static_session!($CONFIG: $config)
     };
     ($CONFIG:ty: $config:expr $(,)?) => {{
-        #[cfg(not(feature = "esp32s3"))]
-        macro_rules! __session_for_platform {
-            () => {
-                $crate::session::SessionBuilder::<$CONFIG> {
-                    resources: &mut $crate::session::Resources::default(),
-                    config: &$config,
-                    ignore_invalid_sn: false,
-                }
-            };
+        $crate::session::SessionBuilder::<$CONFIG> {
+            resources: &mut $crate::session::Resources::default(),
+            config: &$config,
+            ignore_invalid_sn: false,
         }
-
-        #[cfg(feature = "esp32s3")]
-        macro_rules! __session_for_platform {
-            () => {
-                $crate::__static_session!($CONFIG: $config)
-            };
-        }
-
-        __session_for_platform!()
     }};
 }

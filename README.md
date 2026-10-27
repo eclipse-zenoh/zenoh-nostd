@@ -74,6 +74,7 @@ async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
     //     `let builder = zenoh::session!(static ExampleConfig: config);`
     //     See the `z_open` example
     //  2) Use `select` or `join` to run both the session and the subscriber in the same task. See the `z_put` example.
+    // ESP32-S3 users must use the `static` form above.
     let builder = zenoh::session!(ExampleConfig: config);
     let session = builder.connect(endpoint).await?;
 
