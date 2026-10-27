@@ -30,6 +30,7 @@ target
 *.wasm
 *.ts
 *.js
+!.github/scripts/*.js
 
 # Old
 old/

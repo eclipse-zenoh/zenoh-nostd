@@ -4,3 +4,8 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
+    # Titles like `chore(deps): bump ...`, which the PR labels workflow maps
+    # to the `dependencies` label (Dependabot also adds that label itself).
+    commit-message:
+      prefix: chore
+      include: scope

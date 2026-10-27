@@ -1,0 +1,147 @@
+# Labels PRs from their Conventional-Commit title, then requires a changelog
+# label (used by .github/release.yml to build the release notes).
+#
+# Both jobs live in one workflow on purpose: labels added with GITHUB_TOKEN do
+# not trigger new workflow runs, so a separate check workflow would keep the
+# red result from the `opened` event.
+#
+# SECURITY: pull_request_target runs with a write token, also on fork PRs.
+# Never check out or run code from the PR, and never interpolate PR-controlled
+# text (title, body, branch names, ...) into a `run:` script.
+#
+# The label mapping below is tested by .github/scripts/pr-labels.test.js,
+# which extracts the code between the BEGIN/END markers from this file.
+
+name: PR labels
+
+on:
+  pull_request_target:
+    types: [opened, edited, reopened, synchronize, labeled, unlabeled]
+
+permissions: {}
+
+jobs:
+  auto-label:
+    name: Label PR from title
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      issues: write
+    steps:
+      # Skipped on labeled/unlabeled so a maintainer's change is never undone.
+      - name: Set changelog labels from the PR title
+        if: github.event.action != 'labeled' && github.event.action != 'unlabeled'
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        with:
+          script: |
+            // BEGIN label-mapping
+            const CHANGELOG_LABELS = ['breaking-change', 'enhancement', 'new feature', 'bug', 'documentation', 'dependencies', 'internal'];
+            const TYPE_LABELS = new Map([
+              ['feat', 'enhancement'],
+              ['perf', 'enhancement'],
+              ['fix', 'bug'],
+              ['docs', 'documentation'],
+              ['deps', 'dependencies'],
+              ['ci', 'internal'],
+              ['chore', 'internal'],
+              ['refactor', 'internal'],
+              ['test', 'internal'],
+              ['style', 'internal'],
+              ['build', 'internal'],
+              ['revert', 'internal'],
+            ]);
+            const DEPS_SCOPES = ['deps', 'deps-dev'];
+            const TITLE_RE = /^(\w+)(?:\(([^)]*)\))?(!)?:\s/;
+            const BREAKING_BODY_RE = /^BREAKING[ -]CHANGE:/m;
+
+            // `type(scope)!: subject` -> { label, breaking }, or null if the
+            // title is not a Conventional-Commit title. `label` is null for
+            // unknown types.
+            function parseTitle(title) {
+              const m = TITLE_RE.exec((title || '').trim());
+              if (!m) return null;
+              const type = m[1].toLowerCase();
+              const scope = (m[2] || '').trim().toLowerCase();
+              const label = DEPS_SCOPES.includes(scope) ? 'dependencies' : TYPE_LABELS.get(type) ?? null;
+              return { label, breaking: m[3] === '!' };
+            }
+
+            // Labels to add/remove, given the PR's current labels. On a title
+            // edit, the labels the old title would have produced are swapped
+            // out. A changelog label already on the PR (e.g. set by a
+            // maintainer) is never replaced; only `breaking-change` is added.
+            function planLabels({ action, title, body, oldTitle, current }) {
+              const now = parseTitle(title);
+              const breaking = Boolean(now?.breaking) || BREAKING_BODY_RE.test(body || '');
+
+              const stale = [];
+              if (action === 'edited' && typeof oldTitle === 'string') {
+                const before = parseTitle(oldTitle);
+                if (before?.label && before.label !== now?.label) stale.push(before.label);
+                if (before?.breaking && !breaking) stale.push('breaking-change');
+              }
+              const remove = stale.filter((l) => current.includes(l));
+              const kept = current.filter((l) => !remove.includes(l));
+
+              const add = [];
+              const hasTypeLabel = kept.some((l) => l !== 'breaking-change' && CHANGELOG_LABELS.includes(l));
+              if (now?.label && !hasTypeLabel) add.push(now.label);
+              if (breaking && !kept.includes('breaking-change')) add.push('breaking-change');
+              return { add, remove };
+            }
+            // END label-mapping
+
+            const pr = context.payload.pull_request;
+            const issue = { ...context.repo, issue_number: pr.number };
+            // Read live labels: the event payload may already be stale.
+            const current = (await github.paginate(github.rest.issues.listLabelsOnIssue, issue))
+              .map((l) => l.name);
+
+            const { add, remove } = planLabels({
+              action: context.payload.action,
+              title: pr.title,
+              body: pr.body,
+              oldTitle: context.payload.changes?.title?.from,
+              current,
+            });
+            core.info(`Current labels: [${current.join(', ')}]`);
+
+            for (const name of remove) {
+              core.info(`Removing label: ${name}`);
+              try {
+                await github.rest.issues.removeLabel({ ...issue, name });
+              } catch (e) {
+                if (e.status !== 404) throw e;
+              }
+            }
+            if (add.length > 0) {
+              core.info(`Adding labels: ${add.join(', ')}`);
+              await github.rest.issues.addLabels({ ...issue, labels: add });
+            }
+            if (add.length === 0 && remove.length === 0) core.info('No label changes.');
+
+  check-labels:
+    # Branch protection matches on this name; do not rename.
+    name: Check PR labels
+    needs: auto-label
+    # Run even if labeling failed: a skipped required check counts as passing.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    steps:
+      # Reads the PR's current labels from the API (not the event payload), so
+      # it sees the labels added by the auto-label job.
+      - name: Require at least one changelog label
+        uses: mheap/github-action-required-labels@23e10fde7e062233401931a0eece796cd9bf3177 # v5.6.0
+        with:
+          mode: minimum
+          count: 1
+          labels: >-
+            breaking-change, enhancement, new feature, bug,
+            documentation, dependencies, internal
+          message: >-
+            This PR needs at least one changelog label ({{ provided }}); found:
+            [{{ applied }}]. Use a Conventional-Commit PR title (`feat:`,
+            `fix:`, `docs:`, `chore:`, …) so the label is added automatically,
+            or ask a maintainer to add a label.
