@@ -126,7 +126,7 @@ embassy-time = { workspace = true }
 embassy-futures = { workspace = true }
 
 zenoh-std = { version = "0.1.0", path = "platforms/zenoh-std", optional = true }
-zenoh-embassy = { version = "0.1.0", path = "platforms/zenoh-embassy", optional = true }
+zenoh-embassy = { version = "0.1.0", path = "platforms/zenoh-embassy", optional = true, features = ["defmt"] }
 zenoh-wasm = { version = "0.1.0", path = "platforms/zenoh-wasm", optional = true }
 
 env_logger = { version = "0.11", optional = true}

@@ -145,7 +145,7 @@ jobs:
           default: true
           buildtargets: esp32s3
       - uses: Swatinem/rust-cache@v2
-      - run: cargo build --manifest-path platforms/zenoh-embassy/Cargo.toml
+      - run: cargo build --manifest-path platforms/zenoh-embassy/Cargo.toml --features medium-ethernet,defmt
 
   # NOTE: In GitHub repository settings, the "Require status checks to pass
   # before merging" branch protection rule ensures that commits are only merged

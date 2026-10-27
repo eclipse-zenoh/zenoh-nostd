@@ -3560,7 +3560,6 @@ version = "0.1.0"
 dependencies = [
  "embassy-net",
  "embedded-io-async 0.7.0",
- "getrandom",
  "zenoh-nostd",
 ]
 
