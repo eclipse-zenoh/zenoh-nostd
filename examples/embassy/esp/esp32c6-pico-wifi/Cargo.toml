@@ -11,8 +11,10 @@ default-run = "zenoh-app"
 resolver = "3"
 
 [features]
+# UART is the default. USB text mode silences the defmt transport on that port.
 default = ["cli"]
 cli = ["zenoh-examples-common/cli", "zenoh-examples-embassy/cli"]
+console-usb = ["cli"]
 alloc = ["zenoh-nostd/alloc", "zenoh-examples-embassy/alloc", "zenoh-examples-common/alloc"]
 
 [dependencies]

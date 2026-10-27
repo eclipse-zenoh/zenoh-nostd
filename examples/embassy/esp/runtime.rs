@@ -13,3 +13,16 @@ fn getrandom_custom(bytes: &mut [u8]) -> Result<(), getrandom::Error> {
     Rng::new().read(bytes);
     Ok(())
 }
+
+// Keep USB text mode free of binary defmt traffic. This logger has no shared
+// state and deliberately discards records; command results use the CLI writer.
+#[cfg(feature = "console-usb")]
+#[defmt::global_logger]
+struct SilentLogger;
+#[cfg(feature = "console-usb")]
+unsafe impl defmt::Logger for SilentLogger {
+    fn acquire() {}
+    unsafe fn release() {}
+    unsafe fn write(_: &[u8]) {}
+    unsafe fn flush() {}
+}
