@@ -130,6 +130,13 @@ impl fmt::Display for Endpoint<'_> {
     }
 }
 
+#[cfg(feature = "defmt")]
+impl defmt::Format for Endpoint<'_> {
+    fn format(&self, f: defmt::Formatter) {
+        defmt::write!(f, "{}", self.inner)
+    }
+}
+
 impl fmt::Debug for Endpoint<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{self}")

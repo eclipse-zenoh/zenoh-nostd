@@ -13,25 +13,22 @@ pub mod session {
     pub use super::config::ZSessionConfig;
     pub use super::io::transport::TransportLinkManager;
     pub use super::resources::Resources;
+    #[doc(hidden)]
+    pub use static_cell::StaticCell as __StaticCell;
     pub use zenoh_proto::{Endpoint, Error};
 
     pub use super::api::{
         query::*,
         response::*,
         sample::*,
-        session::Session,
+        session::{Session, SessionBuilder, StaticSessionBuilder},
         session::{get::*, r#pub::*, put::*, querier::*, queryable::*, sub::*},
     };
 
     pub mod zenoh {
         pub use super::super::api::callbacks::storage;
-        pub use super::super::api::session::{
-            session_connect as connect,
-            session_connect_ignore_invalid_sn as connect_ignore_invalid_sn,
-            session_listen as listen, session_listen_ignore_invalid_sn as listen_ignore_invalid_sn,
-        };
 
-        pub use crate::{__session_connect as connect, __session_listen as listen};
+        pub use crate::__session as session;
 
         pub use zenoh_proto::{debug, error, info, keyexpr, trace, warn, zbail};
 

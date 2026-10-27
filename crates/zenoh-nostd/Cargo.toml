@@ -28,6 +28,7 @@ zenoh-sansio.workspace = true
 
 dyn-utils.workspace = true
 heapless.workspace = true
+static_cell.workspace = true
 
 embassy-futures.workspace = true
 embassy-time.workspace = true

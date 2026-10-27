@@ -201,7 +201,7 @@ pub async fn init_broker_example(spawner: &embassy_executor::Spawner) -> Example
         let (stack, runner) = embassy_net::new(
             wifi_interface,
             config,
-            RESOURCES.init(StackResources::new()),
+            RESOURCES.init_with(StackResources::new),
             net_seed,
         );
 
@@ -286,7 +286,7 @@ pub async fn init_session_example(spawner: &embassy_executor::Spawner) -> Exampl
         let (stack, runner) = embassy_net::new(
             wifi_interface,
             config,
-            RESOURCES.init(StackResources::new()),
+            RESOURCES.init_with(StackResources::new),
             net_seed,
         );
 
