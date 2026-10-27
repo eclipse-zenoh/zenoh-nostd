@@ -10,6 +10,7 @@ exclude = [
     "platforms/zenoh-embassy",
     "platforms/zenoh-wasm",
     "examples/common",
+    "examples/embassy",
     "examples/native",
     "examples/wasm",
     "examples/embassy/esp/esp32s3-wifi",

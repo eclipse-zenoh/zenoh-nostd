@@ -28,10 +28,10 @@ jobs:
           components: rustfmt
       - run: |
           cargo fmt --all --check
-          for project in platforms/* examples/common examples/native examples/wasm examples/embassy/esp/esp32s3-wifi examples/embassy/esp/esp32c6-pico-wifi examples/embassy/stm32/nucleo-h753zi-ethernet; do
+          for project in platforms/* examples/common examples/embassy examples/native examples/wasm examples/embassy/esp/esp32s3-wifi examples/embassy/esp/esp32c6-pico-wifi examples/embassy/stm32/nucleo-h753zi-ethernet; do
             cargo fmt --manifest-path "$project/Cargo.toml" --check
           done
-          rustfmt --edition 2024 --check examples/common/legacy/*.rs
+          rustfmt --edition 2024 --check examples/*/src/headless.rs examples/embassy/*/*/src/headless.rs
 
   clippy:
     name: Clippy
@@ -130,6 +130,12 @@ jobs:
           cargo clippy --bins -- -D warnings
           cargo clippy --bins --features alloc -- -D warnings
 
+      - name: Test shared scenarios and frontend
+        working-directory: examples/common
+        run: |
+          cargo test --locked
+          cargo test --locked --features alloc
+
   platform-wasm:
     name: Build platform (zenoh-wasm)
     runs-on: ubuntu-latest
@@ -174,7 +180,7 @@ jobs:
       matrix:
         board: [esp32s3-wifi, esp32c6-pico-wifi, nucleo-h753zi-ethernet]
         features: ["", alloc]
-        mode: [cli]
+        mode: [headless]
     steps:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v31

@@ -1,96 +1,117 @@
-# Independent example projects; all recipes are imported at the root.
+# Imported by ../justfile; also runnable directly from examples/.
+# Run from the repository root so standalone Cargo configs and shared build
+# artifacts behave identically regardless of where just was invoked.
 set positional-arguments
 repository_root := parent_directory(source_directory())
 export CARGO_TARGET_DIR := repository_root / "target"
 
 [working-directory: repository_root]
 check-examples:
-    cd examples/common && cargo clippy --locked
-    cd examples/native && cargo clippy --locked --bins && cargo clippy --locked --bins --features alloc
-    cd examples/wasm && cargo clippy --locked --bins && cargo clippy --locked --bins --features alloc
+    cd examples/embassy && cargo test --locked  && cargo clippy --locked  -- -D warnings
+    cd examples/common && cargo test && cargo test --features=alloc && cargo clippy && cargo clippy --features=alloc
+    cd examples/native && cargo clippy --bins && cargo clippy --bins --features=alloc
+    cd examples/wasm && cargo clippy --bins && cargo clippy --bins --features=alloc
     cd examples/embassy/esp/esp32s3-wifi && WIFI_PASSWORD=ci-placeholder ENDPOINT=tcp/192.0.2.1:7447 cargo +esp check --locked --bins
-    cd examples/embassy/esp/esp32s3-wifi && WIFI_PASSWORD=ci-placeholder ENDPOINT=tcp/192.0.2.1:7447 cargo +esp check --locked --bins --features alloc
-    cd examples/embassy/esp/esp32c6-pico-wifi && WIFI_PASSWORD=ci-placeholder ENDPOINT=tcp/192.0.2.1:7447 cargo check --locked --bins
-    cd examples/embassy/esp/esp32c6-pico-wifi && WIFI_PASSWORD=ci-placeholder ENDPOINT=tcp/192.0.2.1:7447 cargo check --locked --bins --features alloc
-    cd examples/embassy/stm32/nucleo-h753zi-ethernet && WIFI_PASSWORD=ci-placeholder ENDPOINT=tcp/192.0.2.1:7447 cargo check --locked --bins
-    cd examples/embassy/stm32/nucleo-h753zi-ethernet && WIFI_PASSWORD=ci-placeholder ENDPOINT=tcp/192.0.2.1:7447 cargo check --locked --bins --features alloc
+    cd examples/embassy/esp/esp32s3-wifi && WIFI_PASSWORD=ci-placeholder ENDPOINT=tcp/192.0.2.1:7447 cargo +esp check --locked --bins --features=alloc
+    cd examples/embassy/esp/esp32c6-pico-wifi && WIFI_PASSWORD=ci-placeholder ENDPOINT=tcp/192.0.2.1:7447 cargo clippy --locked --bins
+    cd examples/embassy/esp/esp32c6-pico-wifi && WIFI_PASSWORD=ci-placeholder ENDPOINT=tcp/192.0.2.1:7447 cargo clippy --locked --bins --features=alloc
+    cd examples/embassy/stm32/nucleo-h753zi-ethernet && ENDPOINT=tcp/192.0.2.1:7447 cargo clippy --locked --bins
+    cd examples/embassy/stm32/nucleo-h753zi-ethernet && ENDPOINT=tcp/192.0.2.1:7447 cargo clippy --locked --bins --features=alloc
+    just check-headless
+
 
 [working-directory: repository_root]
 fmt-examples:
-    cargo fmt --manifest-path examples/common/Cargo.toml
-    cargo fmt --manifest-path examples/native/Cargo.toml
-    cargo fmt --manifest-path examples/wasm/Cargo.toml
+    cd examples/embassy && cargo fmt
+    cd examples/common && cargo fmt
+    cd examples/native && cargo fmt
+    cd examples/wasm && cargo fmt
     cargo fmt --manifest-path examples/embassy/esp/esp32s3-wifi/Cargo.toml
-    cargo fmt --manifest-path examples/embassy/esp/esp32c6-pico-wifi/Cargo.toml
-    cargo fmt --manifest-path examples/embassy/stm32/nucleo-h753zi-ethernet/Cargo.toml
-    rustfmt --edition 2024 examples/common/legacy/*.rs
+    cd examples/embassy/esp/esp32c6-pico-wifi && cargo fmt
+    cd examples/embassy/stm32/nucleo-h753zi-ethernet && cargo fmt
+
+    rustfmt --edition 2024 examples/*/src/headless.rs examples/embassy/*/*/src/headless.rs
 
 [working-directory: repository_root]
 fix-examples:
     cd examples/native && cargo clippy --bins --fix --allow-dirty --allow-staged
+    cd examples/wasm && cargo clippy --bins --fix --allow-dirty --allow-staged
+    cd examples/embassy/esp/esp32s3-wifi && WIFI_PASSWORD=ci-placeholder ENDPOINT=tcp/192.0.2.1:7447 cargo +esp fix --bins --allow-dirty --allow-staged
 
 [working-directory: repository_root]
-std example="z_put" features="":
-    cd examples/native && cargo run --locked --bin {{ example }} --features="{{ features }}"
+check-headless:
+    python3 examples/common/check_headless.py
+    cd examples/common && cargo test --locked --no-default-features && cargo test --locked --no-default-features --features=alloc
 
+# These commands link firmware but never invoke a flashing runner.
+# Placeholder network settings are used only for build verification.
 [working-directory: repository_root]
-std-alloc example="z_put":
-    just std "{{ example }}" alloc
-
-[working-directory: repository_root]
-wasm example="z_put" features="":
-    cd examples/wasm && cargo build --locked --bin {{ example }} --features="{{ features }}"
-    wasm-bindgen --target web --out-dir ./examples/wasm/web/ ./target/wasm32-unknown-unknown/debug/{{ example }}.wasm --out-name z_example
-    python3 -m http.server 8000 --bind 127.0.0.1 --directory ./examples/wasm/web
-
-[working-directory: repository_root]
-ping:
-    just std z_ping
-
-[working-directory: repository_root]
-pong:
-    just std z_pong
-
-[working-directory: repository_root]
-pub_thr:
-    just std z_pub_thr
-
-[working-directory: repository_root]
-sub_thr:
-    just std z_sub_thr
-
-[working-directory: repository_root]
-broker:
-    just std z_broker alloc
-
-[working-directory: repository_root]
-esp32s3 example="z_put" features="":
-    cd examples/embassy/esp/esp32s3-wifi && cargo +esp run --locked --release --bin {{ example }} --features="{{ features }}"
-
-[working-directory: repository_root]
-build-esp32s3 example="z_put" features="":
-    cd examples/embassy/esp/esp32s3-wifi && cargo +esp build --locked --release --bin {{ example }} --features="{{ features }}"
-
-[working-directory: repository_root]
-esp32c6 example="z_put" features="":
-    cd examples/embassy/esp/esp32c6-pico-wifi && cargo run --locked --release --bin {{ example }} --features="{{ features }}"
-
-[working-directory: repository_root]
-build-esp32c6 example="z_put" features="":
-    cd examples/embassy/esp/esp32c6-pico-wifi && cargo build --locked --release --bin {{ example }} --features="{{ features }}"
-
-[working-directory: repository_root]
-stm32 example="z_put" features="":
-    cd examples/embassy/stm32/nucleo-h753zi-ethernet && cargo run --locked --release --bin {{ example }} --features="{{ features }}"
-
-[working-directory: repository_root]
-build-stm32 example="z_put" features="":
-    cd examples/embassy/stm32/nucleo-h753zi-ethernet && cargo build --locked --release --bin {{ example }} --features="{{ features }}"
+build-firmware board features="" mode="cli":
+    cd examples/{{ if board =~ "^esp32(s3|c6-pico)-wifi$" { "embassy/esp/" + board } else { "embassy/stm32/" + board } }} && WIFI_PASSWORD=ci-placeholder ENDPOINT=tcp/192.0.2.1:7447 cargo build {{ if mode == "headless" { "--no-default-features" } else { "" } }} --locked --release --bins --features="{{ features }}"
 
 [working-directory: repository_root]
 build-firmware-esp32s3 features="" mode="cli":
-    cd examples/embassy/esp/esp32s3-wifi && WIFI_PASSWORD=ci-placeholder ENDPOINT=tcp/192.0.2.1:7447 cargo +esp build --locked --release --bins --features="{{ features }}"
+    cd examples/embassy/esp/esp32s3-wifi && WIFI_PASSWORD=ci-placeholder ENDPOINT=tcp/192.0.2.1:7447 cargo +esp build {{ if mode == "headless" { "--no-default-features" } else { "" } }} --locked --release --bins --features="{{ features }}"
 
 [working-directory: repository_root]
-build-firmware board features="" mode="cli":
-    cd examples/{{ if board =~ "^esp32(s3|c6-pico)-wifi$" { "embassy/esp/" + board } else { "embassy/stm32/" + board } }} && WIFI_PASSWORD=ci-placeholder ENDPOINT=tcp/192.0.2.1:7447 cargo build --locked --release --bins --features="{{ features }}"
+esp32s3 features="":
+    cd examples/embassy/esp/esp32s3-wifi && cargo +esp run --locked --release --bin zenoh-app --features="{{ features }}"
+
+[working-directory: repository_root]
+build-esp32s3 features="":
+    cd examples/embassy/esp/esp32s3-wifi && cargo +esp build --locked --release --bin zenoh-app --features="{{ features }}"
+
+[working-directory: repository_root]
+esp32c6 features="":
+    cd examples/embassy/esp/esp32c6-pico-wifi && cargo run --locked --release --bin zenoh-app --features="{{ features }}"
+
+[working-directory: repository_root]
+build-esp32c6 features="":
+    cd examples/embassy/esp/esp32c6-pico-wifi && cargo build --locked --release --bin zenoh-app --features="{{ features }}"
+
+[working-directory: repository_root]
+stm32 features="":
+    cd examples/embassy/stm32/nucleo-h753zi-ethernet && cargo run --locked --release --bin zenoh-app --features="{{ features }}"
+
+[working-directory: repository_root]
+build-stm32 features="":
+    cd examples/embassy/stm32/nucleo-h753zi-ethernet && cargo build --locked --release --bin zenoh-app --features="{{ features }}"
+
+[working-directory: repository_root]
+std-headless features="":
+    cd examples/native && cargo run --locked --no-default-features --features="{{ features }}" --bin zenoh-app
+
+[working-directory: repository_root]
+build-esp32c6-headless scenario="pub" features="":
+    cd examples/embassy/esp/esp32c6-pico-wifi && SCENARIO="{{ scenario }}" cargo build --locked --release --no-default-features --features="{{ features }}" --bin zenoh-app
+
+[working-directory: repository_root]
+esp32c6-headless scenario="pub" features="":
+    cd examples/embassy/esp/esp32c6-pico-wifi && SCENARIO="{{ scenario }}" cargo run --locked --release --no-default-features --features="{{ features }}" --bin zenoh-app
+
+[working-directory: repository_root]
+build-esp32s3-headless scenario="pub" features="":
+    cd examples/embassy/esp/esp32s3-wifi && SCENARIO="{{ scenario }}" cargo +esp build --locked --release --no-default-features --features="{{ features }}" --bin zenoh-app
+
+[working-directory: repository_root]
+esp32s3-headless scenario="pub" features="":
+    cd examples/embassy/esp/esp32s3-wifi && SCENARIO="{{ scenario }}" cargo +esp run --locked --release --no-default-features --features="{{ features }}" --bin zenoh-app
+
+[working-directory: repository_root]
+build-stm32-headless scenario="pub" features="":
+    cd examples/embassy/stm32/nucleo-h753zi-ethernet && SCENARIO="{{ scenario }}" cargo build --locked --release --no-default-features --features="{{ features }}" --bin zenoh-app
+
+[working-directory: repository_root]
+stm32-headless scenario="pub" features="":
+    cd examples/embassy/stm32/nucleo-h753zi-ethernet && SCENARIO="{{ scenario }}" cargo run --locked --release --no-default-features --features="{{ features }}" --bin zenoh-app
+
+[working-directory: repository_root]
+build-wasm-headless scenario="pub" features="":
+    cd examples/wasm && SCENARIO="{{ scenario }}" cargo build --locked --no-default-features --features="{{ features }}" --bin zenoh-app
+    wasm-bindgen --target web --out-dir ./examples/wasm/web/ ./target/wasm32-unknown-unknown/debug/zenoh-app.wasm --out-name z_example
+
+[working-directory: repository_root]
+wasm-headless scenario="pub" features="":
+    just build-wasm-headless "{{ scenario }}" "{{ features }}"
+    python3 -m http.server 8000 --bind 127.0.0.1 --directory ./examples/wasm/web
+

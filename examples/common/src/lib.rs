@@ -1,5 +1,7 @@
 #![no_std]
 
+pub mod scenarios;
+
 #[cfg(feature = "alloc")]
 pub trait AppConfig: ZSessionConfig + ZBrokerConfig {}
 #[cfg(feature = "alloc")]

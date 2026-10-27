@@ -72,8 +72,8 @@ async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
     // If you care about maintaining the session alive, then you have two choices:
     //  1) Spawn a new task to run the `session.run()` in background, but it requires the `session` to be `'static`.
     //     `let builder = zenoh::session!(static ExampleConfig: config);`
-    //     See the `z_open` example
-    //  2) Use `select` or `join` to run both the session and the subscriber in the same task. See the `z_put` example.
+    //     See the Open scenario in examples/common/src/scenarios.
+    //  2) Use `select` or `join` to run both the session and the subscriber in the same task. See the Put scenario in examples/common/src/scenarios.
     // ESP32-S3 users must use the `static` form above.
     let builder = zenoh::session!(ExampleConfig: config);
     let session = builder.connect(endpoint).await?;
@@ -129,17 +129,20 @@ their own Cargo projects under [examples/](examples/README.md); their `just`
 recipes remain available from the repository root. When using Cargo directly,
 run it from the application's directory to load its `.cargo/config.toml`.
 
-Use the following command structure:
+Each target builds one `zenoh-app`. Select a startup scenario instead of a separate binary:
 
 ```bash
-just <platform> <example> [optional features]
+SCENARIO=pub COUNT=3 just std-headless
+COUNT=3 just esp32s3-headless sub
 ```
 
-* **Platforms**: `std`, `wasm`, `esp32s3`, `esp32c6`, `stm32`
-* **Examples**: `z_get`, `z_open`, `z_ping`, `z_pong`, `z_pub`, `z_pub_thr`, `z_put`, `z_querier`, `z_queryable`, `z_sub`, , `z_sub_thr`,
-* **Broker**: `z_broker` (with `alloc` feature)
+Use `wasm-headless`, `esp32c6-headless`, or `stm32-headless` for other targets;
+prefix MCU recipes with `build-` to build without flashing. See
+[startup settings](examples/README.md) for scenarios and optional features.
 
-Set the `ENDPOINT=<endpoint>` environment variable to specify the endpoint (default is `tcp/127.0.0.1:7447`). Set `LISTEN=1` to specify the connection method.
+Set `ENDPOINT=<endpoint>` to specify the endpoint (default `tcp/127.0.0.1:7447`).
+Set `LISTEN=1` to listen. Native settings are read at startup; MCU/browser settings
+are compiled into the application.
 
 For `esp32s3` and `esp32c6`, you must also provide:
 
@@ -154,11 +157,11 @@ This firmware has not been tested on a physical NUCLEO-H753ZI board.
 Example of few commands:
 
 ```bash
-ENDPOINT=tcp/127.0.0.1:7447 just std z_pub
+ENDPOINT=tcp/127.0.0.1:7447 SCENARIO=pub just std-headless
 ```
 
 ```bash
-WIFI_PASSWORD=* ENDPOINT=tcp/192.168.21.1:7447 just esp32s3 z_sub
+WIFI_PASSWORD=* ENDPOINT=tcp/192.168.21.1:7447 just esp32s3-headless sub
 ```
 
 ### Example: Local TCP
@@ -173,10 +176,10 @@ In two terminals:
 
 ```bash
 # Terminal 1
-just std z_pub
+SCENARIO=pub just std-headless
 
 # Terminal 2
-just std z_sub
+SCENARIO=sub just std-headless
 ```
 
 ### Example: WebSocket + WASM
@@ -191,17 +194,17 @@ Then:
 
 ```bash
 # Terminal 1 (WASM)
-ENDPOINT=ws/127.0.0.1:7446 just wasm z_pub
+ENDPOINT=ws/127.0.0.1:7446 just wasm-headless pub
 
 # Terminal 2 (STD)
-just std z_sub
+SCENARIO=sub just std-headless
 ```
 
 > 📦 Note: For WASM, ensure you have:
 >
 > * `wasm32-unknown-unknown` target
 > * `wasm-bindgen-cli`
-> * Python 3 (used by `just wasm` to serve the browser example)
+> * Python 3 (used by `just wasm-headless` to serve the browser example)
 
 ---
 

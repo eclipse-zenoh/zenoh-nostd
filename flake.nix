@@ -57,6 +57,7 @@
               pkg-config
               probe-rs-tools
               wasm-bindgen-cli
+              zenoh # Isolated router for the CLI integration suite.
               python3
               rustup
             ] ++ pkgs.lib.optionals hasEspToolchain [ esp.gcc ];

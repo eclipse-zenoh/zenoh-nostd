@@ -1148,6 +1148,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "zenoh-examples-embassy"
+version = "0.1.0"
+dependencies = [
+ "static_cell",
+ "zenoh-examples-common",
+]
+
+[[package]]
 name = "zenoh-examples-nucleo-h753zi-ethernet"
 version = "0.1.0"
 dependencies = [
@@ -1168,6 +1176,7 @@ dependencies = [
  "static_cell",
  "zenoh-embassy",
  "zenoh-examples-common",
+ "zenoh-examples-embassy",
  "zenoh-nostd",
 ]
 

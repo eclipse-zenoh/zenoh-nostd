@@ -1,19 +1,60 @@
 <!doctype html>
-<html>
-    <head>
-        <meta charset="utf-8" />
-        <title>WASM Example</title>
-    </head>
-    <body>
-        <h1>WASM Example</h1>
-        <script type="module">
-            import init, { main } from "./z_example.js";
-
-            async function run() {
-                await init();
-            }
-
-            run();
-        </script>
-    </body>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Zenoh command console</title>
+  <style>
+    body { max-width: 64rem; margin: 2rem auto; padding: 0 1rem; font: 16px system-ui; }
+    pre { height: 60vh; overflow: auto; padding: 1rem; background: #111a25; color: #dbe8ee; white-space: pre-wrap; }
+    form { display: flex; gap: .6rem; } input { flex: 1; padding: .6rem; font: 16px monospace; }
+    form[hidden] { display: none; }
+    button { padding: .6rem 1rem; } #state { min-height: 1.5em; }
+  </style>
+</head>
+<body>
+  <h1>Zenoh command console</h1>
+  <p id="instructions">Type <code>help</code> for commands. Connect through a router's WebSocket endpoint with <code>z_open ws/host:port</code>.</p>
+  <pre id="output" role="log" aria-label="Command output"></pre>
+  <form id="command-form">
+    <input id="command" aria-label="Command" placeholder="z_get demo/example/**" autocomplete="off" disabled />
+    <button id="send" disabled>Run</button>
+    <button id="cancel" type="button" disabled>Stop (Ctrl-C)</button>
+  </form>
+  <p id="state" role="status">Loading…</p>
+  <script type="module">
+    import * as app from "./z_example.js";
+    const output = document.querySelector("#output");
+    const input = document.querySelector("#command");
+    const state = document.querySelector("#state");
+    const decoder = new TextDecoder();
+    window.zenohOutput = bytes => {
+      output.textContent = (output.textContent + decoder.decode(bytes, {stream: true})).slice(-65536);
+      output.scrollTop = output.scrollHeight;
+    };
+    const send = text => { if (app.cli_enabled() && !app.console_input(text)) state.textContent = "Input queue full; retry after the current command stops."; };
+    document.querySelector("#command-form").addEventListener("submit", event => {
+      event.preventDefault(); send(input.value + "\n"); input.value = ""; input.focus();
+    });
+    document.querySelector("#cancel").addEventListener("click", () => send("\x03"));
+    input.addEventListener("keydown", event => {
+      if (event.ctrlKey && event.key.toLowerCase() === "c") { event.preventDefault(); send("\x03"); }
+    });
+    try {
+      await app.default();
+      if (!app.cli_enabled()) {
+        document.querySelector("#command-form").hidden = true;
+        document.querySelector("h1").textContent = "Zenoh startup scenario";
+        document.querySelector("#instructions").textContent = "Running the scenario selected when this application was built.";
+        state.textContent = "Headless scenario started. Output appears above.";
+      } else {
+        input.disabled = false;
+        document.querySelector("#send").disabled = false;
+        document.querySelector("#cancel").disabled = false;
+        state.textContent = "Ready. Browser commands use WebSocket; listening is unavailable.";
+        input.focus();
+      }
+    } catch (error) { state.textContent = `Could not start console: ${error}`; }
+  </script>
+</body>
 </html>

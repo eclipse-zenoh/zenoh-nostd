@@ -5,24 +5,17 @@ edition = "2024"
 rust-version = "1.91.0"
 license = "EPL-2.0 OR Apache-2.0"
 publish = false
-default-run = "z_put"
+default-run = "zenoh-app"
 
 [workspace]
 resolver = "3"
 
 [features]
-default = ["embedded", "esp", "defmt"]
-std = []
-log = []
-wasm = []
-web_console = []
-embedded = []
-esp = []
-stm32 = []
-defmt = []
-alloc = ["zenoh-nostd/alloc", "zenoh-examples-common/alloc"]
+default = []
+alloc = ["zenoh-nostd/alloc", "zenoh-examples-embassy/alloc", "zenoh-examples-common/alloc"]
 
 [dependencies]
+zenoh-examples-embassy = { path = "../..", default-features = false }
 zenoh-nostd = { path = "../../../../crates/zenoh-nostd", default-features = false, features = ["embedded", "defmt"] }
 zenoh-examples-common = { path = "../../../common", default-features = false }
 static_cell = "2.1.1"
@@ -43,54 +36,8 @@ zenoh-embassy = { path = "../../../../platforms/zenoh-embassy", default-features
 embassy-executor = { version = "0.9.1", features = ["defmt"] }
 
 [[bin]]
-name = "z_broker"
-path = "src/z_broker.rs"
-required-features = ["alloc"]
-
-[[bin]]
-name = "z_get"
-path = "src/z_get.rs"
-
-[[bin]]
-name = "z_open"
-path = "src/z_open.rs"
-
-[[bin]]
-name = "z_ping"
-path = "src/z_ping.rs"
-
-[[bin]]
-name = "z_pong"
-path = "src/z_pong.rs"
-
-[[bin]]
-name = "z_pub"
-path = "src/z_pub.rs"
-
-[[bin]]
-name = "z_pub_thr"
-path = "src/z_pub_thr.rs"
-
-[[bin]]
-name = "z_put"
-path = "src/z_put.rs"
-
-[[bin]]
-name = "z_querier"
-path = "src/z_querier.rs"
-
-[[bin]]
-name = "z_queryable"
-path = "src/z_queryable.rs"
-
-[[bin]]
-name = "z_sub"
-path = "src/z_sub.rs"
-
-[[bin]]
-name = "z_sub_thr"
-path = "src/z_sub_thr.rs"
-
+name = "zenoh-app"
+path = "src/main.rs"
 
 
 [profile.dev]
@@ -112,3 +59,4 @@ strip = false
 incremental = false
 debug = false
 overflow-checks = false
+

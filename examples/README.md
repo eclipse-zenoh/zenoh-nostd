@@ -1,13 +1,17 @@
-# Standalone examples
+# Startup scenarios
 
-Enter `nix develop` at the repository root. Use `just std z_put`,
-`just std z_sub`, or `just wasm z_put` to run an existing scenario.
-Add `alloc` after the scenario for allocated Zenoh storage.
+From the repository root inside `nix develop`, start a local router, then run:
 
-- [native](native/README.md)
-- [wasm](wasm/README.md)
-- [embassy/esp/esp32s3-wifi](embassy/esp/esp32s3-wifi/README.md)
-- [embassy/esp/esp32c6-pico-wifi](embassy/esp/esp32c6-pico-wifi/README.md)
-- [embassy/stm32/nucleo-h753zi-ethernet](embassy/stm32/nucleo-h753zi-ethernet/README.md)
+```sh
+SCENARIO=pub COUNT=3 just std-headless
+COUNT=3 just build-esp32c6-headless pub
+COUNT=3 just build-esp32s3-headless pub
+COUNT=3 just build-stm32-headless pub
+COUNT=3 just wasm-headless pub
+```
 
-Build-only recipes never flash. ESP32-S3 uses `cargo +esp`; other projects use stable Rust.
+MCU settings, including a reachable ENDPOINT and ESP Wi-Fi credentials, are
+compiled into the firmware. Native settings are read at startup. Build-only
+recipes do not flash. The matching recipes without `build-` flash MCU firmware.
+Add `alloc` after the scenario for allocated storage. Scenarios are shared typed
+operations in `common/src/scenarios`; each target now builds one `zenoh-app`.
