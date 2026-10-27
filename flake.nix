@@ -28,7 +28,7 @@
           };
           rustToolchain = pkgs.rust-bin.stable."1.99.1".minimal.override {
             extensions = [ "clippy" "rustfmt" "rust-src" ];
-            targets = [ "wasm32-unknown-unknown" "riscv32imac-unknown-none-elf" ];
+            targets = [ "wasm32-unknown-unknown" "riscv32imac-unknown-none-elf" "thumbv7em-none-eabihf" ];
           };
           hasEspToolchain = system != "x86_64-darwin";
           esp = import ./nix/esp-toolchain.nix { inherit pkgs; };
