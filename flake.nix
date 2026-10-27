@@ -55,6 +55,8 @@
               git
               just
               pkg-config
+              wasm-bindgen-cli
+              python3
               rustup
             ] ++ pkgs.lib.optionals hasEspToolchain [ esp.gcc ];
 
