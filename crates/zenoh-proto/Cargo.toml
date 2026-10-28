@@ -15,7 +15,7 @@ default = []
 
 std = []
 
-log = ["std", "dep:log"]
+log = ["dep:log"]
 defmt = ["dep:defmt"]
 web_console = ["std", "dep:web-sys"]
 

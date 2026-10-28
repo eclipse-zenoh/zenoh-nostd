@@ -69,32 +69,25 @@ jobs:
         run: cargo build --package zenoh-examples --all-targets
 
   build-no-std:
-    name: Build (no_std / bare-metal)
+    name: Core (${{ matrix.target }}, ${{ matrix.features }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [thumbv7em-none-eabihf, riscv32imac-unknown-none-elf]
+        features: [embedded, "embedded,defmt", "embedded,log", "embedded,alloc", "embedded,alloc,defmt"]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: thumbv7em-none-eabihf
+          targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
-      - name: Build no_std libs (no default features)
+      - name: Build libraries independently from applications
         run: >
-          cargo build
+          cargo build --locked
           -p zenoh-proto -p zenoh-sansio -p zenoh-nostd
-          --no-default-features --features embedded
-          --target thumbv7em-none-eabihf
-      - name: Build no_std libs (defmt feature)
-        run: >
-          cargo build
-          -p zenoh-proto -p zenoh-sansio -p zenoh-nostd
-          --no-default-features --features defmt,embedded
-          --target thumbv7em-none-eabihf
-      - name: Build zenoh-nostd (alloc feature)
-        run: >
-          cargo build
-          -p zenoh-nostd
-          --no-default-features --features alloc,embedded
-          --target thumbv7em-none-eabihf
+          --no-default-features --features "${{ matrix.features }}"
+          --target "${{ matrix.target }}"
 
   msrv:
     name: MSRV (1.91.0)

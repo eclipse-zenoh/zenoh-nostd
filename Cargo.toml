@@ -23,10 +23,10 @@ readme = "README.md"
 
 [workspace.dependencies]
 zenoh-derive = { version = "0.1.0", path = "crates/zenoh-derive" }
-zenoh-proto = { version = "0.1.0", path = "crates/zenoh-proto" }
-zenoh-sansio = { version = "0.1.0", path = "crates/zenoh-sansio" }
+zenoh-proto = { version = "0.1.0", path = "crates/zenoh-proto", default-features = false }
+zenoh-sansio = { version = "0.1.0", path = "crates/zenoh-sansio", default-features = false }
 
-zenoh-nostd = { version = "0.1.0", path = "crates/zenoh-nostd" }
+zenoh-nostd = { version = "0.1.0", path = "crates/zenoh-nostd", default-features = false }
 
 # General dependencies
 
