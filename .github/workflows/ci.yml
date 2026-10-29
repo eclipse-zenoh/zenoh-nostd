@@ -69,32 +69,25 @@ jobs:
         run: cargo build --package zenoh-examples --all-targets
 
   build-no-std:
-    name: Build (no_std / bare-metal)
+    name: Core (${{ matrix.target }}, ${{ matrix.features }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [thumbv7em-none-eabihf, riscv32imac-unknown-none-elf]
+        features: [embedded, "embedded,defmt", "embedded,log", "embedded,alloc", "embedded,alloc,defmt"]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: thumbv7em-none-eabihf
+          targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
-      - name: Build no_std libs (no default features)
+      - name: Build libraries independently from applications
         run: >
-          cargo build
+          cargo build --locked
           -p zenoh-proto -p zenoh-sansio -p zenoh-nostd
-          --no-default-features --features embedded
-          --target thumbv7em-none-eabihf
-      - name: Build no_std libs (defmt feature)
-        run: >
-          cargo build
-          -p zenoh-proto -p zenoh-sansio -p zenoh-nostd
-          --no-default-features --features defmt,embedded
-          --target thumbv7em-none-eabihf
-      - name: Build zenoh-nostd (alloc feature)
-        run: >
-          cargo build
-          -p zenoh-nostd
-          --no-default-features --features alloc,embedded
-          --target thumbv7em-none-eabihf
+          --no-default-features --features "${{ matrix.features }}"
+          --target "${{ matrix.target }}"
 
   msrv:
     name: MSRV (1.91.0)
@@ -138,6 +131,25 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --manifest-path platforms/zenoh-wasm/Cargo.toml --target wasm32-unknown-unknown
 
+  platform-embassy:
+    name: Embassy adapter
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Test wildcard and explicit TCP listeners
+        working-directory: platforms/zenoh-embassy
+        run: cargo test --locked --features medium-ip
+      - name: Check isolated transports and embedded logging
+        working-directory: platforms/zenoh-embassy
+        run: |
+          cargo clippy --locked --no-default-features --features tcp,medium-ip -- -D warnings
+          cargo clippy --locked --no-default-features --features udp,medium-ip -- -D warnings
+          cargo clippy --locked --features medium-ethernet,defmt -- -D warnings
+
   # Heavy non-tier-1 toolchain (Xtensa via esp-rs). Kept non-blocking so the
   # core checks are never gated on an external toolchain install. Promote to a
   # required check once it is proven stable.
@@ -152,7 +164,7 @@ jobs:
           default: true
           buildtargets: esp32s3
       - uses: Swatinem/rust-cache@v2
-      - run: cargo build --manifest-path platforms/zenoh-embassy/Cargo.toml
+      - run: cargo build --manifest-path platforms/zenoh-embassy/Cargo.toml --features medium-ethernet,defmt
 
   # NOTE: In GitHub repository settings, the "Require status checks to pass
   # before merging" branch protection rule ensures that commits are only merged
@@ -172,6 +184,7 @@ jobs:
       - docs
       - platform-std
       - platform-wasm
+      - platform-embassy
     if: always()
     steps:
       - name: Check whether all jobs pass

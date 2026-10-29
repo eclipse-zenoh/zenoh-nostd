@@ -80,3 +80,7 @@ wasm example *args:
     RUSTFLAGS='--cfg getrandom_backend="wasm_js"' cargo build --no-default-features --features="wasm,web_console" --features={{ args }} --target wasm32-unknown-unknown --example {{ example }}
     wasm-bindgen --target web --out-dir ./examples/web/ ./target/wasm32-unknown-unknown/debug/examples/{{ example }}.wasm --out-name z_example
     basic-http-server ./examples/web
+
+# Build the core without application feature unification.
+check-portability:
+    set -eu; for target in thumbv7em-none-eabihf riscv32imac-unknown-none-elf; do for features in embedded embedded,defmt embedded,log embedded,alloc embedded,alloc,defmt; do cargo build --locked -p zenoh-proto -p zenoh-sansio -p zenoh-nostd --target "$target" --no-default-features --features "$features"; done; done
