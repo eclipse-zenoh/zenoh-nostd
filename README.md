@@ -106,9 +106,28 @@ async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
 
 This project uses [`just`](https://github.com/casey/just) for task management. Use `just check` to check the project and examples, `just test` to run the tests and `just bench` to run the benchmarks.
 
+### Nix development environment
+
+With Nix flakes enabled, enter the development environment from this directory:
+
+```bash
+nix develop
+```
+
+If flakes are not enabled, you can enable them for this command with:
+
+```bash
+nix --extra-experimental-features 'nix-command flakes' develop
+```
+
 > 🔍 Pull requests that slow down the bench should be avoided.
 
 ### Testing Examples
+
+The root Cargo workspace contains only the core libraries. Applications have
+their own Cargo projects under [examples/](examples/README.md); their `just`
+recipes remain available from the repository root. When using Cargo directly,
+run it from the application's directory to load its `.cargo/config.toml`.
 
 Use the following command structure:
 
@@ -116,18 +135,19 @@ Use the following command structure:
 just <platform> <example> [optional features]
 ```
 
-* **Platforms**: `std`, `wasm`, `esp32s3`
+* **Platforms**: `std`, `wasm`, `esp32s3`, `esp32c6`
 * **Examples**: `z_get`, `z_open`, `z_ping`, `z_pong`, `z_pub`, `z_pub_thr`, `z_put`, `z_querier`, `z_queryable`, `z_sub`, , `z_sub_thr`,
 * **Broker**: `z_broker` (with `alloc` feature)
 
 Set the `ENDPOINT=<endpoint>` environment variable to specify the endpoint (default is `tcp/127.0.0.1:7447`). Set `LISTEN=1` to specify the connection method.
 
-For `esp32s3`, you must also provide:
+For `esp32s3` and `esp32c6`, you must also provide:
 
 * `WIFI_SSID` (default is `Zenoh`).
 * `WIFI_PASSWORD` (no default, must be provided).
 
-See the ESP32 setup documentation for toolchain and target installation.
+See the [ESP32-S3 setup documentation](examples/embassy/esp/esp32s3-wifi/README.md) for toolchain and target installation.
+The [ESP32-C6-Pico project](examples/embassy/esp/esp32c6-pico-wifi/README.md) uses stable Rust and a RISC-V target.
 
 Example of few commands:
 
@@ -179,7 +199,7 @@ just std z_sub
 >
 > * `wasm32-unknown-unknown` target
 > * `wasm-bindgen-cli`
-> * `basic-http-server` (or similar)
+> * Python 3 (used by `just wasm` to serve the browser example)
 
 ---
 
@@ -194,30 +214,21 @@ zenoh-nostd/            # Git repository root
 │   └── zenoh-sansio/   # Zenoh Sans-IO objects (Transport only right now)
 │
 ├── examples/
-│   ├── web/
-│   │   └── index.html  # File to test wasm example
-│   │
-│   ├── z_broker.rs     # Example with std/wasm/embassy io
-│   ├── z_get.rs        # Example with std/wasm/embassy io
-│   ├── z_open.rs       # Example with std/wasm/embassy io
-│   ├── z_ping.rs       # Example with std/wasm/embassy io
-│   ├── z_pong.rs       # Example with std/wasm/embassy io
-│   ├── z_pub.rs        # Example with std/wasm/embassy io
-│   ├── z_pub_thr.rs    # Example with std/wasm/embassy io
-│   ├── z_put.rs        # Example with std/wasm/embassy io
-│   ├── z_querier.rs    # Example with std/wasm/embassy io
-│   ├── z_queryable.rs  # Example with std/wasm/embassy io
-│   ├── z_sub.rs        # Example with std/wasm/embassy io
-│   └── z_sub_thr.rs    # Example with std/wasm/embassy io
+│   ├── common/         # Shared configuration and scenario sources
+│   ├── native/         # Native application project
+│   ├── wasm/           # Browser project, including web/index.html
+│   ├── embassy/
+│   │   └── esp/        # Shared ESP startup and Wi-Fi support
+│   │       ├── esp32s3-wifi/ # ESP32-S3 project
+│   │       └── esp32c6-pico-wifi/ # ESP32-C6-Pico project
+│   └── justfile        # Example recipes imported by the root justfile
 │
 ├── platforms/          # Platform-specific implementations
 │   ├── zenoh-embassy/  # Embassy platforms (no_std)
 │   ├── zenoh-std/      # Standard platforms (std)
 │   └── zenoh-wasm/     # WASM32 platforms (wasm)
 │
-├── Cargo.toml          # Workspace + example package
-└── src/
-    └── lib.rs          # Example lib.rs
+└── Cargo.toml          # Workspace for the core libraries
 ```
 
 ---

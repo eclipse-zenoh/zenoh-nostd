@@ -97,6 +97,13 @@ impl core::fmt::Debug for ZenohIdProto {
     }
 }
 
+#[cfg(feature = "defmt")]
+impl defmt::Format for ZenohIdProto {
+    fn format(&self, fmt: defmt::Formatter) {
+        defmt::write!(fmt, "{:?}", defmt::Debug2Format(self));
+    }
+}
+
 impl Default for ZenohIdProto {
     fn default() -> Self {
         Self(uhlc::ID::rand())

@@ -1,0 +1,85 @@
+# Independent example projects; all recipes are imported at the root.
+set positional-arguments
+repository_root := parent_directory(source_directory())
+export CARGO_TARGET_DIR := repository_root / "target"
+
+[working-directory: repository_root]
+check-examples:
+    cd examples/common && cargo clippy --locked
+    cd examples/native && cargo clippy --locked --bins && cargo clippy --locked --bins --features alloc
+    cd examples/wasm && cargo clippy --locked --bins && cargo clippy --locked --bins --features alloc
+    cd examples/embassy/esp/esp32s3-wifi && WIFI_PASSWORD=ci-placeholder ENDPOINT=tcp/192.0.2.1:7447 cargo +esp check --locked --bins
+    cd examples/embassy/esp/esp32s3-wifi && WIFI_PASSWORD=ci-placeholder ENDPOINT=tcp/192.0.2.1:7447 cargo +esp check --locked --bins --features alloc
+    cd examples/embassy/esp/esp32c6-pico-wifi && WIFI_PASSWORD=ci-placeholder ENDPOINT=tcp/192.0.2.1:7447 cargo check --locked --bins
+    cd examples/embassy/esp/esp32c6-pico-wifi && WIFI_PASSWORD=ci-placeholder ENDPOINT=tcp/192.0.2.1:7447 cargo check --locked --bins --features alloc
+
+[working-directory: repository_root]
+fmt-examples:
+    cargo fmt --manifest-path examples/common/Cargo.toml
+    cargo fmt --manifest-path examples/native/Cargo.toml
+    cargo fmt --manifest-path examples/wasm/Cargo.toml
+    cargo fmt --manifest-path examples/embassy/esp/esp32s3-wifi/Cargo.toml
+    cargo fmt --manifest-path examples/embassy/esp/esp32c6-pico-wifi/Cargo.toml
+    rustfmt --edition 2024 examples/common/legacy/*.rs
+
+[working-directory: repository_root]
+fix-examples:
+    cd examples/native && cargo clippy --bins --fix --allow-dirty --allow-staged
+
+[working-directory: repository_root]
+std example="z_put" features="":
+    cd examples/native && cargo run --locked --bin {{ example }} --features="{{ features }}"
+
+[working-directory: repository_root]
+std-alloc example="z_put":
+    just std "{{ example }}" alloc
+
+[working-directory: repository_root]
+wasm example="z_put" features="":
+    cd examples/wasm && cargo build --locked --bin {{ example }} --features="{{ features }}"
+    wasm-bindgen --target web --out-dir ./examples/wasm/web/ ./target/wasm32-unknown-unknown/debug/{{ example }}.wasm --out-name z_example
+    python3 -m http.server 8000 --bind 127.0.0.1 --directory ./examples/wasm/web
+
+[working-directory: repository_root]
+ping:
+    just std z_ping
+
+[working-directory: repository_root]
+pong:
+    just std z_pong
+
+[working-directory: repository_root]
+pub_thr:
+    just std z_pub_thr
+
+[working-directory: repository_root]
+sub_thr:
+    just std z_sub_thr
+
+[working-directory: repository_root]
+broker:
+    just std z_broker alloc
+
+[working-directory: repository_root]
+esp32s3 example="z_put" features="":
+    cd examples/embassy/esp/esp32s3-wifi && cargo +esp run --locked --release --bin {{ example }} --features="{{ features }}"
+
+[working-directory: repository_root]
+build-esp32s3 example="z_put" features="":
+    cd examples/embassy/esp/esp32s3-wifi && cargo +esp build --locked --release --bin {{ example }} --features="{{ features }}"
+
+[working-directory: repository_root]
+esp32c6 example="z_put" features="":
+    cd examples/embassy/esp/esp32c6-pico-wifi && cargo run --locked --release --bin {{ example }} --features="{{ features }}"
+
+[working-directory: repository_root]
+build-esp32c6 example="z_put" features="":
+    cd examples/embassy/esp/esp32c6-pico-wifi && cargo build --locked --release --bin {{ example }} --features="{{ features }}"
+
+[working-directory: repository_root]
+build-firmware-esp32s3 features="" mode="cli":
+    cd examples/embassy/esp/esp32s3-wifi && WIFI_PASSWORD=ci-placeholder ENDPOINT=tcp/192.0.2.1:7447 cargo +esp build --locked --release --bins --features="{{ features }}"
+
+[working-directory: repository_root]
+build-firmware board features="" mode="cli":
+    cd examples/{{ if board =~ "^esp32(s3|c6-pico)-wifi$" { "embassy/esp/" + board } else { "embassy/stm32/" + board } }} && WIFI_PASSWORD=ci-placeholder ENDPOINT=tcp/192.0.2.1:7447 cargo build --locked --release --bins --features="{{ features }}"
