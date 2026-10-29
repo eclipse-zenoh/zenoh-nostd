@@ -1,0 +1,110 @@
+[package]
+name = "zenoh-examples-wasm"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.91.0"
+license = "EPL-2.0 OR Apache-2.0"
+publish = false
+default-run = "z_put"
+
+[workspace]
+resolver = "3"
+
+[features]
+default = ["wasm", "web_console"]
+std = []
+log = []
+wasm = []
+web_console = []
+embedded = []
+esp = []
+stm32 = []
+defmt = []
+alloc = ["zenoh-nostd/alloc", "zenoh-examples-common/alloc"]
+
+[dependencies]
+zenoh-nostd = { path = "../../crates/zenoh-nostd", default-features = false, features = ["web_console"] }
+zenoh-examples-common = { path = "../common", default-features = false }
+static_cell = "2.1.1"
+embassy-sync = "0.7.2"
+embassy-time = { version = "0.5.0", features = ["wasm"] }
+embassy-futures = "0.1.2"
+zenoh-wasm = { path = "../../platforms/zenoh-wasm" }
+embassy-executor = { version = "0.9.1", features = ["arch-wasm", "executor-thread"] }
+wasm-bindgen = "=0.2.129" # Match the CLI in the pinned Nix environment.
+getrandom = { version = "0.2.16", features = ["std", "js"] }
+
+[patch.crates-io.yawc]
+git = "https://github.com/infinitefield/yawc"
+rev = "b43b05d51e18345d228b72c4f12a93e2f51df9d8"
+
+[[bin]]
+name = "z_broker"
+path = "src/z_broker.rs"
+required-features = ["alloc"]
+
+[[bin]]
+name = "z_get"
+path = "src/z_get.rs"
+
+[[bin]]
+name = "z_open"
+path = "src/z_open.rs"
+
+[[bin]]
+name = "z_ping"
+path = "src/z_ping.rs"
+
+[[bin]]
+name = "z_pong"
+path = "src/z_pong.rs"
+
+[[bin]]
+name = "z_pub"
+path = "src/z_pub.rs"
+
+[[bin]]
+name = "z_pub_thr"
+path = "src/z_pub_thr.rs"
+
+[[bin]]
+name = "z_put"
+path = "src/z_put.rs"
+
+[[bin]]
+name = "z_querier"
+path = "src/z_querier.rs"
+
+[[bin]]
+name = "z_queryable"
+path = "src/z_queryable.rs"
+
+[[bin]]
+name = "z_sub"
+path = "src/z_sub.rs"
+
+[[bin]]
+name = "z_sub_thr"
+path = "src/z_sub_thr.rs"
+
+
+
+[profile.dev]
+opt-level = "s"
+lto = false
+codegen-units = 16
+panic = "abort"
+strip = false
+incremental = true
+debug = true
+overflow-checks = true
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = false
+incremental = false
+debug = false
+overflow-checks = false

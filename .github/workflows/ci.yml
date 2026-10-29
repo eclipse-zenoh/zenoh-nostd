@@ -26,7 +26,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - run: cargo fmt --all --check
+      - run: |
+          cargo fmt --all --check
+          for project in platforms/* examples/common examples/native examples/wasm examples/embassy/esp/esp32s3-wifi; do
+            cargo fmt --manifest-path "$project/Cargo.toml" --check
+          done
+          rustfmt --edition 2024 --check examples/common/legacy/*.rs
 
   clippy:
     name: Clippy
@@ -66,35 +71,28 @@ jobs:
       - name: Build workspace (log feature)
         run: cargo build --workspace --features log
       - name: Build examples package
-        run: cargo build --package zenoh-examples --all-targets
+        run: cargo build --manifest-path examples/native/Cargo.toml --bins --features alloc
 
   build-no-std:
-    name: Build (no_std / bare-metal)
+    name: Core (${{ matrix.target }}, ${{ matrix.features }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [thumbv7em-none-eabihf, riscv32imac-unknown-none-elf]
+        features: [embedded, "embedded,defmt", "embedded,log", "embedded,alloc", "embedded,alloc,defmt"]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: thumbv7em-none-eabihf
+          targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
-      - name: Build no_std libs (no default features)
+      - name: Build libraries independently from applications
         run: >
-          cargo build
+          cargo build --locked
           -p zenoh-proto -p zenoh-sansio -p zenoh-nostd
-          --no-default-features --features embedded
-          --target thumbv7em-none-eabihf
-      - name: Build no_std libs (defmt feature)
-        run: >
-          cargo build
-          -p zenoh-proto -p zenoh-sansio -p zenoh-nostd
-          --no-default-features --features defmt,embedded
-          --target thumbv7em-none-eabihf
-      - name: Build zenoh-nostd (alloc feature)
-        run: >
-          cargo build
-          -p zenoh-nostd
-          --no-default-features --features alloc,embedded
-          --target thumbv7em-none-eabihf
+          --no-default-features --features "${{ matrix.features }}"
+          --target "${{ matrix.target }}"
 
   msrv:
     name: MSRV (1.91.0)
@@ -126,6 +124,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --manifest-path platforms/zenoh-std/Cargo.toml
+      - name: Check native applications
+        working-directory: examples/native
+        run: |
+          cargo clippy --bins -- -D warnings
+          cargo clippy --bins --features alloc -- -D warnings
 
   platform-wasm:
     name: Build platform (zenoh-wasm)
@@ -137,22 +140,57 @@ jobs:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --manifest-path platforms/zenoh-wasm/Cargo.toml --target wasm32-unknown-unknown
+      - name: Check browser applications
+        working-directory: examples/wasm
+        run: |
+          cargo build --locked --bins
+          cargo build --locked --bins --features alloc
 
-  # Heavy non-tier-1 toolchain (Xtensa via esp-rs). Kept non-blocking so the
-  # core checks are never gated on an external toolchain install. Promote to a
-  # required check once it is proven stable.
-  platform-esp32:
-    name: Build platform (zenoh-embassy / esp32s3)
+  platform-embassy:
+    name: Embassy adapter
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
-      - uses: esp-rs/xtensa-toolchain@v1.5
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          default: true
-          buildtargets: esp32s3
+          components: clippy
       - uses: Swatinem/rust-cache@v2
-      - run: cargo build --manifest-path platforms/zenoh-embassy/Cargo.toml
+      - name: Test wildcard and explicit TCP listeners
+        working-directory: platforms/zenoh-embassy
+        run: cargo test --locked --features medium-ip
+      - name: Check isolated transports and embedded logging
+        working-directory: platforms/zenoh-embassy
+        run: |
+          cargo clippy --locked --no-default-features --features tcp,medium-ip -- -D warnings
+          cargo clippy --locked --no-default-features --features udp,medium-ip -- -D warnings
+          cargo clippy --locked --features medium-ethernet,defmt -- -D warnings
+
+  firmware:
+    name: Firmware (${{ matrix.board }}, ${{ matrix.mode }}, ${{ matrix.features || 'default' }})
+    runs-on: ubuntu-latest
+    # Use the same pinned stable/Xtensa toolchains and linker tools as local builds.
+    strategy:
+      fail-fast: false
+      matrix:
+        board: [esp32s3-wifi]
+        features: ["", alloc]
+        mode: [cli]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: firmware-${{ matrix.board }}-${{ matrix.mode }}-${{ matrix.features }}
+          cache-on-failure: true
+      - name: Link all firmware binaries (no flashing)
+        run: |
+          if [ "${{ matrix.board }}" = esp32s3-wifi ]; then
+            env -u RUSTFLAGS nix develop -c just build-firmware-esp32s3 "${{ matrix.features }}" "${{ matrix.mode }}"
+          else
+            env -u RUSTFLAGS nix develop -c just build-firmware "${{ matrix.board }}" "${{ matrix.features }}" "${{ matrix.mode }}"
+          fi
 
   # NOTE: In GitHub repository settings, the "Require status checks to pass
   # before merging" branch protection rule ensures that commits are only merged
@@ -172,6 +210,8 @@ jobs:
       - docs
       - platform-std
       - platform-wasm
+      - platform-embassy
+      - firmware
     if: always()
     steps:
       - name: Check whether all jobs pass
