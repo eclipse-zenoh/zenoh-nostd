@@ -10,16 +10,17 @@ repository = "https://github.com/eclipse-zenoh/zenoh-nostd"
 rust-version = "1.91.0"
 version = "0.1.0"
 
+[features]
+default = ["tcp", "udp"]
+tcp = ["embassy-net/tcp"]
+udp = ["embassy-net/udp"]
+defmt = ["zenoh-nostd/defmt", "embassy-net/defmt", "embedded-io-async/defmt"]
+# The application selects a medium matching its network driver.
+medium-ip = ["embassy-net/medium-ip"]
+medium-ethernet = ["embassy-net/medium-ethernet"]
+
 [dependencies]
-zenoh-nostd = { version = "0.1.0", path = "../../crates/zenoh-nostd" }
-
-embassy-net = { version = "0.8.0", features = [
-  "defmt",
-  "dhcpv4",
-  "medium-ethernet",
-  "tcp",
-  "udp",
-]}
-
-embedded-io-async = { version = "0.7", features = ["defmt"] }
-getrandom = { version = "0.2", features = ["custom"] }
+zenoh-nostd = { version = "0.1.0", path = "../../crates/zenoh-nostd", default-features = false }
+# The current endpoint implementation supports IPv4 addresses.
+embassy-net = { version = "0.8.0", default-features = false, features = ["proto-ipv4"] }
+embedded-io-async = { version = "0.7", default-features = false }
