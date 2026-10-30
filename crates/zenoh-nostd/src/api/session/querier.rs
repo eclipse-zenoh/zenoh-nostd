@@ -8,7 +8,7 @@ where
     Config: ZSessionConfig,
 {
     session: &'a Session<'res, Config>,
-    ke: &'static keyexpr,
+    ke: &'a keyexpr,
     parameters: Option<&'a str>,
     payload: Option<&'a [u8]>,
     timeout: Option<Duration>,
@@ -45,7 +45,7 @@ where
     Config: ZSessionConfig,
 {
     session: &'a Session<'res, Config>,
-    ke: &'static keyexpr,
+    ke: &'a keyexpr,
     parameters: Option<&'a str>,
     payload: Option<&'a [u8]>,
     timeout: Option<Duration>,
@@ -55,7 +55,7 @@ impl<'a, 'res, Config> QuerierBuilder<'a, 'res, Config>
 where
     Config: ZSessionConfig,
 {
-    pub(crate) fn new(session: &'a Session<'res, Config>, ke: &'static keyexpr) -> Self {
+    pub(crate) fn new(session: &'a Session<'res, Config>, ke: &'a keyexpr) -> Self {
         Self {
             session,
             ke,
@@ -96,7 +96,7 @@ impl<'res, Config> Session<'res, Config>
 where
     Config: ZSessionConfig,
 {
-    pub fn declare_querier(&self, ke: &'static keyexpr) -> QuerierBuilder<'_, 'res, Config> {
+    pub fn declare_querier<'a>(&'a self, ke: &'a keyexpr) -> QuerierBuilder<'a, 'res, Config> {
         QuerierBuilder::new(self, ke)
     }
 }

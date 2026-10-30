@@ -13,10 +13,10 @@ version.workspace = true
 [features]
 default = []
 
-std = []
+std = ["zenoh-proto/std", "zenoh-sansio/std"]
 alloc = ["dyn-utils/alloc"]
 
-log = ["std", "zenoh-proto/log", "zenoh-sansio/log"]
+log = ["zenoh-proto/log", "zenoh-sansio/log"]
 web_console = ["std", "zenoh-proto/web_console", "zenoh-sansio/web_console"]
 defmt = ["zenoh-proto/defmt", "zenoh-sansio/defmt"]
 embedded = ["zenoh-proto/embedded", "zenoh-sansio/embedded"]
@@ -35,3 +35,6 @@ embassy-time.workspace = true
 embassy-sync.workspace = true
 
 embedded-io-async.workspace = true
+
+[dev-dependencies]
+embassy-time = { version = "0.5.0", features = ["std"] }

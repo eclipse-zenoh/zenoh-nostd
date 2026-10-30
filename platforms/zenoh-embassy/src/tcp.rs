@@ -1,38 +1,23 @@
-use core::cell::RefCell;
-
 use embassy_net::tcp::{TcpReader, TcpSocket, TcpWriter};
 use embedded_io_async::{Read, Write};
 use zenoh_nostd::platform::*;
 
-use crate::BufferPoolDrop;
+use crate::PoolLease;
 
 pub struct EmbassyTcpLink<'net> {
     socket: TcpSocket<'net>,
     mtu: u16,
 
-    idx: usize,
-    pool: &'net RefCell<dyn BufferPoolDrop>,
+    _lease: PoolLease<'net>,
 }
 
 impl<'net> EmbassyTcpLink<'net> {
-    pub(crate) fn new(
-        socket: TcpSocket<'net>,
-        mtu: u16,
-        idx: usize,
-        pool: &'net RefCell<dyn BufferPoolDrop>,
-    ) -> Self {
+    pub(crate) fn new(socket: TcpSocket<'net>, mtu: u16, lease: PoolLease<'net>) -> Self {
         Self {
             socket,
             mtu,
-            idx,
-            pool,
+            _lease: lease,
         }
-    }
-}
-
-impl Drop for EmbassyTcpLink<'_> {
-    fn drop(&mut self) {
-        self.pool.borrow_mut().release(self.idx);
     }
 }
 

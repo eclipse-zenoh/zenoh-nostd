@@ -21,7 +21,8 @@ pub type FixedCapacitySubCallbacks<
     const CAPACITY: usize,
     Callback = RawOrBox<16>,
     Future = RawOrBox<128>,
-> = FixedCapacityCallbacks<'a, SampleRef, CAPACITY, Callback, Future>;
+    const MAX_KEYEXPR: usize = 128,
+> = FixedCapacityCallbacks<'a, SampleRef, CAPACITY, Callback, Future, MAX_KEYEXPR>;
 
 #[cfg(feature = "alloc")]
 pub type AllocSubCallbacks<'a, Callback = RawOrBox<16>, Future = RawOrBox<128>> =
@@ -32,7 +33,7 @@ where
     Config: ZSessionConfig,
 {
     id: u32,
-    ke: &'static keyexpr,
+    ke: &'a keyexpr,
     session: &'a Session<'res, Config>,
     receiver: Option<DynamicReceiver<'res, OwnedSample>>,
 }
@@ -103,7 +104,7 @@ pub struct SubscriberBuilder<
     Config: ZSessionConfig,
 {
     session: &'a Session<'res, Config>,
-    ke: &'static keyexpr,
+    ke: &'a keyexpr,
     callback: Option<
         DynCallback<'res, CallbackStorage<'res, Config>, FutureStorage<'res, Config>, SampleRef>,
     >,
@@ -114,7 +115,7 @@ impl<'a, 'res, Config> SubscriberBuilder<'a, 'res, Config, (), false, false>
 where
     Config: ZSessionConfig,
 {
-    pub(crate) fn new(session: &'a Session<'res, Config>, ke: &'static keyexpr) -> Self {
+    pub(crate) fn new(session: &'a Session<'res, Config>, ke: &'a keyexpr) -> Self {
         Self {
             session,
             ke,
@@ -223,7 +224,10 @@ impl<'res, Config> Session<'res, Config>
 where
     Config: ZSessionConfig,
 {
-    pub fn declare_subscriber(&self, ke: &'static keyexpr) -> SubscriberBuilder<'_, 'res, Config> {
+    pub fn declare_subscriber<'a>(
+        &'a self,
+        ke: &'a keyexpr,
+    ) -> SubscriberBuilder<'a, 'res, Config> {
         SubscriberBuilder::new(self, ke)
     }
 }
