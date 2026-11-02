@@ -187,10 +187,13 @@ where
             session: self.session,
             ke: self.ke,
             callback: Some(DynObject::new(AsyncCallback::new(
-                async move |resp: &'_ QueryableQuery<'_, 'static, Config>| {
-                    if let Ok(resp) = OwnedQuery::try_from((resp, self.session)) {
-                        sender.send(resp).await;
+                async move |query: &'_ QueryableQuery<'_, 'static, Config>| {
+                    if let Ok(owned) = OwnedQuery::try_from((query, self.session)) {
+                        // The receiver now owns the query and must finalize it.
+                        query.hand_off();
+                        sender.send(owned).await;
                     } else {
+                        // Not handed off, so the session finalizes it.
                         zenoh_proto::error!(
                             "{}: Couldn't convert to a transferable query",
                             zenoh_proto::zctx!()
@@ -316,22 +319,31 @@ where
             .await?)
     }
 
+    /// Finalizes one owner of query `rid`, sending `ResponseFinal` once
+    /// every owner has finalized.
     pub(crate) async fn finalize(&self, rid: u32) -> core::result::Result<(), SessionError> {
-        if self.state().await.queryable_callbacks.decrease(rid) {
-            self.driver
-                .tx()
-                .await
-                .send(core::iter::once(NetworkMessage {
-                    reliability: Reliability::default(),
-                    qos: QoS::default(),
-                    body: NetworkBody::ResponseFinal(ResponseFinal {
-                        rid,
-                        ..Default::default()
-                    }),
-                }))
-                .await?;
+        let done = self.state().await.queryable_callbacks.decrease(rid);
+        if done {
+            self.response_final(rid).await?;
         }
 
         Ok(())
+    }
+
+    /// Tells the querier that query `rid` gets no more replies.
+    pub(crate) async fn response_final(&self, rid: u32) -> core::result::Result<(), SessionError> {
+        Ok(self
+            .driver
+            .tx()
+            .await
+            .send(core::iter::once(NetworkMessage {
+                reliability: Reliability::default(),
+                qos: QoS::default(),
+                body: NetworkBody::ResponseFinal(ResponseFinal {
+                    rid,
+                    ..Default::default()
+                }),
+            }))
+            .await?)
     }
 }

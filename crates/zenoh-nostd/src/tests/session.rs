@@ -10,7 +10,7 @@ use std::{boxed::Box, vec, vec::Vec};
 
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Channel};
 use embassy_time::{Instant, Timer, with_timeout};
-use zenoh_proto::{fields::WireExpr, keyexpr, msgs::*};
+use zenoh_proto::{exts::Value, fields::WireExpr, keyexpr, msgs::*};
 
 use super::harness::{Seen, TestConfig, WAIT, run};
 use crate::session::{FixedCapacityGetResponse, FixedCapacityQueryableQuery, GetResponse};
@@ -231,7 +231,6 @@ fn get_channel_closes_on_response_final() {
 /// finalizes on its behalf, so `ResponseFinal` is never sent and the remote
 /// querier waits out its whole timeout.
 #[test]
-#[ignore = "reproducer: callback queryable never sends ResponseFinal"]
 fn callback_queryable_sends_response_final() {
     run(|session, router| async move {
         let _queryable = session
@@ -256,6 +255,107 @@ fn callback_queryable_sends_response_final() {
         router
             .wait_for("ResponseFinal", |s| *s == Seen::ResponseFinal { rid: 7 })
             .await;
+    });
+}
+
+/// A queryable must keep serving queries for as long as it is declared. The
+/// session tracks each in-flight query, and that tracking must be released
+/// once the query is finalized, or the table fills up after `CAPACITY` (8 in
+/// the test config) queries and the next one kills the session.
+#[test]
+fn queryable_serves_more_queries_than_capacity() {
+    run(|session, router| async move {
+        type Q = FixedCapacityQueryableQuery<TestConfig, 64, 64, 64>;
+        let ch: &'static Channel<NoopRawMutex, Q, 4> = leak(Channel::new());
+        let queryable = session
+            .declare_queryable(ke("t/q/*"))
+            .channel(ch.dyn_sender(), ch.dyn_receiver())
+            .finish()
+            .await
+            .unwrap();
+
+        router
+            .wait_for("DeclareQueryable", |s| {
+                matches!(s, Seen::DeclareQueryable { .. })
+            })
+            .await;
+
+        for rid in 100..120 {
+            router.send(request(rid, ke("t/q/1"))).await;
+            let mut query = queryable.recv().await.unwrap();
+            query.finalize().await.unwrap();
+            router
+                .wait_for("ResponseFinal", |s| *s == Seen::ResponseFinal { rid })
+                .await;
+        }
+    });
+}
+
+/// A query that matches none of the session's queryables (for instance one
+/// that raced with an undeclare) must still be finalized, or the remote
+/// querier waits out its whole timeout.
+#[test]
+fn unmatched_query_sends_response_final() {
+    run(|session, router| async move {
+        let _queryable = session
+            .declare_queryable(ke("t/q/*"))
+            .callback_sync(|_| {})
+            .finish()
+            .await
+            .unwrap();
+
+        router
+            .wait_for("DeclareQueryable", |s| {
+                matches!(s, Seen::DeclareQueryable { .. })
+            })
+            .await;
+        router.send(request(9, ke("t/elsewhere"))).await;
+
+        router
+            .wait_for("ResponseFinal", |s| *s == Seen::ResponseFinal { rid: 9 })
+            .await;
+    });
+}
+
+/// When a channel-mode queryable can't take a query (here, its payload is
+/// larger than the owned query's buffer), the query is dropped. It must
+/// still be finalized, since nobody else ever will.
+#[test]
+fn dropped_channel_query_sends_response_final() {
+    run(|session, router| async move {
+        type Q = FixedCapacityQueryableQuery<TestConfig, 64, 64, 4>;
+        let ch: &'static Channel<NoopRawMutex, Q, 4> = leak(Channel::new());
+        let queryable = session
+            .declare_queryable(ke("t/q/*"))
+            .channel(ch.dyn_sender(), ch.dyn_receiver())
+            .finish()
+            .await
+            .unwrap();
+
+        router
+            .wait_for("DeclareQueryable", |s| {
+                matches!(s, Seen::DeclareQueryable { .. })
+            })
+            .await;
+        router
+            .send(NetworkBody::Request(Request {
+                id: 5,
+                wire_expr: WireExpr::from(ke("t/q/1")),
+                payload: RequestBody::Query(Query {
+                    body: Some(Value {
+                        payload: b"far too large for four bytes",
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }))
+            .await;
+
+        router
+            .wait_for("ResponseFinal", |s| *s == Seen::ResponseFinal { rid: 5 })
+            .await;
+        assert!(queryable.try_recv().is_none());
     });
 }
 

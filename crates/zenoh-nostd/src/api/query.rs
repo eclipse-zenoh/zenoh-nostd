@@ -1,4 +1,4 @@
-use core::str::FromStr;
+use core::{cell::Cell, str::FromStr};
 
 use zenoh_proto::{CollectionError, SessionError, keyexpr};
 
@@ -14,6 +14,9 @@ where
     parameters: Option<&'a str>,
     payload: Option<&'a [u8]>,
     finalized: bool,
+    /// Set when a channel-mode queryable takes ownership of this query.
+    /// The owned copy is then responsible for finalizing it.
+    handed_off: Cell<bool>,
 }
 
 impl<'a, 'res, Config> QueryableQuery<'a, 'res, Config>
@@ -34,7 +37,20 @@ where
             parameters,
             payload,
             finalized: false,
+            handed_off: Cell::new(false),
         }
+    }
+
+    /// Records that an owned copy of this query now exists and will be
+    /// finalized through it.
+    pub(crate) fn hand_off(&self) {
+        self.handed_off.set(true);
+    }
+
+    /// Whether the last callback handed this query off, resetting the flag
+    /// for the next callback.
+    pub(crate) fn take_handed_off(&self) -> bool {
+        self.handed_off.replace(false)
     }
 
     pub fn keyexpr(&self) -> &keyexpr {

@@ -83,10 +83,36 @@ where
                             },
                         );
 
-                        let count = state.queryable_callbacks.intersects(ke).count();
-                        state.queryable_callbacks.set_counter(id, count)?;
+                        // A callback-mode queryable is done with the query
+                        // when its callback returns. A channel-mode one hands
+                        // the query off, and its owned copy finalizes later.
+                        let mut handed_off = 0;
                         for cb in state.queryable_callbacks.intersects(ke) {
                             cb.call(&query).await;
+                            if query.take_handed_off() {
+                                handed_off += 1;
+                            }
+                        }
+
+                        // Finalize now unless an owned copy is still out. The
+                        // state lock is held, so no owner can finalize before
+                        // the counter is in place.
+                        let pending = handed_off > 0
+                            && state
+                                .queryable_callbacks
+                                .set_counter(id, handed_off)
+                                .inspect_err(|e| {
+                                    zenoh_proto::error!(
+                                        "{}: Too many queries in flight, finalizing query {} early: {:?}",
+                                        zenoh_proto::zctx!(),
+                                        id,
+                                        e
+                                    )
+                                })
+                                .is_ok();
+
+                        if !pending {
+                            self.response_final(id).await?;
                         }
                     }
                     _ => {}

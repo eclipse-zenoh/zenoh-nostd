@@ -164,15 +164,18 @@ impl<'a, Arg: ZArg + 'a, const CAPACITY: usize, Callback: Storage, Future: Stora
     }
 
     fn decrease(&mut self, id: u32) -> bool {
-        if let Some(value) = self.counters.get_mut(&id) {
-            if *value > 0 {
-                *value -= 1;
-            }
+        let Some(value) = self.counters.get_mut(&id) else {
+            return false;
+        };
 
-            *value == 0
-        } else {
-            false
+        *value = value.saturating_sub(1);
+        if *value > 0 {
+            return false;
         }
+
+        // Release the slot, so a finished query doesn't hold it forever.
+        self.counters.remove(&id);
+        true
     }
 
     fn intersects<'r>(
@@ -292,15 +295,18 @@ impl<'a, Arg: ZArg + 'a, Callback: Storage, Future: Storage> ZCallbacks<'a, Arg>
     }
 
     fn decrease(&mut self, id: u32) -> bool {
-        if let Some(value) = self.counters.get_mut(&id) {
-            if *value > 0 {
-                *value -= 1;
-            }
+        let Some(value) = self.counters.get_mut(&id) else {
+            return false;
+        };
 
-            *value == 0
-        } else {
-            false
+        *value = value.saturating_sub(1);
+        if *value > 0 {
+            return false;
         }
+
+        // Release the slot, so a finished query doesn't hold it forever.
+        self.counters.remove(&id);
+        true
     }
 
     fn intersects<'r>(
