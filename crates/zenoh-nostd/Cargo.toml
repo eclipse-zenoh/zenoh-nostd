@@ -35,3 +35,8 @@ embassy-time.workspace = true
 embassy-sync.workspace = true
 
 embedded-io-async.workspace = true
+
+[dev-dependencies]
+# The std time driver plus a generic timer queue let tests drive sessions
+# with `embassy_futures::block_on`, without an embassy executor.
+embassy-time = { workspace = true, features = ["std", "generic-queue-64"] }
