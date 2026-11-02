@@ -187,11 +187,9 @@ fn queryable_channel_replies_and_finalizes() {
 
 // ── Reproducers: these fail on the current code ─────────────────────────────
 
-/// A get's channel must close once the router signals `ResponseFinal`.
-/// Today the receiver stays open until the get's timeout expires, so every
-/// channel-mode get costs its full timeout.
+/// A get's channel must end once the router signals `ResponseFinal`, not
+/// when the get's timeout expires. Once ended, it stays ended.
 #[test]
-#[ignore = "reproducer: get channel ignores ResponseFinal"]
 fn get_channel_closes_on_response_final() {
     run(|session, router| async move {
         type R = FixedCapacityGetResponse<64, 64>;
@@ -222,6 +220,65 @@ fn get_channel_closes_on_response_final() {
         assert!(
             matches!(end, Ok(None)),
             "receiver should close right after ResponseFinal, not at the timeout"
+        );
+
+        // Ended for good: no waiting for the timeout on later calls either.
+        assert!(responses.try_recv().is_none());
+        let again = with_timeout(embassy_time::Duration::from_millis(100), responses.recv()).await;
+        assert!(matches!(again, Ok(None)));
+    });
+}
+
+/// A get callback sees its replies, then exactly one `Final`, then nothing:
+/// a reply that arrives after `ResponseFinal` is not delivered.
+#[test]
+fn get_callback_receives_final_after_replies() {
+    #[derive(Debug, PartialEq)]
+    enum Event {
+        Ok(Vec<u8>),
+        Final,
+    }
+
+    run(|session, router| async move {
+        let events: Log<Event> = log();
+        session
+            .get(ke("t/get"))
+            .callback_sync(move |r| {
+                events.borrow_mut().push(match r {
+                    GetResponse::Ok(s) => Event::Ok(s.payload().to_vec()),
+                    GetResponse::Final => Event::Final,
+                    GetResponse::Err(_) => panic!("unexpected Err reply"),
+                })
+            })
+            .finish()
+            .await
+            .unwrap();
+
+        let id = request_id(
+            &router
+                .wait_for("Request", |s| matches!(s, Seen::Request { .. }))
+                .await,
+        );
+        router.send(reply(id, ke("t/get"), b"one")).await;
+        router.send(reply(id, ke("t/get"), b"two")).await;
+        router
+            .send(NetworkBody::ResponseFinal(ResponseFinal {
+                rid: id,
+                ..Default::default()
+            }))
+            .await;
+        router.send(reply(id, ke("t/get"), b"late")).await;
+
+        eventually("Final", || events.borrow().contains(&Event::Final)).await;
+        // Let the late reply be processed, if it were going to be delivered.
+        Timer::after_millis(20).await;
+        assert_eq!(
+            *events.borrow(),
+            vec![
+                Event::Ok(b"one".to_vec()),
+                Event::Ok(b"two".to_vec()),
+                Event::Final
+            ]
         );
     });
 }

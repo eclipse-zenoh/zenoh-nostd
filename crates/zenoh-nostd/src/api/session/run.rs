@@ -54,8 +54,12 @@ where
                         }
                     }
                     NetworkBody::ResponseFinal(ResponseFinal { rid, .. }) => {
+                        // Tell the get it is complete (this also ends a
+                        // channel-mode get's `recv`), then forget it.
+                        if let Some(cb) = state.get_callbacks.get(rid) {
+                            cb.call(&GetResponse::Final).await;
+                        }
                         state.get_callbacks.remove(rid)?;
-                        // TODO: also close channels
                     }
                     NetworkBody::Request(Request {
                         id,
