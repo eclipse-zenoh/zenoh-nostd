@@ -23,6 +23,9 @@ fn response_callback(resp: &GetResponse<'_>) {
                 core::str::from_utf8(reply.payload()).unwrap()
             );
         }
+        GetResponse::Final => {
+            zenoh::info!("[Querier] No more replies");
+        }
     }
 }
 
