@@ -189,6 +189,9 @@ where
 
         if let Some(callback) = self.callback {
             state.sub_callbacks.insert(id, self.ke, None, callback)?;
+            self.session
+                .local_subscribers
+                .set(self.session.local_subscribers.get() + 1);
         }
 
         let msg = Declare {

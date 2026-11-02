@@ -1,4 +1,4 @@
-use core::time::Duration;
+use core::{cell::Cell, time::Duration};
 
 use dyn_utils::{DynObject, storage::RawOrBox};
 use embassy_futures::select::{Either, select};
@@ -9,7 +9,7 @@ use zenoh_proto::{
     exts::{QoS, Value},
     fields::{ConsolidationMode, Reliability, WireExpr},
     keyexpr,
-    msgs::{NetworkBody, NetworkMessage, Query, Request, RequestBody},
+    msgs::{NetworkBody, NetworkBodyRef, NetworkMessage, Query, Request, RequestBody},
 };
 
 #[cfg(feature = "alloc")]
@@ -22,7 +22,7 @@ use crate::{
     },
     config::ZSessionConfig,
     io::transport::ZTransportLinkTx,
-    session::GetResponse,
+    session::{GetResponse, ZOwnedGetResponse},
 };
 
 pub type FixedCapacityGetCallbacks<
@@ -40,6 +40,8 @@ pub struct GetResponses<'res, OwnedResponse = (), const CHANNEL: bool = false> {
     ke: &'static keyexpr,
     timedout: Instant,
     receiver: Option<DynamicReceiver<'res, OwnedResponse>>,
+    /// Set once the end-of-get marker has been received.
+    finished: Cell<bool>,
 }
 
 impl<'res, OwnedResponse, const CHANNEL: bool> GetResponses<'res, OwnedResponse, CHANNEL> {
@@ -52,12 +54,31 @@ impl<'res, OwnedResponse, const CHANNEL: bool> GetResponses<'res, OwnedResponse,
     }
 }
 
-impl<'res, OwnedResponse> GetResponses<'res, OwnedResponse, true> {
+impl<'res, OwnedResponse> GetResponses<'res, OwnedResponse, true>
+where
+    OwnedResponse: ZOwnedGetResponse,
+{
+    /// Returns the next reply if one is ready.
+    ///
+    /// Returns `None` if no reply is ready, or once the get has completed.
     pub fn try_recv(&self) -> Option<OwnedResponse> {
-        self.receiver.as_ref().unwrap().try_receive().ok()
+        if self.finished.get() {
+            return None;
+        }
+
+        let response = self.receiver.as_ref().unwrap().try_receive().ok()?;
+        self.unless_final(response)
     }
 
+    /// Waits for the next reply.
+    ///
+    /// Returns `None` once the get has completed (the router sent its final
+    /// response) or timed out.
     pub async fn recv(&self) -> Option<OwnedResponse> {
+        if self.finished.get() {
+            return None;
+        }
+
         match select(
             Timer::at(self.timedout),
             self.receiver.as_ref().unwrap().receive(),
@@ -65,7 +86,16 @@ impl<'res, OwnedResponse> GetResponses<'res, OwnedResponse, true> {
         .await
         {
             Either::First(_) => None,
-            Either::Second(v) => Some(v),
+            Either::Second(response) => self.unless_final(response),
+        }
+    }
+
+    fn unless_final(&self, response: OwnedResponse) -> Option<OwnedResponse> {
+        if response.is_final() {
+            self.finished.set(true);
+            None
+        } else {
+            Some(response)
         }
     }
 }
@@ -223,13 +253,6 @@ where
         let mut state = self.session.state().await;
         let rid = state.next();
 
-        if let Some(callback) = self.callback {
-            state.get_callbacks.drop_timedout();
-            state
-                .get_callbacks
-                .insert(rid, self.ke, Some(timedout), callback)?;
-        }
-
         let msg = Request {
             id: rid,
             wire_expr: WireExpr::from(self.ke),
@@ -244,6 +267,33 @@ where
             }),
             ..Default::default()
         };
+
+        // A router never routes the request back to this session, so the
+        // session hands it to its own queryables.
+        let session = self.session;
+        let wants_local = session.local_queryables.get() > 0 && session.loopback.enabled();
+        let local = wants_local && session.loopback.push(NetworkBodyRef::Request(&msg));
+        if wants_local && !local {
+            zenoh_proto::warn!(
+                "{}: {}, not delivering get on {} to local queryables",
+                zenoh_proto::zctx!(),
+                SessionError::LoopbackFull,
+                self.ke.as_str()
+            );
+        }
+
+        if let Some(callback) = self.callback {
+            state.get_callbacks.drop_timedout();
+            state
+                .get_callbacks
+                .insert(rid, self.ke, Some(timedout), callback)?;
+            // The get completes once every destination has sent its
+            // ResponseFinal: the network, and the session if it got the
+            // request too. The state lock is held, so none can arrive first.
+            state
+                .get_callbacks
+                .set_counter(rid, if local { 2 } else { 1 })?;
+        }
 
         self.session
             .driver
@@ -260,6 +310,7 @@ where
             ke: self.ke,
             timedout,
             receiver: self.receiver,
+            finished: Cell::new(false),
         })
     }
 }

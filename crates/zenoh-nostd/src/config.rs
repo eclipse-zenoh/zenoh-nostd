@@ -16,8 +16,19 @@ pub trait ZSessionConfig: Sized {
     where
         Self: 'res;
 
+    /// Buffer for messages between entities of the same session: a put that
+    /// reaches a local subscriber, a get that reaches a local queryable, and
+    /// the replies to it.
+    ///
+    /// The session holds two of these, so one can fill while the other is
+    /// dispatched. A local message that doesn't fit is not delivered
+    /// locally. A zero-length buffer such as `[u8; 0]` disables same-session
+    /// delivery.
+    type LoopbackBuff: AsMut<[u8]> + AsRef<[u8]>;
+
     fn transports(&self) -> &TransportLinkManager<Self::LinkManager>;
     fn buff(&self) -> Self::Buff;
+    fn loopback_buff(&self) -> Self::LoopbackBuff;
 }
 
 #[allow(dead_code)]

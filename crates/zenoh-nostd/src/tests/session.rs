@@ -187,11 +187,9 @@ fn queryable_channel_replies_and_finalizes() {
 
 // ── Reproducers: these fail on the current code ─────────────────────────────
 
-/// A get's channel must close once the router signals `ResponseFinal`.
-/// Today the receiver stays open until the get's timeout expires, so every
-/// channel-mode get costs its full timeout.
+/// A get's channel must end once the router signals `ResponseFinal`, not
+/// when the get's timeout expires. Once ended, it stays ended.
 #[test]
-#[ignore = "reproducer: get channel ignores ResponseFinal"]
 fn get_channel_closes_on_response_final() {
     run(|session, router| async move {
         type R = FixedCapacityGetResponse<64, 64>;
@@ -222,6 +220,65 @@ fn get_channel_closes_on_response_final() {
         assert!(
             matches!(end, Ok(None)),
             "receiver should close right after ResponseFinal, not at the timeout"
+        );
+
+        // Ended for good: no waiting for the timeout on later calls either.
+        assert!(responses.try_recv().is_none());
+        let again = with_timeout(embassy_time::Duration::from_millis(100), responses.recv()).await;
+        assert!(matches!(again, Ok(None)));
+    });
+}
+
+/// A get callback sees its replies, then exactly one `Final`, then nothing:
+/// a reply that arrives after `ResponseFinal` is not delivered.
+#[test]
+fn get_callback_receives_final_after_replies() {
+    #[derive(Debug, PartialEq)]
+    enum Event {
+        Ok(Vec<u8>),
+        Final,
+    }
+
+    run(|session, router| async move {
+        let events: Log<Event> = log();
+        session
+            .get(ke("t/get"))
+            .callback_sync(move |r| {
+                events.borrow_mut().push(match r {
+                    GetResponse::Ok(s) => Event::Ok(s.payload().to_vec()),
+                    GetResponse::Final => Event::Final,
+                    GetResponse::Err(_) => panic!("unexpected Err reply"),
+                })
+            })
+            .finish()
+            .await
+            .unwrap();
+
+        let id = request_id(
+            &router
+                .wait_for("Request", |s| matches!(s, Seen::Request { .. }))
+                .await,
+        );
+        router.send(reply(id, ke("t/get"), b"one")).await;
+        router.send(reply(id, ke("t/get"), b"two")).await;
+        router
+            .send(NetworkBody::ResponseFinal(ResponseFinal {
+                rid: id,
+                ..Default::default()
+            }))
+            .await;
+        router.send(reply(id, ke("t/get"), b"late")).await;
+
+        eventually("Final", || events.borrow().contains(&Event::Final)).await;
+        // Let the late reply be processed, if it were going to be delivered.
+        Timer::after_millis(20).await;
+        assert_eq!(
+            *events.borrow(),
+            vec![
+                Event::Ok(b"one".to_vec()),
+                Event::Ok(b"two".to_vec()),
+                Event::Final
+            ]
         );
     });
 }
@@ -363,7 +420,6 @@ fn dropped_channel_query_sends_response_final() {
 /// router never echoes a message back to its sender, so the session has to
 /// deliver locally.
 #[test]
-#[ignore = "reproducer: no session-local delivery for put"]
 fn put_reaches_same_session_subscriber() {
     run(|session, router| async move {
         let got: Log<Vec<u8>> = log();
@@ -388,7 +444,6 @@ fn put_reaches_same_session_subscriber() {
 /// A get must reach queryables declared on the same session, and complete
 /// once they finalize. A router never routes a Request back to its sender.
 #[test]
-#[ignore = "reproducer: no session-local delivery for get"]
 fn get_reaches_same_session_queryable() {
     run(|session, router| async move {
         type Q = FixedCapacityQueryableQuery<TestConfig, 64, 64, 64>;
@@ -431,5 +486,147 @@ fn get_reaches_same_session_queryable() {
                 .any(|s| matches!(s, Seen::Reply { .. })),
             "a local reply must not be sent to the network"
         );
+    });
+}
+
+// ── Same-session delivery ───────────────────────────────────────────────────
+
+/// A get that reaches both local queryables and the network completes only
+/// once both have finished: replies from either side are delivered, and
+/// `Final` comes after the last of the two `ResponseFinal`s.
+#[test]
+fn get_completes_after_local_and_remote_finals() {
+    #[derive(Debug, PartialEq)]
+    enum Event {
+        Ok(Vec<u8>),
+        Final,
+    }
+
+    run(|session, router| async move {
+        let _queryable = session
+            .declare_queryable(ke("t/mix/*"))
+            .callback(async |q| {
+                q.reply(ke("t/mix/local"), b"local").await.unwrap();
+            })
+            .finish()
+            .await
+            .unwrap();
+
+        let events: Log<Event> = log();
+        session
+            .get(ke("t/mix/*"))
+            .timeout(Duration::from_secs(3))
+            .callback_sync(move |r| {
+                events.borrow_mut().push(match r {
+                    GetResponse::Ok(s) => Event::Ok(s.payload().to_vec()),
+                    GetResponse::Final => Event::Final,
+                    GetResponse::Err(_) => panic!("unexpected Err reply"),
+                })
+            })
+            .finish()
+            .await
+            .unwrap();
+
+        // The request still goes to the network for remote queryables.
+        let id = request_id(
+            &router
+                .wait_for("Request", |s| matches!(s, Seen::Request { .. }))
+                .await,
+        );
+
+        // The local side answers and finishes on its own...
+        eventually("local reply", || !events.borrow().is_empty()).await;
+        Timer::after_millis(20).await;
+        assert_eq!(*events.borrow(), vec![Event::Ok(b"local".to_vec())]);
+
+        // ...but the get stays open until the network side finishes too.
+        router.send(reply(id, ke("t/mix/remote"), b"remote")).await;
+        router
+            .send(NetworkBody::ResponseFinal(ResponseFinal {
+                rid: id,
+                ..Default::default()
+            }))
+            .await;
+
+        eventually("Final", || events.borrow().contains(&Event::Final)).await;
+        assert_eq!(
+            *events.borrow(),
+            vec![
+                Event::Ok(b"local".to_vec()),
+                Event::Ok(b"remote".to_vec()),
+                Event::Final
+            ]
+        );
+        // The local query is answered locally, not over the network.
+        let seen = router.seen().await;
+        assert!(!seen.iter().any(|s| matches!(s, Seen::Reply { .. })));
+        assert!(!seen.iter().any(|s| matches!(s, Seen::ResponseFinal { .. })));
+    });
+}
+
+/// A callback may publish to a subscriber of the same session. Callbacks run
+/// while the session state is locked, so delivering that put on the spot
+/// would wait on the lock forever; it has to go through the loopback.
+#[test]
+fn callback_can_put_to_same_session_subscriber() {
+    run(|session, router| async move {
+        let got: Log<Vec<u8>> = log();
+        let _out = session
+            .declare_subscriber(ke("t/out"))
+            .callback_sync(move |s| got.borrow_mut().push(s.payload().to_vec()))
+            .finish()
+            .await
+            .unwrap();
+        let _in = session
+            .declare_subscriber(ke("t/in"))
+            .callback(async move |s| {
+                session
+                    .put(ke("t/out"), s.payload())
+                    .finish()
+                    .await
+                    .unwrap();
+            })
+            .finish()
+            .await
+            .unwrap();
+
+        router
+            .wait_for(
+                "DeclareSubscriber",
+                |s| matches!(s, Seen::DeclareSubscriber { ke, .. } if ke == "t/in"),
+            )
+            .await;
+        router.push("t/in", b"relayed").await;
+
+        eventually("relayed sample", || got.borrow().len() == 1).await;
+        assert_eq!(*got.borrow(), vec![b"relayed".to_vec()]);
+    });
+}
+
+/// A put too large for the loopback buffer still goes to the network. It
+/// just isn't delivered locally, and the session keeps running.
+#[test]
+fn oversized_put_still_reaches_network() {
+    run(|session, router| async move {
+        let got: Log<Vec<u8>> = log();
+        let _sub = session
+            .declare_subscriber(ke("t/big"))
+            .callback_sync(move |s| got.borrow_mut().push(s.payload().to_vec()))
+            .finish()
+            .await
+            .unwrap();
+
+        let big = vec![7u8; super::harness::LOOPBACK * 2];
+        session.put(ke("t/big"), &big).finish().await.unwrap();
+        session.put(ke("t/big"), b"small").finish().await.unwrap();
+
+        router
+            .wait_for(
+                "big Push",
+                |s| matches!(s, Seen::Push { payload, .. } if payload.len() == big.len()),
+            )
+            .await;
+        eventually("small sample", || got.borrow().len() == 1).await;
+        assert_eq!(*got.borrow(), vec![b"small".to_vec()]);
     });
 }

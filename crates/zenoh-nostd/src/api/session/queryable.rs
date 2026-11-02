@@ -16,7 +16,7 @@ use crate::{
         arg::QueryableQueryRef,
         callbacks::{AsyncCallback, DynCallback, FixedCapacityCallbacks, SyncCallback, ZCallbacks},
         query::QueryableQuery,
-        session::Session,
+        session::{Origin, Session},
     },
     config::ZSessionConfig,
     io::transport::ZTransportLinkTx,
@@ -221,6 +221,9 @@ where
             state
                 .queryable_callbacks
                 .insert(id, self.ke, None, callback)?;
+            self.session
+                .local_queryables
+                .set(self.session.local_queryables.get() + 1);
         }
 
         let msg = Declare {
@@ -260,90 +263,147 @@ where
     }
 }
 
+/// Request ids from the network and from the session's own gets are
+/// separate id spaces, but in-flight queries of both kinds are tracked in one
+/// table. Local ones are keyed with the top bit set. A remote id only reaches
+/// that range after 2^31 requests on one link.
+const LOCAL_QUERY: u32 = 1 << 31;
+
+/// The key under which an in-flight query is tracked.
+pub(crate) fn query_key(rid: u32, origin: Origin) -> u32 {
+    match origin {
+        Origin::Remote => rid,
+        Origin::Local => rid | LOCAL_QUERY,
+    }
+}
+
 impl<'res, Config> Session<'res, Config>
 where
     Config: ZSessionConfig,
 {
+    /// Sends `response` back to where its query came from: over the network
+    /// for a remote query, through the loopback for a local one.
+    async fn respond(
+        &self,
+        origin: Origin,
+        response: Response<'_>,
+    ) -> core::result::Result<(), SessionError> {
+        match origin {
+            Origin::Remote => Ok(self
+                .driver
+                .tx()
+                .await
+                .send(core::iter::once(NetworkMessage {
+                    reliability: Reliability::default(),
+                    qos: QoS::default(),
+                    body: NetworkBody::Response(response),
+                }))
+                .await?),
+            Origin::Local => {
+                if self.loopback.push(NetworkBodyRef::Response(&response)) {
+                    Ok(())
+                } else {
+                    Err(SessionError::LoopbackFull)
+                }
+            }
+        }
+    }
+
     pub(crate) async fn reply(
         &self,
         rid: u32,
+        origin: Origin,
         ke: &keyexpr,
         payload: &[u8],
     ) -> core::result::Result<(), SessionError> {
-        Ok(self
-            .driver
-            .tx()
-            .await
-            .send(core::iter::once(NetworkMessage {
-                reliability: Reliability::default(),
-                qos: QoS::default(),
-                body: NetworkBody::Response(Response {
-                    rid,
-                    wire_expr: WireExpr::from(ke),
-                    payload: ResponseBody::Reply(Reply {
-                        consolidation: ConsolidationMode::None,
-                        payload: PushBody::Put(Put {
-                            payload,
-                            ..Default::default()
-                        }),
+        self.respond(
+            origin,
+            Response {
+                rid,
+                wire_expr: WireExpr::from(ke),
+                payload: ResponseBody::Reply(Reply {
+                    consolidation: ConsolidationMode::None,
+                    payload: PushBody::Put(Put {
+                        payload,
+                        ..Default::default()
                     }),
-                    ..Default::default()
                 }),
-            }))
-            .await?)
+                ..Default::default()
+            },
+        )
+        .await
     }
 
     pub(crate) async fn err(
         &self,
         rid: u32,
+        origin: Origin,
         ke: &keyexpr,
         payload: &[u8],
     ) -> core::result::Result<(), SessionError> {
-        Ok(self
-            .driver
-            .tx()
-            .await
-            .send(core::iter::once(NetworkMessage {
-                reliability: Reliability::default(),
-                qos: QoS::default(),
-                body: NetworkBody::Response(Response {
-                    rid,
-                    wire_expr: WireExpr::from(ke),
-                    payload: ResponseBody::Err(Err {
-                        payload,
-                        ..Default::default()
-                    }),
+        self.respond(
+            origin,
+            Response {
+                rid,
+                wire_expr: WireExpr::from(ke),
+                payload: ResponseBody::Err(Err {
+                    payload,
                     ..Default::default()
                 }),
-            }))
-            .await?)
+                ..Default::default()
+            },
+        )
+        .await
     }
 
     /// Finalizes one owner of query `rid`, sending `ResponseFinal` once
     /// every owner has finalized.
-    pub(crate) async fn finalize(&self, rid: u32) -> core::result::Result<(), SessionError> {
-        let done = self.state().await.queryable_callbacks.decrease(rid);
+    pub(crate) async fn finalize(
+        &self,
+        rid: u32,
+        origin: Origin,
+    ) -> core::result::Result<(), SessionError> {
+        let done = self
+            .state()
+            .await
+            .queryable_callbacks
+            .decrease(query_key(rid, origin));
         if done {
-            self.response_final(rid).await?;
+            self.response_final(rid, origin).await?;
         }
 
         Ok(())
     }
 
     /// Tells the querier that query `rid` gets no more replies.
-    pub(crate) async fn response_final(&self, rid: u32) -> core::result::Result<(), SessionError> {
-        Ok(self
-            .driver
-            .tx()
-            .await
-            .send(core::iter::once(NetworkMessage {
-                reliability: Reliability::default(),
-                qos: QoS::default(),
-                body: NetworkBody::ResponseFinal(ResponseFinal {
-                    rid,
-                    ..Default::default()
-                }),
-            }))
-            .await?)
+    pub(crate) async fn response_final(
+        &self,
+        rid: u32,
+        origin: Origin,
+    ) -> core::result::Result<(), SessionError> {
+        let msg = ResponseFinal {
+            rid,
+            ..Default::default()
+        };
+
+        match origin {
+            Origin::Remote => Ok(self
+                .driver
+                .tx()
+                .await
+                .send(core::iter::once(NetworkMessage {
+                    reliability: Reliability::default(),
+                    qos: QoS::default(),
+                    body: NetworkBody::ResponseFinal(msg),
+                }))
+                .await?),
+            Origin::Local => {
+                if self.loopback.push(NetworkBodyRef::ResponseFinal(&msg)) {
+                    Ok(())
+                } else {
+                    Err(SessionError::LoopbackFull)
+                }
+            }
+        }
     }
 }
