@@ -9,6 +9,12 @@ mod config;
 mod io;
 mod resources;
 
+#[cfg(test)]
+extern crate std;
+
+#[cfg(test)]
+mod tests;
+
 pub mod session {
     pub use super::config::ZSessionConfig;
     pub use super::io::transport::TransportLinkManager;

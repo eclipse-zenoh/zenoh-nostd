@@ -40,7 +40,7 @@ loc-proto:
 # Tests and benches
 
 test filter="":
-    cargo test {{ filter }} -p zenoh-proto -p zenoh-sansio
+    cargo test {{ filter }} -p zenoh-proto -p zenoh-sansio -p zenoh-nostd
 
 bench filter="bench":
     cargo test -p zenoh-proto {{ filter }} --profile=release -- --nocapture --ignored --test-threads=1
