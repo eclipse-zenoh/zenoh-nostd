@@ -69,6 +69,21 @@ where
             ..Default::default()
         };
 
+        // A router never echoes the put back, so the session delivers it to
+        // its own subscribers.
+        let session = self.session;
+        if session.local_subscribers.get() > 0
+            && session.loopback.enabled()
+            && !session.loopback.push(NetworkBodyRef::Push(&msg))
+        {
+            zenoh_proto::warn!(
+                "{}: {}, not delivering put on {} to local subscribers",
+                zenoh_proto::zctx!(),
+                SessionError::LoopbackFull,
+                self.ke.as_str()
+            );
+        }
+
         Ok(self
             .session
             .driver

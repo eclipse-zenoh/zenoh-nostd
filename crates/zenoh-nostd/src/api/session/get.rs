@@ -9,7 +9,7 @@ use zenoh_proto::{
     exts::{QoS, Value},
     fields::{ConsolidationMode, Reliability, WireExpr},
     keyexpr,
-    msgs::{NetworkBody, NetworkMessage, Query, Request, RequestBody},
+    msgs::{NetworkBody, NetworkBodyRef, NetworkMessage, Query, Request, RequestBody},
 };
 
 #[cfg(feature = "alloc")]
@@ -253,13 +253,6 @@ where
         let mut state = self.session.state().await;
         let rid = state.next();
 
-        if let Some(callback) = self.callback {
-            state.get_callbacks.drop_timedout();
-            state
-                .get_callbacks
-                .insert(rid, self.ke, Some(timedout), callback)?;
-        }
-
         let msg = Request {
             id: rid,
             wire_expr: WireExpr::from(self.ke),
@@ -274,6 +267,33 @@ where
             }),
             ..Default::default()
         };
+
+        // A router never routes the request back to this session, so the
+        // session hands it to its own queryables.
+        let session = self.session;
+        let wants_local = session.local_queryables.get() > 0 && session.loopback.enabled();
+        let local = wants_local && session.loopback.push(NetworkBodyRef::Request(&msg));
+        if wants_local && !local {
+            zenoh_proto::warn!(
+                "{}: {}, not delivering get on {} to local queryables",
+                zenoh_proto::zctx!(),
+                SessionError::LoopbackFull,
+                self.ke.as_str()
+            );
+        }
+
+        if let Some(callback) = self.callback {
+            state.get_callbacks.drop_timedout();
+            state
+                .get_callbacks
+                .insert(rid, self.ke, Some(timedout), callback)?;
+            // The get completes once every destination has sent its
+            // ResponseFinal: the network, and the session if it got the
+            // request too. The state lock is held, so none can arrive first.
+            state
+                .get_callbacks
+                .set_counter(rid, if local { 2 } else { 1 })?;
+        }
 
         self.session
             .driver

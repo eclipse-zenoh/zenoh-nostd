@@ -1,3 +1,5 @@
+use core::cell::Cell;
+
 use embassy_sync::{
     blocking_mutex::raw::NoopRawMutex,
     mutex::{Mutex, MutexGuard},
@@ -13,6 +15,7 @@ use crate::{
     resources::Resources,
 };
 
+mod loopback;
 mod run;
 
 pub mod get;
@@ -52,12 +55,26 @@ where
     }
 }
 
+/// Where a message dispatched by the session came from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Origin {
+    /// Received from the network.
+    Remote,
+    /// Sent by this session to one of its own entities.
+    Local,
+}
+
 pub struct Session<'res, Config>
 where
     Config: ZSessionConfig,
 {
     driver: Driver<'res, <Config::LinkManager as ZLinkManager>::Link<'res>, Config::Buff>,
     state: Mutex<NoopRawMutex, SessionState<'res, Config>>,
+    loopback: loopback::Loopback<Config::LoopbackBuff>,
+    /// Declared subscribers and queryables. Kept outside `state` so a put
+    /// or a get can tell, without locking, whether to deliver locally.
+    local_subscribers: Cell<usize>,
+    local_queryables: Cell<usize>,
 }
 
 impl<'res, Config> Session<'res, Config>
@@ -69,10 +86,14 @@ where
             <Config::LinkManager as ZLinkManager>::Link<'res>,
             Config::Buff,
         >,
+        config: &Config,
     ) -> Self {
         Self {
             driver: Driver::new(transport),
             state: Mutex::new(SessionState::new()),
+            loopback: loopback::Loopback::new(config.loopback_buff(), config.loopback_buff()),
+            local_subscribers: Cell::new(0),
+            local_queryables: Cell::new(0),
         }
     }
 
@@ -146,7 +167,7 @@ impl<'res, Config: ZSessionConfig> SessionBuilder<'res, Config> {
         if self.ignore_invalid_sn {
             transport.transport_mut().rx.ignore_invalid_sn();
         }
-        Session::new(self.resources.init(transport))
+        Session::new(self.resources.init(transport), self.config)
     }
 }
 

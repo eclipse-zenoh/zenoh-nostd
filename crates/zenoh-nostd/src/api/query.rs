@@ -2,7 +2,10 @@ use core::{cell::Cell, str::FromStr};
 
 use zenoh_proto::{CollectionError, SessionError, keyexpr};
 
-use crate::{api::session::Session, config::ZSessionConfig};
+use crate::{
+    api::session::{Origin, Session},
+    config::ZSessionConfig,
+};
 
 pub struct QueryableQuery<'a, 'res, Config>
 where
@@ -10,6 +13,7 @@ where
 {
     session: &'a Session<'res, Config>,
     rid: u32,
+    origin: Origin,
     ke: &'a keyexpr,
     parameters: Option<&'a str>,
     payload: Option<&'a [u8]>,
@@ -26,6 +30,7 @@ where
     pub(crate) fn new(
         session: &'a Session<'res, Config>,
         rid: u32,
+        origin: Origin,
         ke: &'a keyexpr,
         parameters: Option<&'a str>,
         payload: Option<&'a [u8]>,
@@ -33,6 +38,7 @@ where
         Self {
             session,
             rid,
+            origin,
             ke,
             parameters,
             payload,
@@ -70,7 +76,7 @@ where
         ke: &keyexpr,
         payload: &[u8],
     ) -> core::result::Result<(), SessionError> {
-        self.session.reply(self.rid, ke, payload).await
+        self.session.reply(self.rid, self.origin, ke, payload).await
     }
 
     pub async fn err(
@@ -78,12 +84,12 @@ where
         ke: &keyexpr,
         payload: &[u8],
     ) -> core::result::Result<(), SessionError> {
-        self.session.err(self.rid, ke, payload).await
+        self.session.err(self.rid, self.origin, ke, payload).await
     }
 
     pub async fn finalize(&mut self) -> core::result::Result<(), SessionError> {
         if !self.finalized {
-            self.session.finalize(self.rid).await?;
+            self.session.finalize(self.rid, self.origin).await?;
             self.finalized = true
         }
 
@@ -101,6 +107,7 @@ pub struct FixedCapacityQueryableQuery<
 {
     session: &'static Session<'static, Config>,
     rid: u32,
+    origin: Origin,
     ke: heapless::String<MAX_KEYEXPR>,
     parameters: Option<heapless::String<MAX_PARAMETERS>>,
     payload: Option<heapless::Vec<u8, MAX_PAYLOAD>>,
@@ -129,7 +136,7 @@ where
         ke: &keyexpr,
         payload: &[u8],
     ) -> core::result::Result<(), SessionError> {
-        self.session.reply(self.rid, ke, payload).await
+        self.session.reply(self.rid, self.origin, ke, payload).await
     }
 
     pub async fn err(
@@ -137,12 +144,12 @@ where
         ke: &keyexpr,
         payload: &[u8],
     ) -> core::result::Result<(), SessionError> {
-        self.session.err(self.rid, ke, payload).await
+        self.session.err(self.rid, self.origin, ke, payload).await
     }
 
     pub async fn finalize(&mut self) -> core::result::Result<(), SessionError> {
         if !self.finalized {
-            self.session.finalize(self.rid).await?;
+            self.session.finalize(self.rid, self.origin).await?;
             self.finalized = true
         }
 
@@ -171,6 +178,7 @@ where
         Ok(Self {
             session,
             rid: value.rid,
+            origin: value.origin,
             ke: heapless::String::from_str(value.keyexpr().as_str())
                 .map_err(|_| CollectionError::CollectionTooSmall)?,
             parameters: value
@@ -195,6 +203,7 @@ where
 {
     session: &'static Session<'static, Config>,
     rid: u32,
+    origin: Origin,
     ke: alloc::string::String,
     parameters: Option<alloc::string::String>,
     payload: Option<alloc::vec::Vec<u8>>,
@@ -223,7 +232,7 @@ where
         ke: &keyexpr,
         payload: &[u8],
     ) -> core::result::Result<(), SessionError> {
-        self.session.reply(self.rid, ke, payload).await
+        self.session.reply(self.rid, self.origin, ke, payload).await
     }
 
     pub async fn err(
@@ -231,12 +240,12 @@ where
         ke: &keyexpr,
         payload: &[u8],
     ) -> core::result::Result<(), SessionError> {
-        self.session.err(self.rid, ke, payload).await
+        self.session.err(self.rid, self.origin, ke, payload).await
     }
 
     pub async fn finalize(&mut self) -> core::result::Result<(), SessionError> {
         if !self.finalized {
-            self.session.finalize(self.rid).await?;
+            self.session.finalize(self.rid, self.origin).await?;
             self.finalized = true
         }
 
@@ -266,6 +275,7 @@ where
         Ok(Self {
             session,
             rid: value.rid,
+            origin: value.origin,
             ke: alloc::string::String::from(value.keyexpr().as_str()),
             parameters: value.parameters.map(alloc::string::String::from),
             payload: value.payload.map(alloc::vec::Vec::from),

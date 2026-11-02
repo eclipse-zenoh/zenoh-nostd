@@ -168,7 +168,10 @@ crate::declare_zerror! {
         #[doc = "Request timed out."]
         #[err = "request timed out"]
         RequestTimedout = 150,
-        // Reserved: 151-159 for future SessionError variants
+        #[doc = "The session's local delivery queue is full."]
+        #[err = "local delivery queue is full"]
+        LoopbackFull = 151,
+        // Reserved: 152-159 for future SessionError variants
     }
 
     #[doc = "Errors related to zenoh broker."]

@@ -38,6 +38,8 @@ use crate::{
 
 /// Size of the transport buffers on both sides.
 pub const BUFF: usize = 4096;
+/// Size of each of the session's two loopback buffers.
+pub const LOOPBACK: usize = 512;
 /// Upper bound for a whole test, so a hang fails instead of blocking CI.
 pub const TEST_TIMEOUT: Duration = Duration::from_secs(5);
 /// How long [`Router::wait_for`] waits for a matching message.
@@ -166,6 +168,7 @@ pub struct TestConfig {
 
 impl ZSessionConfig for TestConfig {
     type Buff = [u8; BUFF];
+    type LoopbackBuff = [u8; LOOPBACK];
     type LinkManager = MemLinkManager;
 
     type SubCallbacks<'res> = FixedCapacitySubCallbacks<'res, 8, RawOrBox<64>, RawOrBox<600>>;
@@ -179,6 +182,10 @@ impl ZSessionConfig for TestConfig {
 
     fn buff(&self) -> Self::Buff {
         [0u8; BUFF]
+    }
+
+    fn loopback_buff(&self) -> Self::LoopbackBuff {
+        [0u8; LOOPBACK]
     }
 }
 

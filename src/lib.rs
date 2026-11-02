@@ -75,6 +75,13 @@ const BUFF_SIZE: u16 = u16::MAX;
 #[cfg(feature = "wasm")]
 const BUFF_SIZE: u16 = u16::MAX / 2;
 
+/// Size of each of the session's two buffers for same-session delivery
+/// (see `ZSessionConfig::LoopbackBuff`).
+#[cfg(feature = "esp32s3")]
+const LOOPBACK_SIZE: usize = 256;
+#[cfg(not(feature = "esp32s3"))]
+const LOOPBACK_SIZE: usize = 4096;
+
 pub struct ExampleConfig {
     transports: TransportLinkManager<LinkManager>,
 }
@@ -101,6 +108,12 @@ impl ZSessionConfig for ExampleConfig {
 
     #[cfg(feature = "alloc")]
     type Buff = alloc::vec::Vec<u8>;
+
+    #[cfg(not(feature = "alloc"))]
+    type LoopbackBuff = [u8; LOOPBACK_SIZE];
+
+    #[cfg(feature = "alloc")]
+    type LoopbackBuff = alloc::vec::Vec<u8>;
 
     #[cfg(not(feature = "alloc"))]
     type SubCallbacks<'res> = FixedCapacitySubCallbacks<
@@ -145,6 +158,17 @@ impl ZSessionConfig for ExampleConfig {
         #[cfg(feature = "alloc")]
         {
             alloc::vec![0; BUFF_SIZE as usize]
+        }
+    }
+
+    fn loopback_buff(&self) -> Self::LoopbackBuff {
+        #[cfg(not(feature = "alloc"))]
+        {
+            [0u8; LOOPBACK_SIZE]
+        }
+        #[cfg(feature = "alloc")]
+        {
+            alloc::vec![0; LOOPBACK_SIZE]
         }
     }
 
