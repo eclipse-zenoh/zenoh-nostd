@@ -11,20 +11,20 @@ use zenoh_nostd::platform::*;
 pub mod tcp;
 pub mod udp;
 
-struct BufferPool<T, const MTU: usize, const SOCKS: usize> {
-    tx_buffers: [[T; MTU]; SOCKS],
-    rx_buffers: [[T; MTU]; SOCKS],
+struct BufferPool<T, const TX: usize, const RX: usize, const SOCKS: usize> {
+    tx_buffers: [[T; TX]; SOCKS],
+    rx_buffers: [[T; RX]; SOCKS],
     used: [bool; SOCKS],
 }
 
-impl<T, const MTU: usize, const SOCKS: usize> BufferPool<T, MTU, SOCKS> {
+impl<T, const TX: usize, const RX: usize, const SOCKS: usize> BufferPool<T, TX, RX, SOCKS> {
     fn new(value: T) -> Self
     where
         T: Copy,
     {
         Self {
-            tx_buffers: [[value; MTU]; SOCKS],
-            rx_buffers: [[value; MTU]; SOCKS],
+            tx_buffers: [[value; TX]; SOCKS],
+            rx_buffers: [[value; RX]; SOCKS],
             used: [false; SOCKS],
         }
     }
@@ -40,7 +40,9 @@ pub(crate) trait BufferPoolDrop {
     fn release(&mut self, idx: usize);
 }
 
-impl<T, const MTU: usize, const SOCKS: usize> BufferPoolDrop for BufferPool<T, MTU, SOCKS> {
+impl<T, const TX: usize, const RX: usize, const SOCKS: usize> BufferPoolDrop
+    for BufferPool<T, TX, RX, SOCKS>
+{
     fn release(&mut self, idx: usize) {
         if idx < SOCKS {
             self.used[idx] = false;
@@ -48,13 +50,27 @@ impl<T, const MTU: usize, const SOCKS: usize> BufferPoolDrop for BufferPool<T, M
     }
 }
 
-pub struct EmbassyLinkManager<'net, const MTU: usize, const SOCKS: usize> {
+/// `MTU` is the size of each socket's tx buffer (the largest datagram or segment sent) and `SOCKS`
+/// how many sockets can be open. `RX` is each socket's receive buffer: a peer may send several
+/// datagrams back to back, and UDP does not resend what an undersized buffer drops, so keep it at
+/// several MTUs.
+/// `META` is how many packets each socket can queue (embassy's `PacketMetadata` slots); it has
+/// nothing to do with the MTU, and sizing it by the MTU made this struct about 120 KB.
+pub struct EmbassyLinkManager<
+    'net,
+    const MTU: usize,
+    const SOCKS: usize,
+    const META: usize = 8,
+    const RX: usize = 4096,
+> {
     stack: Stack<'net>,
-    buffers: RefCell<BufferPool<u8, MTU, SOCKS>>,
-    metadatas: RefCell<BufferPool<PacketMetadata, MTU, SOCKS>>,
+    buffers: RefCell<BufferPool<u8, MTU, RX, SOCKS>>,
+    metadatas: RefCell<BufferPool<PacketMetadata, META, META, SOCKS>>,
 }
 
-impl<'net, const MTU: usize, const SOCKS: usize> EmbassyLinkManager<'net, MTU, SOCKS> {
+impl<'net, const MTU: usize, const SOCKS: usize, const META: usize, const RX: usize>
+    EmbassyLinkManager<'net, MTU, SOCKS, META, RX>
+{
     pub fn new(stack: Stack<'net>) -> Self {
         Self {
             stack,
@@ -109,8 +125,8 @@ pub enum EmbassyLinkRx<'link> {
     Udp(udp::EmbassyUdpLinkRx<'link>),
 }
 
-impl<'net, const MTU: usize, const SOCKS: usize> ZLinkManager
-    for EmbassyLinkManager<'net, MTU, SOCKS>
+impl<'net, const MTU: usize, const SOCKS: usize, const META: usize, const RX: usize> ZLinkManager
+    for EmbassyLinkManager<'net, MTU, SOCKS, META, RX>
 {
     type Link<'a>
         = EmbassyLink<'a>
@@ -221,5 +237,35 @@ impl<'net, const MTU: usize, const SOCKS: usize> ZLinkManager
             }
             _ => zenoh::zbail!(LinkError::CouldNotParseProtocol),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The manager is built by value, often on a small stack, and kept in a static. A metadata pool
+    /// with one entry per MTU byte once made it about 120 KB and overflowed the main task's stack.
+    /// A UDP peer can send datagrams back to back (a ROS node announces its liveliness tokens that
+    /// way); an rx buffer of one MTU drops all but the one being read, and UDP does not resend.
+    #[test]
+    fn the_rx_buffer_can_hold_several_datagrams() {
+        let pool = BufferPool::<u8, 512, 4096, 2>::new(0);
+        assert_eq!(pool.tx_buffers[0].len(), 512);
+        assert_eq!(pool.rx_buffers[0].len(), 4096);
+        let default_rx = core::mem::size_of::<EmbassyLinkManager<'static, 512, 3>>();
+        assert!(
+            default_rx >= 3 * 4096,
+            "the default rx buffer is smaller than 8 datagrams"
+        );
+    }
+
+    #[test]
+    fn the_link_manager_stays_small() {
+        let size = core::mem::size_of::<EmbassyLinkManager<'static, 512, 3>>();
+        assert!(
+            size < 32 * 1024,
+            "EmbassyLinkManager<512, 3> is {size} bytes"
+        );
     }
 }
