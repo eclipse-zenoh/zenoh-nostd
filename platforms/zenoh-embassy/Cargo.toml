@@ -14,12 +14,14 @@ version = "0.1.0"
 zenoh-nostd = { version = "0.1.0", path = "../../crates/zenoh-nostd" }
 
 embassy-net = { version = "0.8.0", features = [
-  "defmt",
   "dhcpv4",
   "medium-ethernet",
   "tcp",
   "udp",
 ]}
 
-embedded-io-async = { version = "0.7", features = ["defmt"] }
+embedded-io-async = "0.7"
 getrandom = { version = "0.2", features = ["custom"] }
+
+[features]
+defmt = ["embassy-net/defmt", "embedded-io-async/defmt"]
