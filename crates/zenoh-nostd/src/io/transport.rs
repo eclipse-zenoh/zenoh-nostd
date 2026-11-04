@@ -98,6 +98,12 @@ impl<LinkManager> From<LinkManager> for TransportLinkManager<LinkManager> {
 }
 
 impl<LinkManager> TransportLinkManager<LinkManager> {
+    /// The zenoh id this node announces; liveliness keys built by integrations (e.g. `rmw_zenoh`)
+    /// must embed it.
+    pub fn zid(&self) -> ZenohIdProto {
+        self.zid
+    }
+
     pub(crate) fn new(
         link_manager: LinkManager,
         open_timeout: Duration,
