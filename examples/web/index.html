@@ -6,8 +6,16 @@
     </head>
     <body>
         <h1>WASM Example</h1>
+        <!-- Only needed when built with ENDPOINT=serial/webserial -->
+        <button id="serial">Pick serial port</button>
         <script type="module">
-            import init, { main } from "./z_example.js";
+            import init, { set_serial_port } from "./z_example.js";
+
+            document.getElementById("serial").onclick = async () => {
+                const port = await navigator.serial.requestPort();
+                await port.open({ baudRate: 115200 });
+                set_serial_port(port);
+            };
 
             async function run() {
                 await init();
