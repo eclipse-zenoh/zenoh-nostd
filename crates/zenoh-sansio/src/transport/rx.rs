@@ -15,6 +15,9 @@ enum State {
     Closed,
 }
 
+/// Zenoh numbers frames per priority and per reliability, so there are 8 x 2 sequences.
+const CHANNELS: usize = 16;
+
 #[derive(Debug)]
 pub struct TransportRx<Buff> {
     buff: Buff,
@@ -22,7 +25,8 @@ pub struct TransportRx<Buff> {
     cursor: usize,
     batch_size: usize,
 
-    sn: u32,
+    /// The next expected frame sequence number of each channel: priority (3 bits) and reliability.
+    sns: [u32; CHANNELS],
     resolution: Resolution,
     lease: Duration,
 
@@ -46,7 +50,7 @@ impl<Buff> TransportRx<Buff> {
             cursor: 0,
             batch_size,
 
-            sn,
+            sns: [sn; CHANNELS],
             resolution,
             lease,
 
@@ -70,7 +74,7 @@ impl<Buff> TransportRx<Buff> {
         self.cursor = 0;
         let mut reader = &self.buff.as_ref()[..size];
         let mut last_frame = None;
-        let sn = &mut self.sn;
+        let sn = &mut self.sns;
         let resolution = self.resolution;
         let ignore = self.ignore_invalid_sn;
 
@@ -125,7 +129,7 @@ impl<Buff> TransportRx<Buff> {
     pub(crate) fn decode<'a>(
         reader: &mut &'a [u8],
         last_frame: &mut Option<FrameHeader>,
-        sn: &mut u32,
+        sn: &mut [u32; CHANNELS],
         resolution: Resolution,
         ignore: bool,
     ) -> Option<(Message<'a>, &'a [u8])>
@@ -182,23 +186,33 @@ impl<Buff> TransportRx<Buff> {
             FrameHeader::ID => {
                 let header = decode!(FrameHeader);
 
-                *sn = sn.wrapping_add(1);
+                // Each priority and reliability counts its own frames. Anything behind the next
+                // expected number is a duplicate or a reordered frame; a gap means lost frames.
+                let channel =
+                    ((header.qos.inner & 0b111) as usize) << 1 | header.reliability as usize;
+                let expected = sn[channel];
+                let behind = (header.sn.wrapping_sub(expected) as i32) < 0;
 
                 if !ignore {
                     // Check for missed messages regarding resolution
                     let _ = resolution;
 
-                    if header.sn < *sn - 1 {
+                    if behind {
                         zenoh_proto::error!(
-                            "Inconsistent `SN` value {}, expected higher than {}",
+                            "Inconsistent `SN` value {}, expected {} or higher",
                             header.sn,
-                            *sn - 1
+                            expected
                         );
                         return None;
-                    } else if header.sn != *sn - 1 {
-                        zenoh_proto::debug!("Transport missed {} messages", header.sn - *sn + 1);
+                    } else if header.sn != expected {
+                        zenoh_proto::debug!(
+                            "Transport missed {} messages",
+                            header.sn.wrapping_sub(expected)
+                        );
                     }
                 }
+
+                sn[channel] = header.sn.wrapping_add(1);
 
                 last_frame.replace(header);
 
@@ -436,7 +450,7 @@ where
         self.clear();
         let mut reader = &self.buff.as_ref()[..size];
         let mut last_frame = None;
-        let sn = &mut self.sn;
+        let sn = &mut self.sns;
         let resolution = self.resolution;
         let ignore = self.ignore_invalid_sn;
 
@@ -451,5 +465,89 @@ where
 
     fn clear(&mut self) {
         self.cursor = 0;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A frame header with the default priority (no extension), no messages after it.
+    fn frame(reliable: bool, sn: u8) -> [u8; 2] {
+        [0x05 | if reliable { 0x20 } else { 0 }, sn]
+    }
+
+    /// Decodes one frame header; true if the receiver accepted its sequence number.
+    fn accepts(sns: &mut [u32; CHANNELS], reliable: bool, sn: u8, ignore: bool) -> bool {
+        let bytes = frame(reliable, sn);
+        let mut reader = &bytes[..];
+        let mut last = None;
+        let _ = TransportRx::<[u8; 0]>::decode(
+            &mut reader,
+            &mut last,
+            sns,
+            Resolution::default(),
+            ignore,
+        );
+        last.is_some()
+    }
+
+    #[test]
+    fn reliable_and_best_effort_frames_have_separate_sequence_numbers() {
+        let mut sns = [0u32; CHANNELS];
+        // A zenoh peer counts each channel on its own, so these interleave without gaps.
+        assert!(accepts(&mut sns, true, 0, false));
+        assert!(accepts(&mut sns, false, 0, false));
+        assert!(accepts(&mut sns, true, 1, false));
+        assert!(accepts(&mut sns, false, 1, false));
+        assert!(accepts(&mut sns, true, 2, false));
+    }
+
+    #[test]
+    fn old_and_duplicate_frames_are_rejected_per_channel() {
+        let mut sns = [0u32; CHANNELS];
+        assert!(
+            accepts(&mut sns, true, 5, false),
+            "a gap is allowed, frames can be lost"
+        );
+        assert!(!accepts(&mut sns, true, 5, false), "duplicate");
+        assert!(!accepts(&mut sns, true, 3, false), "older than the last");
+        assert!(
+            accepts(&mut sns, false, 0, false),
+            "the other channel is untouched"
+        );
+        assert!(accepts(&mut sns, true, 6, false));
+    }
+
+    #[test]
+    fn ignoring_invalid_sn_accepts_anything() {
+        let mut sns = [0u32; CHANNELS];
+        assert!(accepts(&mut sns, true, 5, true));
+        assert!(accepts(&mut sns, true, 3, true));
+    }
+
+    #[test]
+    fn sequence_numbers_wrap() {
+        let mut sns = [u32::MAX; CHANNELS];
+        let mut reader = &[0x25u8, 0xff, 0xff, 0xff, 0xff, 0x0f][..];
+        let mut last = None;
+        let _ = TransportRx::<[u8; 0]>::decode(
+            &mut reader,
+            &mut last,
+            &mut sns,
+            Resolution::default(),
+            false,
+        );
+        assert!(last.is_some(), "u32::MAX is the expected value");
+        let mut reader = &[0x25u8, 0x00][..];
+        let mut last = None;
+        let _ = TransportRx::<[u8; 0]>::decode(
+            &mut reader,
+            &mut last,
+            &mut sns,
+            Resolution::default(),
+            false,
+        );
+        assert!(last.is_some(), "and 0 follows it");
     }
 }
