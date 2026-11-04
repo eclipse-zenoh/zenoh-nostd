@@ -76,6 +76,28 @@ impl<'a> WireExpr<'a> {
         }
     }
 }
+
+impl<'a> WireExprExt<'a> {
+    #[cfg(test)]
+    pub(crate) fn rand(w: &mut impl crate::ZStoreable<'a>) -> Self {
+        let scope = thread_rng().r#gen();
+        let mapping = Mapping::rand(w);
+
+        let suffix = if thread_rng().gen_bool(0.5) {
+            let suffix =
+                Alphanumeric.sample_string(&mut thread_rng(), thread_rng().gen_range(1..16));
+            unsafe { w.store_str(&suffix).unwrap() }
+        } else {
+            ""
+        };
+
+        Self {
+            scope,
+            mapping,
+            suffix,
+        }
+    }
+}
 impl<'a> Err<'a> {
     #[cfg(test)]
     pub(crate) fn rand(w: &mut impl crate::ZStoreable<'a>) -> Self {
@@ -355,7 +377,7 @@ impl<'a> UndeclareSubscriber<'a> {
     pub(crate) fn rand(w: &mut impl crate::ZStoreable<'a>) -> Self {
         let id = rand::thread_rng().r#gen();
         let wire_expr = if rand::thread_rng().gen_bool(0.5) {
-            Some(WireExpr::rand(w))
+            Some(WireExprExt::rand(w))
         } else {
             None
         };
@@ -386,7 +408,7 @@ impl<'a> UndeclareQueryable<'a> {
     pub(crate) fn rand(w: &mut impl crate::ZStoreable<'a>) -> Self {
         let id = rand::thread_rng().r#gen();
         let wire_expr = if rand::thread_rng().gen_bool(0.5) {
-            Some(WireExpr::rand(w))
+            Some(WireExprExt::rand(w))
         } else {
             None
         };
@@ -408,7 +430,7 @@ impl<'a> UndeclareToken<'a> {
     pub(crate) fn rand(w: &mut impl crate::ZStoreable<'a>) -> Self {
         let id = rand::thread_rng().r#gen();
         let wire_expr = if rand::thread_rng().gen_bool(0.5) {
-            Some(WireExpr::rand(w))
+            Some(WireExprExt::rand(w))
         } else {
             None
         };
