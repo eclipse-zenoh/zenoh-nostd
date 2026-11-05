@@ -10,11 +10,11 @@ use crate::{
     config::ZSessionConfig,
 };
 
-pub struct Publisher<'a, 'res, Config>
+pub struct Publisher<'a, 'transport, 'resources: 'transport, Config>
 where
     Config: ZSessionConfig,
 {
-    session: &'a Session<'res, Config>,
+    session: &'a Session<'transport, 'resources, Config>,
 
     ke: &'a keyexpr,
 
@@ -23,11 +23,11 @@ where
     attachment: Option<Attachment<'a>>,
 }
 
-impl<'a, 'res, Config> Publisher<'a, 'res, Config>
+impl<'a, 'transport, 'resources: 'transport, Config> Publisher<'a, 'transport, 'resources, Config>
 where
     Config: ZSessionConfig,
 {
-    pub fn put(&self, payload: &'a [u8]) -> PutBuilder<'a, 'res, Config> {
+    pub fn put(&self, payload: &'a [u8]) -> PutBuilder<'a, 'transport, 'resources, Config> {
         PutBuilder {
             session: self.session,
             ke: self.ke,
@@ -48,11 +48,11 @@ where
     }
 }
 
-pub struct PublisherBuilder<'a, 'res, Config>
+pub struct PublisherBuilder<'a, 'transport, 'resources: 'transport, Config>
 where
     Config: ZSessionConfig,
 {
-    session: &'a Session<'res, Config>,
+    session: &'a Session<'transport, 'resources, Config>,
 
     ke: &'a keyexpr,
     encoding: Encoding<'a>,
@@ -60,11 +60,15 @@ where
     attachment: Option<Attachment<'a>>,
 }
 
-impl<'a, 'res, Config> PublisherBuilder<'a, 'res, Config>
+impl<'a, 'transport, 'resources: 'transport, Config>
+    PublisherBuilder<'a, 'transport, 'resources, Config>
 where
     Config: ZSessionConfig,
 {
-    pub(crate) fn new(session: &'a Session<'res, Config>, ke: &'a keyexpr) -> Self {
+    pub(crate) fn new(
+        session: &'a Session<'transport, 'resources, Config>,
+        ke: &'a keyexpr,
+    ) -> Self {
         Self {
             session,
             ke,
@@ -94,7 +98,9 @@ where
         self
     }
 
-    pub async fn finish(self) -> core::result::Result<Publisher<'a, 'res, Config>, SessionError> {
+    pub async fn finish(
+        self,
+    ) -> core::result::Result<Publisher<'a, 'transport, 'resources, Config>, SessionError> {
         // TODO: send interest msg
         Ok(Publisher {
             session: self.session,
@@ -106,11 +112,14 @@ where
     }
 }
 
-impl<'res, Config> Session<'res, Config>
+impl<'transport, 'resources: 'transport, Config> Session<'transport, 'resources, Config>
 where
     Config: ZSessionConfig,
 {
-    pub fn declare_publisher<'a>(&'a self, ke: &'a keyexpr) -> PublisherBuilder<'a, 'res, Config> {
+    pub fn declare_publisher<'a>(
+        &'a self,
+        ke: &'a keyexpr,
+    ) -> PublisherBuilder<'a, 'transport, 'resources, Config> {
         PublisherBuilder::new(self, ke)
     }
 }

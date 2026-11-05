@@ -37,3 +37,7 @@ old/
 
 # TODO
 TODO.md
+
+# direnv environment
+.envrc
+.direnv/
