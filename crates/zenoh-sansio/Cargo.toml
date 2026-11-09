@@ -14,9 +14,9 @@ readme.workspace = true
 [features]
 default = []
 
-std = []
+std = ["zenoh-proto/std"]
 
-log = ["std", "zenoh-proto/log"]
+log = ["zenoh-proto/log"]
 web_console = ["std", "zenoh-proto/web_console"]
 defmt = ["zenoh-proto/defmt"]
 embedded = ["zenoh-proto/embedded"]

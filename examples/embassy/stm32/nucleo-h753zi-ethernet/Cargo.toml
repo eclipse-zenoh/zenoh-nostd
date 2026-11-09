@@ -1,0 +1,62 @@
+[package]
+name = "zenoh-examples-nucleo-h753zi-ethernet"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.91.0"
+license = "EPL-2.0 OR Apache-2.0"
+publish = false
+default-run = "zenoh-app"
+
+[workspace]
+resolver = "3"
+
+[features]
+default = []
+alloc = ["zenoh-nostd/alloc", "zenoh-examples-embassy/alloc", "zenoh-examples-common/alloc", "dep:embedded-alloc"]
+
+[dependencies]
+zenoh-examples-embassy = { path = "../..", default-features = false }
+zenoh-nostd = { path = "../../../../crates/zenoh-nostd", default-features = false, features = ["embedded", "defmt"] }
+zenoh-examples-common = { path = "../../../common", default-features = false }
+static_cell = "2.1.1"
+embassy-sync = "0.7.2"
+embassy-time = "0.5.0"
+embassy-futures = "0.1.2"
+getrandom = { version = "0.2.16", features = ["custom"] }
+embassy-net = { version = "0.8.0", features = ["defmt", "dhcpv4", "medium-ethernet", "tcp", "udp"] }
+defmt = "1.0"
+defmt-rtt = "1.0"
+panic-probe = { version = "1.0", features = ["print-defmt"] }
+critical-section = "1.2"
+cortex-m = { version = "0.7.7", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7.5"
+embassy-stm32 = { version = "=0.4.0", features = ["stm32h753zi", "defmt", "time-driver-tim2", "exti"] }
+embassy-executor = { version = "0.9.1", features = ["arch-cortex-m", "executor-thread", "defmt"] }
+zenoh-embassy = { path = "../../../../platforms/zenoh-embassy", default-features = false, features = ["tcp", "udp", "defmt"] }
+embedded-alloc = { version = "0.6", optional = true }
+
+[[bin]]
+name = "zenoh-app"
+path = "src/main.rs"
+
+
+[profile.dev]
+opt-level = "s"
+lto = false
+codegen-units = 16
+panic = "abort"
+strip = false
+incremental = true
+debug = true
+overflow-checks = true
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = false
+incremental = false
+debug = 2
+overflow-checks = false
+

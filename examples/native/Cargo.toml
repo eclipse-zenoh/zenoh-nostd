@@ -1,0 +1,56 @@
+[package]
+name = "zenoh-examples-native"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.91.0"
+license = "EPL-2.0 OR Apache-2.0"
+publish = false
+default-run = "zenoh-app"
+
+[workspace]
+resolver = "3"
+
+[features]
+default = []
+alloc = ["zenoh-nostd/alloc", "zenoh-examples-common/alloc"]
+
+[dependencies]
+zenoh-nostd = { path = "../../crates/zenoh-nostd", default-features = false, features = ["log"] }
+zenoh-examples-common = { path = "../common", default-features = false }
+static_cell = "2.1.1"
+embassy-sync = "0.7.2"
+embassy-time = { version = "0.5.0", features = ["std"] }
+embassy-futures = "0.1.2"
+zenoh-std = { path = "../../platforms/zenoh-std" }
+env_logger = "0.11"
+embassy-executor = { version = "0.9.1", features = ["arch-std", "executor-thread"] }
+
+[patch.crates-io.async-net]
+git = "https://github.com/Hennzau/async-net"
+rev = "f1ade444e88677b31b71ed1b7de0b2778d977aa8"
+
+[[bin]]
+name = "zenoh-app"
+path = "src/main.rs"
+
+
+[profile.dev]
+opt-level = "s"
+lto = false
+codegen-units = 16
+panic = "abort"
+strip = false
+incremental = true
+debug = true
+overflow-checks = true
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = false
+incremental = false
+debug = false
+overflow-checks = false
+
