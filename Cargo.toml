@@ -20,7 +20,7 @@ exclude = [
     "platforms/zenoh-flipper",
     "platforms/zenoh-platform-posix",
 ]
-resolver = "3"
+resolver = "2"
 
 [workspace.package]
 authors = []

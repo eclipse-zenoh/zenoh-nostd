@@ -1,0 +1,11 @@
+# Line endings for Rust project files
+*.rs eol=lf
+*.toml eol=lf
+*.md eol=lf
+*.txt eol=lf
+*.sh eol=lf
+*.yaml eol=lf
+*.yml eol=lf
+*.json eol=lf
+*.just eol=lf
+*.lock eol=lf
