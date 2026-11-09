@@ -1,0 +1,114 @@
+[package]
+name = "zenoh-examples-nucleo-h753zi-ethernet"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.91.0"
+license = "EPL-2.0 OR Apache-2.0"
+publish = false
+default-run = "z_put"
+
+[workspace]
+resolver = "3"
+
+[features]
+default = ["embedded", "stm32", "defmt"]
+std = []
+log = []
+wasm = []
+web_console = []
+embedded = []
+esp = []
+stm32 = []
+defmt = []
+alloc = ["zenoh-nostd/alloc", "zenoh-examples-common/alloc", "dep:embedded-alloc"]
+
+[dependencies]
+zenoh-nostd = { path = "../../../../crates/zenoh-nostd", default-features = false, features = ["embedded", "defmt"] }
+zenoh-examples-common = { path = "../../../common", default-features = false }
+static_cell = "2.1.1"
+embassy-sync = "0.7.2"
+embassy-time = "0.5.0"
+embassy-futures = "0.1.2"
+getrandom = { version = "0.2.16", features = ["custom"] }
+embassy-net = { version = "0.8.0", features = ["defmt", "dhcpv4", "medium-ethernet", "tcp", "udp"] }
+defmt = "1.0"
+defmt-rtt = "1.0"
+panic-probe = { version = "1.0", features = ["print-defmt"] }
+critical-section = "1.2"
+cortex-m = { version = "0.7.7", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7.5"
+embassy-stm32 = { version = "=0.4.0", features = ["stm32h753zi", "defmt", "time-driver-tim2", "exti"] }
+embassy-executor = { version = "0.9.1", features = ["arch-cortex-m", "executor-thread", "defmt"] }
+zenoh-embassy = { path = "../../../../platforms/zenoh-embassy", default-features = false, features = ["tcp", "udp", "defmt"] }
+embedded-alloc = { version = "0.6", optional = true }
+
+[[bin]]
+name = "z_broker"
+path = "src/z_broker.rs"
+required-features = ["alloc"]
+
+[[bin]]
+name = "z_get"
+path = "src/z_get.rs"
+
+[[bin]]
+name = "z_open"
+path = "src/z_open.rs"
+
+[[bin]]
+name = "z_ping"
+path = "src/z_ping.rs"
+
+[[bin]]
+name = "z_pong"
+path = "src/z_pong.rs"
+
+[[bin]]
+name = "z_pub"
+path = "src/z_pub.rs"
+
+[[bin]]
+name = "z_pub_thr"
+path = "src/z_pub_thr.rs"
+
+[[bin]]
+name = "z_put"
+path = "src/z_put.rs"
+
+[[bin]]
+name = "z_querier"
+path = "src/z_querier.rs"
+
+[[bin]]
+name = "z_queryable"
+path = "src/z_queryable.rs"
+
+[[bin]]
+name = "z_sub"
+path = "src/z_sub.rs"
+
+[[bin]]
+name = "z_sub_thr"
+path = "src/z_sub_thr.rs"
+
+
+
+[profile.dev]
+opt-level = "s"
+lto = false
+codegen-units = 16
+panic = "abort"
+strip = false
+incremental = true
+debug = true
+overflow-checks = true
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = false
+incremental = false
+debug = 2
+overflow-checks = false

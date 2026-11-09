@@ -9,6 +9,11 @@ use super::{ZLinkInfo, ZLinkRx, ZLinkTx};
 pub trait ZTransportLinkTx {
     fn tx(&mut self) -> (&mut impl ZLinkTx, &mut impl ZTransportTx);
 
+    fn flush(&mut self) -> impl Future<Output = Result<(), TransportLinkError>> {
+        let (link, _) = self.tx();
+        async move { link.flush().await.map_err(Into::into) }
+    }
+
     fn send<'a>(
         &mut self,
         msgs: impl Iterator<Item = NetworkMessage<'a>>,
@@ -89,5 +94,54 @@ pub trait ZTransportLinkRx {
 
             Ok(transport.flush())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    extern crate std;
+    use super::*;
+    use core::{
+        future::Future,
+        task::{Context, Poll, Waker},
+    };
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+    struct BufferedWrite(Arc<AtomicUsize>);
+    impl ZLinkInfo for BufferedWrite {
+        fn mtu(&self) -> u16 {
+            64
+        }
+        fn is_streamed(&self) -> bool {
+            true
+        }
+    }
+    impl ZLinkTx for BufferedWrite {
+        async fn write_all(&mut self, _: &[u8]) -> Result<(), zenoh_proto::LinkError> {
+            Ok(())
+        }
+        async fn flush(&mut self) -> Result<(), zenoh_proto::LinkError> {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+    }
+    #[test]
+    fn explicit_flush_drains_the_adapter_after_a_completed_frame() {
+        let count = Arc::new(AtomicUsize::new(0));
+        let mut link = crate::io::transport::TransportLink::new(
+            BufferedWrite(count.clone()),
+            zenoh_sansio::Transport::builder([0u8; 64]).codec(),
+        );
+        let mut cx = Context::from_waker(Waker::noop());
+        {
+            let mut send = core::pin::pin!(link.keepalive());
+            assert!(matches!(send.as_mut().poll(&mut cx), Poll::Ready(Ok(()))));
+        }
+        assert_eq!(count.load(Ordering::SeqCst), 0);
+        let mut flush = core::pin::pin!(link.flush());
+        assert!(matches!(flush.as_mut().poll(&mut cx), Poll::Ready(Ok(()))));
+        assert_eq!(count.load(Ordering::SeqCst), 1);
     }
 }
