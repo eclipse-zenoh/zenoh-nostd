@@ -4,6 +4,7 @@ use zenoh_nostd::platform::*;
 
 use crate::PoolLease;
 
+/// Tcp byte stream link created by the Embassy manager.
 pub struct EmbassyTcpLink<'net> {
     socket: TcpSocket<'net>,
     mtu: u16,
@@ -21,11 +22,13 @@ impl<'net> EmbassyTcpLink<'net> {
     }
 }
 
+/// Transmit half of [`EmbassyTcpLink`], preserving its framing and MTU.
 pub struct EmbassyTcpLinkTx<'net> {
     socket: TcpWriter<'net>,
     mtu: u16,
 }
 
+/// Receive half of [`EmbassyTcpLink`], preserving its framing and MTU.
 pub struct EmbassyTcpLinkRx<'net> {
     socket: TcpReader<'net>,
     mtu: u16,

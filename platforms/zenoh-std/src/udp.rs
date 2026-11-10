@@ -1,21 +1,28 @@
 use zenoh_nostd::platform::*;
 
+/// Udp datagrams link created by the Std manager.
 pub struct StdUdpLink {
     socket: async_net::UdpSocket,
     mtu: u16,
 }
 
 impl StdUdpLink {
+    /// Wrap an established UDP datagrams connection with an application-selected MTU.
+    ///
+    /// This does not perform the Zenoh handshake. Prefer the manager unless raw
+    /// connection setup is already owned by the application.
     pub fn new(socket: async_net::UdpSocket, mtu: u16) -> Self {
         Self { socket, mtu }
     }
 }
 
+/// Transmit half of [`StdUdpLink`], preserving its framing and MTU.
 pub struct StdUdpLinkTx {
     socket: async_net::UdpSocket,
     mtu: u16,
 }
 
+/// Receive half of [`StdUdpLink`], preserving its framing and MTU.
 pub struct StdUdpLinkRx {
     socket: async_net::UdpSocket,
     mtu: u16,

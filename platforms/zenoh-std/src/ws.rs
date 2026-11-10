@@ -10,6 +10,7 @@ use {
     zenoh_nostd::platform::*,
 };
 
+/// Binary websocket messages link created by the Std manager.
 pub struct StdWsLink {
     stream: WebSocketReaderOwned<(), Xorshift64, TcpStream, true>,
     sink: WebSocketWriterOwned<(), Xorshift64, TcpStream, true>,
@@ -19,6 +20,10 @@ pub struct StdWsLink {
 }
 
 impl StdWsLink {
+    /// Wrap an established binary WebSocket messages connection with an application-selected MTU.
+    ///
+    /// This does not perform the Zenoh handshake. Prefer the manager unless raw
+    /// connection setup is already owned by the application.
     pub fn new(
         stream: WebSocketReaderOwned<(), Xorshift64, TcpStream, true>,
         sink: WebSocketWriterOwned<(), Xorshift64, TcpStream, true>,
@@ -34,12 +39,14 @@ impl StdWsLink {
     }
 }
 
+/// Transmit half of [`StdWsLink`], preserving its framing and MTU.
 pub struct StdWsLinkTx<'a> {
     sink: &'a mut WebSocketWriterOwned<(), Xorshift64, TcpStream, true>,
     write_buffer: &'a mut Vector<u8>,
     mtu: u16,
 }
 
+/// Receive half of [`StdWsLink`], preserving its framing and MTU.
 pub struct StdWsLinkRx<'a> {
     stream: &'a mut WebSocketReaderOwned<(), Xorshift64, TcpStream, true>,
     read_buffer: &'a mut Vector<u8>,

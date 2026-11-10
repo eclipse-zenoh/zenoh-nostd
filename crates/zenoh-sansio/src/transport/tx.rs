@@ -20,6 +20,10 @@ enum State {
 }
 
 #[derive(Debug)]
+/// Transmit codec backed by an application-owned buffer.
+///
+/// Construct through [`Transport::builder`](crate::Transport::builder). Borrowed
+/// message/byte views cannot outlive the codec borrow. No I/O is performed here.
 pub struct TransportTx<Buff> {
     buff: Buff,
     cursor: usize,
@@ -58,6 +62,9 @@ impl<Buff> TransportTx<Buff> {
         self.buff
     }
 
+    /// Update activity/lease bookkeeping using a monotonic timestamp from a common epoch.
+    ///
+    /// An optional opposite half propagates closure. This performs no network I/O.
     pub fn sync(&mut self, rx: Option<&TransportRx<Buff>>, now: Duration) {
         if let Some(rx) = rx
             && rx.closed()
@@ -75,6 +82,10 @@ impl<Buff> TransportTx<Buff> {
         };
     }
 
+    /// Absolute next keepalive deadline in the same epoch as `sync`.
+    ///
+    /// Returns zero before initial synchronization, after activity, or when closed;
+    /// this is not a relative sleep duration.
     pub fn next_timeout(&self) -> Duration {
         match self.state {
             State::Opened | State::Closed | State::Used => Duration::from_secs(0),
@@ -82,6 +93,9 @@ impl<Buff> TransportTx<Buff> {
         }
     }
 
+    /// Whether `now` is past the synchronized send time plus one quarter of the lease.
+    ///
+    /// The caller must enqueue, flush and transmit the keepalive; this is only a test.
     pub fn should_send_keepalive(&self, now: Duration) -> bool {
         match self.state {
             State::Opened | State::Closed | State::Used => false,
@@ -89,6 +103,10 @@ impl<Buff> TransportTx<Buff> {
         }
     }
 
+    /// Whether inactivity exceeds the lease at `now`; call `sync` to commit closure.
+    ///
+    /// Returns false before synchronization, immediately after activity and when
+    /// already closed. Use `closed()` to inspect the committed closed state.
     pub fn should_close(&self, now: Duration) -> bool {
         match self.state {
             State::Opened | State::Closed | State::Used => false,
@@ -96,6 +114,7 @@ impl<Buff> TransportTx<Buff> {
         }
     }
 
+    /// Whether lease synchronization or protocol handling has marked this half closed.
     pub fn closed(&self) -> bool {
         matches!(self.state, State::Closed)
     }

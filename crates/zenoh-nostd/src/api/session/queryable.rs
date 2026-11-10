@@ -22,6 +22,20 @@ use crate::{
     io::transport::ZTransportLinkTx,
 };
 
+/// Fixed-capacity queryable registry selected through [`ZSessionConfig`].
+///
+/// `CAPACITY` counts registrations; `MAX_KEYEXPR` limits each copied key in UTF-8
+/// bytes (128 by default). `Callback` and `Future` independently choose object
+/// storage. A full table or overlong key rejects registration. Selecting `alloc`
+/// does not remove these limits; use `AllocQueryableCallbacks` for heap-backed tables.
+/// `CAPACITY` must be a power of two greater than one, as required by `heapless`.
+/// It also bounds the independent incoming-request counter table. The default
+/// callback/future storage is 16/128 bytes inline; `RawOrBox` can allocate larger
+/// objects with `alloc`. Without allocation, choose enough inline storage for
+/// captures and futures; [`ZSessionConfig`] demonstrates overriding that policy.
+/// If the incoming-request counter table is full, the driver sends a final
+/// response without invoking callbacks for that request. Budget for queued and
+/// in-progress request IDs across all queryables, not just application queue length.
 pub type FixedCapacityQueryableCallbacks<
     'transport,
     'resources,
@@ -40,6 +54,10 @@ pub type FixedCapacityQueryableCallbacks<
 >;
 
 #[cfg(feature = "alloc")]
+/// Heap-backed queryable registry, available with `alloc`.
+///
+/// Entry count and copied key length grow with the allocator. Callback/future
+/// storage still follows the independently selected storage parameters.
 pub type AllocQueryableCallbacks<
     'transport,
     'resources,
@@ -48,6 +66,12 @@ pub type AllocQueryableCallbacks<
     Future = RawOrBox<128>,
 > = AllocCallbacks<'transport, QueryableQueryRef<'transport, 'resources, Config>, Callback, Future>;
 
+/// An active queryable declaration with optional queued incoming queries.
+///
+/// Dropping this handle does not undeclare the callback or finalize accepted
+/// requests. Finalize each accepted handler's work separately, then call
+/// [`Self::undeclare`] after successful operation completion. Undeclaration removes
+/// the callback but leaves incoming-request counters for outstanding work intact.
 pub struct Queryable<
     'a,
     'transport,
@@ -69,6 +93,11 @@ impl<'a, 'transport, 'resources: 'transport, Config, OwnedQuery, const CHANNEL: 
 where
     Config: ZSessionConfig,
 {
+    /// Remove the callback and send a queryable undeclaration.
+    ///
+    /// Finalize already accepted requests separately. This consumes the handle but
+    /// does not clear their counters. On write error or cancellation, discard the
+    /// connection. This method acquires session state: do not await inside a callback.
     pub async fn undeclare(self) -> core::result::Result<(), SessionError> {
         let msg = Declare {
             body: DeclareBody::UndeclareQueryable(UndeclareQueryable {
@@ -104,10 +133,18 @@ impl<'a, 'transport, 'resources: 'transport, Config, OwnedQuery>
 where
     Config: ZSessionConfig,
 {
+    /// Remove one queued owned query without waiting, or return `None` if empty.
+    ///
+    /// This only examines the application channel; it does not poll the network or
+    /// establish that the connection is healthy.
     pub fn try_recv(&self) -> Option<OwnedQuery> {
         self.receiver.as_ref().unwrap().try_receive().ok()
     }
 
+    /// Wait for a query from the configured channel while a separate task polls the driver.
+    ///
+    /// No automatic channel closure is signalled on undeclaration/disconnection.
+    /// The consumer is responsible for replying and finalizing each accepted request.
     pub async fn recv(&self) -> Option<OwnedQuery> {
         Some(self.receiver.as_ref().unwrap().receive().await)
     }
@@ -125,6 +162,53 @@ type FutureStorage<'transport, 'resources, Config> =
         QueryableQueryRef<'transport, 'resources, Config>,
     >>::Future;
 
+/// Configure a queryable callback/channel before declaring it with `finish`.
+///
+/// Callbacks execute under the session-state lock. Queue owned request data and
+/// its request ID for application-side replies/finalization; never await
+/// [`Session::finalize`] in the callback. Reject work that cannot be queued with
+/// [`QueryableQuery::reject`]. Callback-based delivery supports scoped sessions;
+/// the built-in owned-query channel currently requires a static session.
+///
+/// # Scoped session with bounded deferred work
+///
+/// This handler serves a fixed key, so it queues only request IDs. For dynamic
+/// reply keys or request-dependent results, also copy the needed query fields
+/// into bounded application storage. Keep `session.run()` polled concurrently
+/// with this worker. If the worker returns an error or is cancelled, discard the
+/// whole connection, including queued work. The queue borrow must live for the
+/// transport lifetime because the callback remains registered in session state.
+///
+/// ```no_run
+/// use core::cell::RefCell;
+/// use heapless::Deque;
+/// use zenoh_nostd::session::{Session, SessionError, ZSessionConfig};
+/// use zenoh_nostd::session::zenoh::keyexpr;
+///
+/// async fn serve<'transport, 'resources: 'transport, C: ZSessionConfig + 'resources>(
+///     session: &Session<'transport, 'resources, C>,
+///     pending: &'transport RefCell<Deque<u32, 2>>,
+/// ) -> Result<(), SessionError> {
+///     let key = keyexpr::new("demo/status")?;
+///     let _queryable = session.declare_queryable(key)
+///         .callback_sync(move |query| {
+///             if pending.borrow_mut().push_back(query.request_id()).is_err() {
+///                 query.reject(); // No await and no waiting for queue space.
+///             }
+///         })
+///         .finish().await?;
+///     loop {
+///         // End the RefCell borrow before awaiting network operations.
+///         let rid = { pending.borrow_mut().pop_front() };
+///         if let Some(rid) = rid {
+///             session.reply(rid, key, b"online").await?;
+///             session.finalize(rid).await?; // Exactly once per accepted handler.
+///         } else {
+///             embassy_time::Timer::after_millis(1).await;
+///         }
+///     }
+/// }
+/// ```
 pub struct QueryableBuilder<
     'a,
     'transport,
@@ -168,6 +252,12 @@ where
         }
     }
 
+    /// Deliver borrowed events to an asynchronous callback awaited by the driver.
+    ///
+    /// Captures must fit the configured callback storage and live for the transport
+    /// borrow. The returned future must fit its separate storage policy. The driver
+    /// holds session state during invocation: do not await operations that acquire
+    /// that state, or wait for a full channel. Copy data before the callback returns.
     pub fn callback(
         self,
         callback: impl AsyncFnMut(&QueryableQuery<'_, 'transport, 'resources, Config>) + 'transport,
@@ -183,6 +273,11 @@ where
         }
     }
 
+    /// Deliver borrowed events to a synchronous callback inside the session driver.
+    ///
+    /// Captures must fit the configured callback storage. Keep work bounded; copy
+    /// needed event data into application-owned storage and handle queue overflow
+    /// explicitly. Further session operations belong outside the callback.
     pub fn callback_sync(
         self,
         callback: impl FnMut(&QueryableQuery<'_, 'transport, 'resources, Config>) + 'transport,
@@ -203,6 +298,13 @@ impl<Config> QueryableBuilder<'static, 'static, 'static, Config, (), false, fals
 where
     Config: ZSessionConfig,
 {
+    /// Queue owned queries using a static session and application-owned channel.
+    ///
+    /// The built-in conversion carries a static session reference. A full channel
+    /// waits for space inside the receive callback and stalls the driver. Conversion
+    /// failures are logged; they are not automatically rejected or finalized. Prefer
+    /// a custom callback using `try_send` and [`QueryableQuery::reject`] when either
+    /// conversion or queue capacity may fail. Consumers must finalize accepted work.
     pub fn channel<OwnedQuery, E>(
         self,
         sender: DynamicSender<'static, OwnedQuery>,
@@ -242,6 +344,10 @@ impl<'a, 'transport, 'resources: 'transport, Config, OwnedQuery, const CHANNEL: 
 where
     Config: ZSessionConfig,
 {
+    /// Register the callback and send a queryable declaration.
+    ///
+    /// Full registry/key limits return an error. Transport write errors or cancellation
+    /// require connection teardown; a successful send is not a router acknowledgment.
     pub async fn finish(
         self,
     ) -> core::result::Result<
@@ -295,6 +401,7 @@ impl<'transport, 'resources: 'transport, Config> Session<'transport, 'resources,
 where
     Config: ZSessionConfig,
 {
+    /// Configure query handling for `ke`; select delivery and call `finish` to declare it.
     pub fn declare_queryable<'a>(
         &'a self,
         ke: &'a keyexpr,
@@ -307,6 +414,11 @@ impl<'transport, 'resources: 'transport, Config> Session<'transport, 'resources,
 where
     Config: ZSessionConfig,
 {
+    /// Send a successful reply for an accepted incoming request ID.
+    ///
+    /// Does not finalize the request. After all replies for this handler are sent,
+    /// call [`Self::finalize`] once outside the receive callback. Write errors or
+    /// cancellation require dropping the session and transport.
     pub async fn reply(
         &self,
         rid: u32,
@@ -336,6 +448,9 @@ where
             .await?)
     }
 
+    /// Send an error reply for an accepted request; it still needs [`Self::finalize`].
+    ///
+    /// As with successful replies, an interrupted or failed write ends the connection.
     pub async fn err(
         &self,
         rid: u32,
@@ -362,6 +477,16 @@ where
             .await?)
     }
 
+    /// Finish one accepted handler's work for `rid`.
+    ///
+    /// Decrement the shared incoming-request counter and send a final response when
+    /// all matching handlers have finalized or rejected. Call exactly once for each
+    /// accepted handler: unlike a query handle's `finalize`, this ID-based method does
+    /// not track per-handler completion and repeated calls can finish another handler.
+    ///
+    /// Acquires session state. Call from application code after the receive callback
+    /// returns; awaiting it inside a callback deadlocks on the held state lock. After
+    /// write error or cancellation, discard the connection rather than retrying.
     pub async fn finalize(&self, rid: u32) -> core::result::Result<(), SessionError> {
         if self.state().await.queryable_callbacks.decrease(rid) {
             self.driver

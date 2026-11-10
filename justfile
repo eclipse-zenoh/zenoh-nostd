@@ -14,6 +14,29 @@ check-libraries: check-portability
     cd platforms/zenoh-embassy && just check
     cargo test -p zenoh-nostd && cargo test -p zenoh-nostd --features=alloc
 
+# Public Rustdoc and executable examples across core and adapter workspaces.
+# Logging backends are mutually exclusive; do not replace the matrix with --all-features.
+check-docs:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export RUSTDOCFLAGS="${RUSTDOCFLAGS:-} -D warnings"
+    for features in "" alloc alloc,log alloc,defmt web_console; do
+        cargo doc --locked --workspace --no-deps --features "$features"
+    done
+    cargo test --locked --workspace --doc
+    cargo test --locked --workspace --doc --features alloc
+    for adapter in std wasm; do
+        for features in "" zenoh-nostd/alloc; do
+            cargo doc --locked --manifest-path "platforms/zenoh-$adapter/Cargo.toml" --no-deps --features "$features"
+        done
+        cargo test --locked --manifest-path "platforms/zenoh-$adapter/Cargo.toml" --doc
+    done
+    cargo doc --locked --manifest-path platforms/zenoh-wasm/Cargo.toml --no-deps --target wasm32-unknown-unknown
+    for features in tcp,medium-ip udp,medium-ip tcp,udp,medium-ip,zenoh-nostd/alloc tcp,udp,medium-ethernet,defmt; do
+        cargo doc --locked --manifest-path platforms/zenoh-embassy/Cargo.toml --no-deps --no-default-features --features "$features"
+    done
+    cargo test --locked --manifest-path platforms/zenoh-embassy/Cargo.toml --doc --features medium-ip
+
 # Link the core libraries for both architectures without board/example feature unification.
 check-portability:
     set -eu; for target in thumbv7em-none-eabihf riscv32imac-unknown-none-elf; do for features in embedded embedded,defmt embedded,log embedded,alloc embedded,alloc,defmt; do cargo build --locked -p zenoh-proto -p zenoh-sansio -p zenoh-nostd --target "$target" --no-default-features --features "$features"; done; done

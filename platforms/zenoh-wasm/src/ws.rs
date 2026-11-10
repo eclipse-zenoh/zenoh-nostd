@@ -10,6 +10,7 @@ use {
     zenoh_nostd::platform::*,
 };
 
+/// Binary websocket messages link created by the Wasm manager.
 pub struct WasmWsLink {
     sink: SplitSink<WebSocket, FrameView>,
     stream: SplitStream<WebSocket>,
@@ -17,6 +18,9 @@ pub struct WasmWsLink {
 }
 
 impl WasmWsLink {
+    /// Split an established WebSocket into a message-oriented link with `u16::MAX` MTU.
+    ///
+    /// No Zenoh handshake is performed; prefer [`crate::WasmLinkManager`] for endpoint-based setup.
     pub fn new(stream: WebSocket) -> Self {
         let (sink, stream) = stream.split();
         Self {
@@ -38,11 +42,13 @@ impl Drop for WasmWsLink {
     }
 }
 
+/// Transmit half of [`WasmWsLink`], preserving its framing and MTU.
 pub struct WasmWsLinkTx<'a> {
     sink: &'a mut SplitSink<WebSocket, FrameView>,
     mtu: u16,
 }
 
+/// Receive half of [`WasmWsLink`], preserving its framing and MTU.
 pub struct WasmWsLinkRx<'a> {
     stream: &'a mut SplitStream<WebSocket>,
     mtu: u16,

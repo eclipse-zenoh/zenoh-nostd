@@ -56,7 +56,11 @@ where
 ///
 /// Cancelling an operation or encountering a transport write error requires
 /// stopping the driver and dropping the session and its transport before any
-/// further network I/O. Reconnect with a new transport to continue. Use
+/// further network I/O. [`Self::run`] must be polled concurrently with operations;
+/// constructing a session starts no executor task. Session access is confined to
+/// one executor/thread context because it uses `NoopRawMutex`.
+///
+/// Reconnect with a new transport to continue. Use
 /// [`Self::flush`] for normal completion, not to recover an interrupted write.
 pub struct Session<'transport, 'resources: 'transport, Config>
 where
@@ -71,6 +75,16 @@ impl<'transport, 'resources: 'transport, Config> Session<'transport, 'resources,
 where
     Config: ZSessionConfig + 'resources,
 {
+    /// Borrow an already-handshaken transport and split it into driver RX/TX halves.
+    ///
+    /// `'transport` is the duration of this mutable borrow; `'resources` covers
+    /// resources borrowed by the underlying link and must outlive it. No background
+    /// task is started. Poll [`Self::run`] concurrently with application operations,
+    /// and keep all session access in one executor/thread context.
+    ///
+    /// Drop operations and the session before dropping or replacing the transport.
+    /// After cancellation or a transport write error, discard the entire connection;
+    /// this constructor does not reset an existing transport.
     pub fn new(
         transport: &'transport mut TransportLink<
             <Config::LinkManager as ZLinkManager>::Link<'resources>,
@@ -105,6 +119,10 @@ pub struct SessionBuilder<'resources, Config: ZSessionConfig> {
 }
 
 impl<'resources, Config: ZSessionConfig> SessionBuilder<'resources, Config> {
+    /// Build with caller-owned empty resources and configuration.
+    ///
+    /// The mutable resources borrow lasts for `'resources`; use a local transport
+    /// and [`Session::new`] when shorter, reconnectable scopes are needed.
     pub fn new(
         resources: &'resources mut Resources<'resources, Config>,
         config: &'resources Config,
@@ -175,6 +193,10 @@ pub struct StaticSessionBuilder<Config: ZSessionConfig + 'static> {
 
 impl<Config: ZSessionConfig + 'static> StaticSessionBuilder<Config> {
     /// Prepares a session using static resources, configuration, and an empty session cell.
+    /// Build with caller-owned empty resources and configuration.
+    ///
+    /// The mutable resources borrow lasts for `'resources`; use a local transport
+    /// and [`Session::new`] when shorter, reconnectable scopes are needed.
     pub fn new(
         resources: &'static mut Resources<'static, Config>,
         config: &'static Config,
@@ -212,6 +234,10 @@ impl<Config: ZSessionConfig + 'static> StaticSessionBuilder<Config> {
 }
 
 #[macro_export]
+/// Implementation of the static form of [`crate::session::zenoh::session`].
+///
+/// Prefer that public macro path. Each call site initializes one-shot static
+/// cells, which cannot be reused after errors or cancellation.
 macro_rules! __static_session {
     ($CONFIG:ty: $config:expr $(,)?) => {{
         static CONFIG: $crate::session::__StaticCell<$CONFIG> =
@@ -253,8 +279,14 @@ macro_rules! __session {
 impl<'transport, 'resources: 'transport, Config: ZSessionConfig>
     Session<'transport, 'resources, Config>
 {
-    /// Drain adapter-owned TX buffers before closing a finite application.
-    /// The session driver should keep being polled while this completes.
+    /// Request the underlying link's flush before closing a finite application.
+    ///
+    /// Keep the session driver polled while this completes. Actual draining depends
+    /// on the link implementation: [`ZLinkTx::flush`](crate::platform::ZLinkTx::flush)
+    /// defaults to a no-op, and the current `ZLinkTx` derive does not delegate it to
+    /// inner links. This includes the derived platform link enums. Success does not
+    /// acknowledge remote delivery or imply pending buffers were drained by a no-op
+    /// implementation. On write error or cancellation, discard the connection.
     pub async fn flush(&self) -> Result<(), zenoh_proto::SessionError> {
         use crate::io::transport::ZTransportLinkTx;
         self.driver.tx().await.flush().await.map_err(Into::into)

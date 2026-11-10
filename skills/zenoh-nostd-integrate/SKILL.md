@@ -41,6 +41,17 @@ do not assume all platform adapters are available from crates.io.
 The contracts below describe the current API. Check names and behavior against
 the resolved revision before producing code or changing dependencies.
 
+Read the resolved revision's Rustdoc before writing integration code. Generate it
+in the consuming project with `cargo doc --locked -p zenoh-nostd` (include its
+chosen features and target), or read the Rustdoc comments in that dependency's
+source if rendered docs are unavailable. Do not substitute documentation from a
+different Git revision. Start at the core crate's task index, then inspect the
+types and methods used for configuration, driver polling, delivery and cleanup;
+read the adapter's crate docs for endpoint support and resource requirements.
+Check defaults, errors, capacities and cancellation behavior against those docs.
+Use the examples as patterns, compile the adapted code in the application, and
+report which contracts/examples informed the integration and what was verified.
+
 ## Select transport and features
 
 | Application | Starting point |

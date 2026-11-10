@@ -23,6 +23,15 @@ relative to this skill's canonical directory.
 Resolve repository paths from the checkout being changed. When this skill is
 loaded through a symlink, resolve its canonical directory before following links.
 
+Before changing a public API or its callers, read its Rustdoc at the current
+revision, including method contracts and feature gates. Start with the task index
+in `crates/zenoh-nostd/src/lib.rs`; for adapters, start with their `src/lib.rs`.
+Treat those contracts as the API reference. Update them alongside behavior changes:
+defaults, errors, capacities, lifetimes, callback locking, cancellation and cleanup.
+Compile examples as doctests; use `no_run` only when execution needs external I/O,
+and distinguish compilation from runtime evidence. Run `just check-docs` to catch
+missing public documentation, broken links and invalid examples across libraries.
+
 ## Preserve repository boundaries
 
 - Keep core crates as `no_std` libraries with fixed-capacity operation and optional
@@ -60,7 +69,7 @@ lockfiles and use `--locked` for reproducible builds.
 | Core | `just test`, affected fixed/`alloc` tests; `just check-portability` for dependency/portability changes |
 | Scenarios or CLI | Common-library tests, `just test-cli` and/or `just test-headless`; `just check-headless` for feature isolation |
 | Board or adapter | Affected adapter checks and release links for changed storage/console modes |
-| Public API docs | Doctests and strict Rustdoc for affected features; check public re-exports |
+| Public API docs | `just check-docs`; check public re-exports and rendered contracts for affected features |
 | Other documentation or skills | Check links, anchors, paths, recipe names, skill frontmatter and discovery links |
 
 Before finishing code changes, run `just check` in Nix and `just fmt`; the recipes

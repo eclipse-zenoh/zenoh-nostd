@@ -3,6 +3,7 @@ use zenoh_nostd::platform::*;
 
 use crate::PoolLease;
 
+/// Udp datagrams link created by the Embassy manager.
 pub struct EmbassyUdpLink<'net> {
     socket: UdpSocket<'net>,
     addr: UdpMetadata,
@@ -30,12 +31,14 @@ impl<'net> EmbassyUdpLink<'net> {
     }
 }
 
+/// Transmit half of [`EmbassyUdpLink`], preserving its framing and MTU.
 pub struct EmbassyUdpLinkTx<'link> {
     socket: &'link UdpSocket<'link>,
     mtu: u16,
     addr: UdpMetadata,
 }
 
+/// Receive half of [`EmbassyUdpLink`], preserving its framing and MTU.
 pub struct EmbassyUdpLinkRx<'link> {
     socket: &'link UdpSocket<'link>,
     mtu: u16,

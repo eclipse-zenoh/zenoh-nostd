@@ -119,6 +119,8 @@
 //! - Handle endianness consistently
 //! - Provide detailed error reporting
 
+#![warn(missing_docs)]
+
 pub(crate) mod codec;
 pub(crate) mod link;
 pub(crate) mod zerror;
@@ -275,6 +277,12 @@ pub fn derive_zru8(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 }
 
 #[proc_macro]
+/// Generate a shared `Error` enum and narrower error enums with inherited variants.
+///
+/// Declarations specify unique numeric discriminants, `#[doc = "..."]` and
+/// `#[err = "..."]` variant text. `enum Child: Parent + Other` inherits parent
+/// variants and generates `From` conversions. Generated code expects the
+/// `defmt` feature/dependency only when that feature is enabled.
 pub fn declare_zerror(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as zerror::model::DeclaredErrors);
 
@@ -284,6 +292,10 @@ pub fn declare_zerror(input: proc_macro::TokenStream) -> proc_macro::TokenStream
 }
 
 #[proc_macro_derive(ZLinkInfo)]
+/// Delegate `zenoh_nostd::platform::ZLinkInfo` to the inner link of each enum variant.
+///
+/// Each variant must wrap one link implementing the trait. Generated paths use
+/// the dependency name `zenoh_nostd`.
 pub fn derive_zlink_info(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
 
@@ -293,6 +305,11 @@ pub fn derive_zlink_info(input: proc_macro::TokenStream) -> proc_macro::TokenStr
 }
 
 #[proc_macro_derive(ZLinkTx)]
+/// Delegate `ZLinkTx::write_all` to each single-field link enum variant.
+///
+/// Generated paths use `zenoh_nostd`. The current derive does not delegate
+/// `flush`: it uses the trait's default no-op. Implement the trait manually when
+/// a contained link requires explicit TX-buffer flushing.
 pub fn derive_zlink_tx(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
 
@@ -302,6 +319,9 @@ pub fn derive_zlink_tx(input: proc_macro::TokenStream) -> proc_macro::TokenStrea
 }
 
 #[proc_macro_derive(ZLinkRx)]
+/// Delegate `ZLinkRx::read` and `read_exact` to single-field link enum variants.
+///
+/// Each inner link must implement the trait; generated paths use `zenoh_nostd`.
 pub fn derive_zlink_rx(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
 
@@ -311,6 +331,12 @@ pub fn derive_zlink_rx(input: proc_macro::TokenStream) -> proc_macro::TokenStrea
 }
 
 #[proc_macro_derive(ZLink, attributes(zenoh))]
+/// Delegate link splitting to single-field variants with matching TX/RX enums.
+///
+/// Supply `#[zenoh(ZLink = (TxEnum<'link>, RxEnum<'link>))]`. Each half enum
+/// must have corresponding variant names wrapping the inner link halves. The
+/// macro generates `zenoh_nostd::platform::ZLink`, not the RX/TX/info supertraits;
+/// derive or implement those separately.
 pub fn derive_zlink(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
 

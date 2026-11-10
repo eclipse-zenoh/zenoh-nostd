@@ -1,3 +1,23 @@
+//! Embassy TCP/UDP adapter with application-owned network initialization and bounded socket storage.
+//!
+//! Start with [`EmbassyLinkManager`]. Supply a running `embassy-net` stack, including
+//! its network runner, interface setup and addressing; no HAL or MCU is selected.
+//! The application also owns time/entropy integration and session-driver polling.
+//!
+//! # Features and endpoint support
+//!
+//! Default features enable `tcp` and `udp`. Disable defaults to choose only the
+//! transport(s) required, and select `medium-ip` or `medium-ethernet` to match the
+//! network driver. At least one transport and a network medium are needed.
+//! `defmt` enables embedded logging. Core allocation and other logging policies
+//! are selected on the application's `zenoh-nostd` dependency, not this adapter.
+//!
+//! Endpoints use numeric IPv4 addresses. TCP supports connect and listen, including
+//! `tcp/0.0.0.0:7447` wildcard listeners. UDP supports outgoing links only. Socket
+//! buffers are independent of the session protocol buffer and callback capacities.
+//! Drop failed/cancelled connections before opening replacements to reclaim slots.
+
+#![warn(missing_docs)]
 #![no_std]
 
 use core::{cell::RefCell, net::SocketAddr};
@@ -12,8 +32,10 @@ compile_error!("zenoh-embassy requires at least one transport: tcp or udp");
 use zenoh_nostd::platform::*;
 
 #[cfg(feature = "tcp")]
+/// TCP stream links borrowing Embassy socket resources; requires `tcp`.
 pub mod tcp;
 #[cfg(feature = "udp")]
+/// UDP datagram links borrowing Embassy socket resources; requires `udp`.
 pub mod udp;
 
 #[cfg(feature = "tcp")]
@@ -82,6 +104,19 @@ impl<T, const MTU: usize, const SOCKS: usize> BufferPoolDrop for BufferPool<T, M
     }
 }
 
+/// Bounded link factory borrowing an initialized Embassy network stack.
+///
+/// `MTU` reserves RX and TX **bytes per slot**, and `SOCKS` is the shared
+/// concurrent-link limit across enabled transports. With `udp`, each slot also
+/// reserves `MTU` RX and `MTU` TX `PacketMetadata` entries; that metadata count
+/// is currently coupled to the byte-buffer size and can dominate RAM. Datagram
+/// queue occupancy is bounded by both metadata count and available payload bytes.
+///
+/// Protocol buffers from `ZSessionConfig` are additional storage. No heap is used
+/// for these pools. Choose `MTU` within `u16` range and enough network stack socket
+/// resources for the links. Dropping a link releases its slot; failed/cancelled
+/// connect attempts release reservations too. Keep access in one executor/thread
+/// context because pool bookkeeping uses `RefCell`.
 pub struct EmbassyLinkManager<'net, const MTU: usize, const SOCKS: usize> {
     stack: Stack<'net>,
     buffers: RefCell<BufferPool<u8, MTU, SOCKS>>,
@@ -90,6 +125,10 @@ pub struct EmbassyLinkManager<'net, const MTU: usize, const SOCKS: usize> {
 }
 
 impl<'net, const MTU: usize, const SOCKS: usize> EmbassyLinkManager<'net, MTU, SOCKS> {
+    /// Reserve empty byte/UDP-metadata pools for links on `stack`; starts no network tasks.
+    ///
+    /// The application must keep the stack runner polled and configure addressing
+    /// before connecting. Pools live inline in the returned manager.
     pub fn new(stack: Stack<'net>) -> Self {
         Self {
             stack,
@@ -129,26 +168,35 @@ impl<'net, const MTU: usize, const SOCKS: usize> EmbassyLinkManager<'net, MTU, S
 
 #[derive(ZLinkInfo, ZLinkTx, ZLinkRx, ZLink)]
 #[zenoh(ZLink = (EmbassyLinkTx<'link>, EmbassyLinkRx<'link>))]
+/// Connection selected by the link manager; split it through the `ZLink` trait.
 pub enum EmbassyLink<'net> {
     #[cfg(feature = "tcp")]
+    /// TCP byte stream.
     Tcp(tcp::EmbassyTcpLink<'net>),
     #[cfg(feature = "udp")]
+    /// UDP datagrams.
     Udp(udp::EmbassyUdpLink<'net>),
 }
 
 #[derive(ZLinkInfo, ZLinkTx)]
+/// Transmit half produced by `ZLink::split`; retains the selected framing policy.
 pub enum EmbassyLinkTx<'link> {
     #[cfg(feature = "tcp")]
+    /// TCP byte stream.
     Tcp(tcp::EmbassyTcpLinkTx<'link>),
     #[cfg(feature = "udp")]
+    /// UDP datagrams.
     Udp(udp::EmbassyUdpLinkTx<'link>),
 }
 
 #[derive(ZLinkInfo, ZLinkRx)]
+/// Receive half produced by `ZLink::split`; retains the selected framing policy.
 pub enum EmbassyLinkRx<'link> {
     #[cfg(feature = "tcp")]
+    /// TCP byte stream.
     Tcp(tcp::EmbassyTcpLinkRx<'link>),
     #[cfg(feature = "udp")]
+    /// UDP datagrams.
     Udp(udp::EmbassyUdpLinkRx<'link>),
 }
 

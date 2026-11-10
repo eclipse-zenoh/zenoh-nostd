@@ -16,6 +16,15 @@ use crate::{
     io::transport::ZTransportLinkTx,
 };
 
+/// Fixed-capacity subscription registry selected through [`ZSessionConfig`].
+///
+/// `CAPACITY` counts registrations; `MAX_KEYEXPR` limits each copied key in UTF-8
+/// bytes (128 by default). `Callback` and `Future` independently choose object
+/// storage. A full table or overlong key rejects registration. Selecting `alloc`
+/// does not remove these limits; use `AllocSubCallbacks` for heap-backed tables.
+/// `CAPACITY` must be a power of two greater than one, as required by `heapless`.
+/// The default callback/future storage is 16/128 bytes inline; `RawOrBox` can
+/// allocate a larger object with `alloc`, but without it the object must fit.
 pub type FixedCapacitySubCallbacks<
     'a,
     const CAPACITY: usize,
@@ -25,9 +34,40 @@ pub type FixedCapacitySubCallbacks<
 > = FixedCapacityCallbacks<'a, SampleRef, CAPACITY, Callback, Future, MAX_KEYEXPR>;
 
 #[cfg(feature = "alloc")]
+/// Heap-backed subscription registry, available with `alloc`.
+///
+/// Entry count and copied key length grow with the allocator. Callback/future
+/// storage still follows the independently selected storage parameters.
 pub type AllocSubCallbacks<'a, Callback = RawOrBox<16>, Future = RawOrBox<128>> =
     AllocCallbacks<'a, SampleRef, Callback, Future>;
 
+/// An active subscription with a borrowed key and optional sample channel.
+///
+/// The registry owns a copy of the key, but this handle still borrows the caller's
+/// key text. Dropping the handle does not unregister its callback or notify peers.
+/// Use [`Self::undeclare`] after successful operation completion. After an interrupted
+/// operation or transport write failure, discard the whole connection instead.
+///
+/// # Example
+///
+/// The caller must poll `session.run()` concurrently. After successful work,
+/// explicitly undeclare before reusing the connection.
+///
+/// ```no_run
+/// use zenoh_nostd::session::{Session, SessionError, ZSessionConfig};
+/// use zenoh_nostd::session::zenoh::keyexpr;
+///
+/// async fn subscribe_briefly<C: ZSessionConfig>(
+///     session: &Session<'_, '_, C>,
+/// ) -> Result<(), SessionError> {
+///     let key = keyexpr::new("demo/**")?;
+///     let subscriber = session.declare_subscriber(key)
+///         .callback_sync(|sample| { let _ = sample.payload(); })
+///         .finish().await?;
+///     embassy_time::Timer::after_millis(100).await;
+///     subscriber.undeclare().await
+/// }
+/// ```
 pub struct Subscriber<
     'a,
     'transport,
@@ -49,6 +89,11 @@ impl<'a, 'transport, 'resources: 'transport, Config, OwnedSample, const CHANNEL:
 where
     Config: ZSessionConfig,
 {
+    /// Remove the local callback and send a subscriber undeclaration.
+    ///
+    /// Consumes the handle. Success means the message was written to the link, not
+    /// that a router acknowledged it. If the write fails or this future is cancelled,
+    /// discard the session and transport. Do not await this from a receive callback.
     pub async fn undeclare(self) -> core::result::Result<(), SessionError> {
         let msg = Declare {
             body: DeclareBody::UndeclareSubscriber(UndeclareSubscriber {
@@ -74,6 +119,7 @@ where
         Ok(())
     }
 
+    /// Borrow the key expression selected for this handle.
     pub fn keyexpr(&self) -> &keyexpr {
         self.ke
     }
@@ -84,10 +130,18 @@ impl<'a, 'transport, 'resources: 'transport, Config, OwnedSample>
 where
     Config: ZSessionConfig,
 {
+    /// Remove one queued owned sample without waiting, or return `None` if empty.
+    ///
+    /// This only examines the application channel; it does not poll the network or
+    /// establish that the connection is healthy.
     pub fn try_recv(&self) -> Option<OwnedSample> {
         self.receiver.as_ref().unwrap().try_receive().ok()
     }
 
+    /// Wait for an owned sample from the configured channel.
+    ///
+    /// The session driver must be polled separately. The channel has no automatic
+    /// end-of-subscription notification; this method does not detect disconnection.
     pub async fn recv(&self) -> Option<OwnedSample> {
         Some(self.receiver.as_ref().unwrap().receive().await)
     }
@@ -99,6 +153,11 @@ type CallbackStorage<'transport, Config> =
 type FutureStorage<'transport, Config> =
     <<Config as ZSessionConfig>::SubCallbacks<'transport> as ZCallbacks<'transport, SampleRef>>::Future;
 
+/// Configure sample delivery before declaring a subscription with `finish`.
+///
+/// Select a callback or channel first. Callback captures live for `'transport`,
+/// independently of the borrowed key's lifetime. The session driver awaits callbacks
+/// while holding session state; defer further session operations to application code.
 pub struct SubscriberBuilder<
     'a,
     'transport,
@@ -140,6 +199,12 @@ where
         }
     }
 
+    /// Deliver borrowed events to an asynchronous callback awaited by the driver.
+    ///
+    /// Captures must fit the configured callback storage and live for the transport
+    /// borrow. The returned future must fit its separate storage policy. The driver
+    /// holds session state during invocation: do not await operations that acquire
+    /// that state, or wait for a full channel. Copy data before the callback returns.
     pub fn callback(
         self,
         callback: impl AsyncFnMut(&Sample<'_>) + 'transport,
@@ -152,6 +217,11 @@ where
         }
     }
 
+    /// Deliver borrowed events to a synchronous callback inside the session driver.
+    ///
+    /// Captures must fit the configured callback storage. Keep work bounded; copy
+    /// needed event data into application-owned storage and handle queue overflow
+    /// explicitly. Further session operations belong outside the callback.
     pub fn callback_sync(
         self,
         callback: impl FnMut(&Sample<'_>) + 'transport,
@@ -164,6 +234,11 @@ where
         }
     }
 
+    /// Copy received samples into the supplied application-owned channel.
+    ///
+    /// Conversion failures are logged and the sample is dropped. A full channel makes
+    /// the driver wait for space, delaying all receive/lease processing; drain it
+    /// concurrently. For a nonblocking overflow policy, use a callback with `try_send`.
     pub fn channel<OwnedSample, E>(
         self,
         sender: DynamicSender<'transport, OwnedSample>,
@@ -197,6 +272,11 @@ impl<'a, 'transport, 'resources: 'transport, Config, OwnedSample, const CHANNEL:
 where
     Config: ZSessionConfig,
 {
+    /// Register the callback and send the subscriber declaration.
+    ///
+    /// Full registry/key limits return an error. A successful send does not acknowledge
+    /// router propagation; allow for propagation before expecting remote samples.
+    /// On transport write failure or cancellation, discard the connection.
     pub async fn finish(
         self,
     ) -> core::result::Result<
@@ -247,6 +327,9 @@ impl<'transport, 'resources: 'transport, Config> Session<'transport, 'resources,
 where
     Config: ZSessionConfig,
 {
+    /// Configure a subscription on `ke`; select delivery and call `finish` to declare it.
+    ///
+    /// The returned handle borrows `ke`; dropping it does not undeclare the subscription.
     pub fn declare_subscriber<'a>(
         &'a self,
         ke: &'a keyexpr,

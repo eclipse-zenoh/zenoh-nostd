@@ -40,6 +40,11 @@ where
     south: BTreeMap<ZenohIdProto, Arc<StaticDriver<Config>>>,
 }
 
+/// Heap-backed forwarding broker with one upstream and multiple downstream links.
+///
+/// Available with `alloc`. This is a forwarding component, not persistent storage
+/// or a full Zenoh router. Poll [`Self::open`] and/or [`Self::accept`] concurrently
+/// in one executor/thread context; construction starts no tasks.
 pub struct Broker<Config>
 where
     Config: ZBrokerConfig + 'static,
@@ -52,6 +57,7 @@ impl<Config> Broker<Config>
 where
     Config: ZBrokerConfig,
 {
+    /// Create empty forwarding state retaining a static application configuration.
     pub fn new(config: &'static Config) -> Self {
         Self {
             config,
@@ -123,6 +129,11 @@ where
         Self::update(false, id, state, msg, bytes).await
     }
 
+    /// Connect and drive the upstream link, reconnecting after driver failures.
+    ///
+    /// Raw connection/handshake errors return to the caller. Driver errors are logged,
+    /// the upstream entry is removed, and the loop tries another connection. Keep this
+    /// future polled alongside downstream accept loops; it does not spawn tasks.
     pub async fn open(&self, endpoint: Endpoint<'_>) -> core::result::Result<(), BrokerError> {
         loop {
             let transport = Box::leak(Box::new(
@@ -152,6 +163,11 @@ where
         }
     }
 
+    /// Accept and drive downstream connections serially, repeating after driver failures.
+    ///
+    /// Listen/handshake failures return to the caller. To serve multiple live
+    /// downstream links, poll separate accept futures alongside the upstream future.
+    /// Listening support is determined by the configured platform adapter.
     pub async fn accept(&self, endpoint: Endpoint<'_>) -> core::result::Result<(), BrokerError> {
         loop {
             let transport = Box::leak(Box::new(
@@ -186,6 +202,11 @@ where
 }
 
 #[macro_export]
+/// Initialize one static broker and configuration per call site.
+///
+/// Access as `zenoh_nostd::broker::zenoh::broker!(Config: config)`. Requires
+/// `alloc` and `static_cell` in the consuming application; invoking the same
+/// call site twice panics because its cells are one-shot storage.
 macro_rules! __broker {
     ($CONFIG:ty: $config:expr) => {{
         static CONFIG: static_cell::StaticCell<$CONFIG> = static_cell::StaticCell::new();
