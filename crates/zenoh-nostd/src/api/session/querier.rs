@@ -3,6 +3,11 @@ use zenoh_proto::{SessionError, keyexpr};
 
 use crate::{api::session::Session, config::ZSessionConfig, session::GetBuilder};
 
+/// Reusable borrowed-key settings for gets.
+///
+/// The current implementation creates no protocol Interest declaration or callback
+/// registration for this handle. Dropping it only drops local settings; `undeclare`
+/// is a consuming no-op. Each operation created from it has its own lifecycle.
 pub struct Querier<'a, 'transport, 'resources: 'transport, Config>
 where
     Config: ZSessionConfig,
@@ -30,6 +35,7 @@ where
         }
     }
 
+    /// Consume the handle; currently sends no Interest or undeclaration message.
     pub async fn undeclare(self) -> core::result::Result<(), SessionError> {
         // No interest is sent by the current querier implementation.
         Ok(())

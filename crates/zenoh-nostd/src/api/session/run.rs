@@ -16,6 +16,22 @@ impl<'transport, 'resources: 'transport, Config> Session<'transport, 'resources,
 where
     Config: ZSessionConfig,
 {
+    /// Drive incoming messages, callbacks, keepalives, and lease expiry.
+    ///
+    /// Poll one driver future alongside the session's application operations. Normal
+    /// operation is long-lived; treat a returned error as the end of the connection.
+    /// Dropping this future is not a pause/resume mechanism: drop the operation,
+    /// session and transport before reconnecting or awaiting unrelated diagnostics.
+    ///
+    /// # Callback execution
+    ///
+    /// Callbacks are awaited sequentially while the session-state lock is held.
+    /// Do not call APIs that acquire that state from inside a callback (declaration,
+    /// undeclaration, get completion/cancellation, or query finalization): they would
+    /// wait for the callback itself to release the lock. Copy bounded data into an
+    /// application queue and return, then perform session operations outside it.
+    /// Waiting on a full channel or slow console also stalls receive/lease handling.
+    /// For a query that cannot be queued, use [`crate::session::QueryableQuery::reject`].
     pub async fn run(&self) -> core::result::Result<(), SessionError> {
         self.driver
             .run(&self.state, async |_, state, msg, _| {

@@ -10,6 +10,11 @@ use crate::{
     config::ZSessionConfig,
 };
 
+/// Reusable borrowed-key settings for publications.
+///
+/// The current implementation creates no protocol Interest declaration or callback
+/// registration for this handle. Dropping it only drops local settings; `undeclare`
+/// is a consuming no-op. Each operation created from it has its own lifecycle.
 pub struct Publisher<'a, 'transport, 'resources: 'transport, Config>
 where
     Config: ZSessionConfig,
@@ -38,6 +43,7 @@ where
         }
     }
 
+    /// Consume the handle; currently sends no Interest or undeclaration message.
     pub async fn undeclare(self) -> core::result::Result<(), SessionError> {
         // No interest is sent by the current publisher implementation.
         Ok(())

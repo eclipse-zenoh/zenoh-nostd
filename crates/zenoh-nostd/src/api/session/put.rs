@@ -2,6 +2,10 @@ use zenoh_proto::{exts::*, fields::*, msgs::*, *};
 
 use crate::{api::session::Session, config::ZSessionConfig, io::transport::ZTransportLinkTx};
 
+/// Borrowed publication data, sent only when [`Self::finish`] is awaited.
+///
+/// Key, payload and optional metadata must remain valid through the send. Creating
+/// or dropping an unpolled builder sends nothing.
 pub struct PutBuilder<'a, 'transport, 'resources: 'transport, Config>
 where
     Config: ZSessionConfig,
@@ -55,6 +59,11 @@ where
         self
     }
 
+    /// Write the publication to the transport.
+    ///
+    /// Success is not a remote delivery acknowledgment and may leave adapter-owned
+    /// buffers pending; use [`Session::flush`] for normal finite completion.
+    /// If sending is cancelled or fails, discard the whole connection.
     pub async fn finish(self) -> core::result::Result<(), SessionError> {
         let msg = Push {
             wire_expr: WireExpr::from(self.ke),

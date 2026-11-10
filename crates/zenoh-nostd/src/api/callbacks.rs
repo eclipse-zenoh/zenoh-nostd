@@ -1,3 +1,27 @@
+//! Callback storage for subscriptions, outgoing gets, and incoming query handlers.
+//!
+//! Applications choose each registry independently through
+//! [`ZSessionConfig`](crate::session::ZSessionConfig). Capacities count active
+//! registrations per session: subscriptions, pending outgoing gets, or declared
+//! queryables. A wildcard expression occupies one registration; registering the
+//! same expression twice occupies two. This does not limit the number of samples
+//! or replies a registration can receive.
+//!
+//! See [`ZSessionConfig`](crate::session::ZSessionConfig) for a complete
+//! application configuration example with independently selected capacities.
+//!
+//! Both implementations copy registered key text. The registry therefore does
+//! not borrow the caller's key buffer, but public operation handles may still
+//! borrow it, and callbacks must satisfy their own capture lifetimes. Explicit
+//! undeclaration, get completion/cancellation, and timeout cleanup release entries;
+//! dropping a public handle alone does not unregister its callback.
+//!
+//! Queryable registries also track how many handlers still need to finalize each
+//! incoming request. These counters use request IDs, independently of declaration
+//! IDs. Fixed-capacity registries give this separate table the same capacity as
+//! the registration table. UDP packet metadata and socket buffers are configured
+//! separately in the network adapter.
+
 use core::marker::PhantomData;
 
 use dyn_utils::{DynObject, storage::Storage};
@@ -9,21 +33,46 @@ use crate::api::arg::ZArg;
 
 #[dyn_utils::dyn_trait(trait = ZDynCallback)]
 #[dyn_trait(dyn_utils::dyn_object)]
+/// A callback invoked with a borrowed event; it may complete synchronously or asynchronously.
+///
+/// The session driver awaits callback completion. Keep callbacks short so that
+/// receiving traffic and maintaining the session can continue.
 pub trait ZCallback {
+    /// Event family, with a borrow lifetime selected independently for each call.
     type Arg: ZArg;
 
     #[dyn_trait(maybe_sync)]
+    /// Process one event before its borrowed data expires.
     fn call(&mut self, arg: <Self::Arg as ZArg>::Of<'_>) -> impl Future<Output = ()>;
 }
+
+/// A type-erased callback with separately selected callback and future storage.
+///
+/// `'a` bounds references captured by the callback, rather than its registered key.
 pub type DynCallback<'a, Callback, Future, Arg> =
     DynObject<dyn ZDynCallback<Future, Arg = Arg> + 'a, Callback>;
+
+/// Registry operations used by the session's callback tables.
+///
+/// Registration IDs and incoming-query counter IDs belong to separate tables.
+/// These methods manage local storage; they do not send protocol messages.
 pub trait ZCallbacks<'a, Arg>
 where
     Arg: ZArg,
 {
+    /// Storage policy for each callback object.
     type Callback: Storage;
+    /// Storage policy for the future returned when a callback is invoked.
     type Future: Storage;
+
+    /// Construct a registry without registrations or request counters.
     fn empty() -> Self;
+
+    /// Register a callback, copying its key text and optionally setting a deadline.
+    ///
+    /// The provided implementations reject duplicate IDs. Failed insertion leaves
+    /// existing entries unchanged. A deadline is enforced when `drop_timedout` is
+    /// called; the registry does not run a background timer.
     fn insert(
         &mut self,
         id: u32,
@@ -31,19 +80,38 @@ where
         timedout: Option<Instant>,
         callback: DynCallback<'a, Self::Callback, Self::Future, Arg>,
     ) -> core::result::Result<(), zenoh_proto::CollectionError>;
+
+    /// Remove registrations whose deadlines have elapsed, leaving counters intact.
     fn drop_timedout(&mut self);
+    /// Remove and drop one callback registration, returning its ID.
+    /// Ordering is unspecified; return `None` only when no registrations remain.
+    /// Incoming-query counters are unaffected.
     fn pop(&mut self) -> Option<u32>;
     #[cfg(test)]
     fn is_empty(&self) -> bool;
+    /// Drop all local registrations and counters without sending undeclarations.
     fn clear(&mut self);
+    /// Look up a callback by registration ID without running timeout cleanup.
     fn get(&mut self, id: u32) -> Option<&mut DynCallback<'a, Self::Callback, Self::Future, Arg>>;
+
+    /// Remove a registration and its owned key, succeeding if the ID is absent.
+    /// Request counters are unaffected; use `decrease` to finish tracked queries.
     fn remove(&mut self, id: u32) -> core::result::Result<(), zenoh_proto::CollectionError>;
+
+    /// Set or replace the number of query handlers still expected to finalize `id`.
+    /// Fixed-capacity storage returns `CollectionIsFull` for a new ID when full.
     fn set_counter(
         &mut self,
         id: u32,
         value: usize,
     ) -> core::result::Result<(), zenoh_proto::CollectionError>;
+
+    /// Decrement a request counter, removing it and returning `true` at zero.
+    /// Return `false` while work remains or when the request ID is absent.
     fn decrease(&mut self, id: u32) -> bool;
+
+    /// Iterate over callbacks whose registered expressions intersect `ke`.
+    /// One wildcard registration can match arbitrarily many concrete keys.
     fn intersects<'r>(
         &'r mut self,
         ke: &keyexpr,
@@ -54,6 +122,22 @@ where
 
 type Entry<'a, Key, Callback, Future, Arg> =
     (Key, DynCallback<'a, Callback, Future, Arg>, Option<Instant>);
+
+/// Callback registrations with fixed entry and key-text capacities.
+///
+/// - `CAPACITY` bounds registrations and, separately, incoming-query counters.
+///   A full table rejects new entries with `CollectionIsFull`; it does not grow
+///   or evict an existing entry. Removing an entry makes its slot reusable.
+/// - `MAX_KEYEXPR` bounds each owned key in **UTF-8 bytes**, defaulting to 128.
+///   Longer keys fail registration with `CollectionTooSmall`.
+/// - `Callback` and `Future` choose object storage independently of these counts.
+///   The session aliases provide defaults that applications may override.
+///
+/// Key text is copied into an inline `heapless::String`. Increasing either
+/// capacity increases reserved storage, including space for every key slot.
+/// Enabling `alloc` does not change these fixed table/key limits; callback and
+/// future allocation behavior still depends on their selected storage policies.
+/// Choose the `Alloc*Callbacks` session aliases for heap-backed registry tables.
 pub struct FixedCapacityCallbacks<
     'a,
     Arg: ZArg,
@@ -159,6 +243,12 @@ impl<
 }
 
 #[cfg(feature = "alloc")]
+/// Callback registrations and request counters backed by heap-allocated maps.
+///
+/// Registered key text is copied into an owned `String`. There is no configured
+/// entry count or key-length bound; growth depends on the application's allocator.
+/// Duplicate registration IDs are still rejected. `Callback` and `Future` retain
+/// their independently selected storage policies.
 pub struct AllocCallbacks<'a, Arg: ZArg, Callback: Storage, Future: Storage> {
     entries:
         alloc::collections::BTreeMap<u32, Entry<'a, alloc::string::String, Callback, Future, Arg>>,
@@ -246,14 +336,19 @@ impl<'a, Arg: ZArg + 'a, Callback: Storage, Future: Storage> ZCallbacks<'a, Arg>
             })
     }
 }
+
+/// Storage policies re-exported to applications through `session::zenoh::storage`.
 pub mod storage {
     #[cfg(feature = "alloc")]
     pub use dyn_utils::storage::Box;
     pub use dyn_utils::storage::{Raw, RawOrBox};
 }
+
+/// Adapt a synchronous `FnMut` to the callback interface.
 pub struct SyncCallback<Arg, F>(F, PhantomData<Arg>);
 
 impl<Arg, F> SyncCallback<Arg, F> {
+    /// Wrap a synchronous callback without invoking it.
     pub fn new(f: F) -> Self {
         Self(f, PhantomData)
     }
@@ -271,9 +366,12 @@ where
         (self.0)(arg)
     }
 }
+
+/// Adapt an `AsyncFnMut` to the callback interface.
 pub struct AsyncCallback<Arg, F>(F, PhantomData<Arg>);
 
 impl<Arg, F> AsyncCallback<Arg, F> {
+    /// Wrap an asynchronous callback without invoking it.
     pub fn new(f: F) -> Self {
         Self(f, PhantomData)
     }

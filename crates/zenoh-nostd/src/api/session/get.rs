@@ -25,6 +25,12 @@ use crate::{
     session::GetResponse,
 };
 
+/// Fixed-capacity pending-get registry selected through [`ZSessionConfig`].
+///
+/// `CAPACITY` counts registrations; `MAX_KEYEXPR` limits each copied key in UTF-8
+/// bytes (128 by default). `Callback` and `Future` independently choose object
+/// storage. A full table or overlong key rejects registration. Selecting `alloc`
+/// does not remove these limits; use `AllocGetCallbacks` for heap-backed tables.
 pub type FixedCapacityGetCallbacks<
     'a,
     const CAPACITY: usize,
@@ -34,9 +40,44 @@ pub type FixedCapacityGetCallbacks<
 > = FixedCapacityCallbacks<'a, GetResponseRef, CAPACITY, Callback, Future, MAX_KEYEXPR>;
 
 #[cfg(feature = "alloc")]
+/// Heap-backed pending-get registry, available with `alloc`.
+///
+/// Entry count and copied key length grow with the allocator. Callback/future
+/// storage still follows the independently selected storage parameters.
 pub type AllocGetCallbacks<'a, Callback = RawOrBox<16>, Future = RawOrBox<128>> =
     AllocCallbacks<'a, GetResponseRef, Callback, Future>;
 
+/// Track one outgoing query and optional owned reply channel.
+///
+/// The handle borrows the key even though the registry owns a copy. Dropping it
+/// does not cancel its callback. A final response removes the registration;
+/// timeouts are cleaned up when completion is checked or another get is inserted.
+/// Use [`Self::cancel`] to release a completed-send request early.
+///
+/// # Example
+///
+/// Keep the session driver polled in parallel; this function only sends the get
+/// and observes its completion. Replies are borrowed during callback execution.
+///
+/// ```no_run
+/// use core::time::Duration;
+/// use zenoh_nostd::session::{Session, SessionError, ZSessionConfig};
+/// use zenoh_nostd::session::zenoh::keyexpr;
+///
+/// async fn query_once<C: ZSessionConfig>(
+///     session: &Session<'_, '_, C>,
+/// ) -> Result<(), SessionError> {
+///     let key = keyexpr::new("demo/example")?;
+///     let replies = session.get(key)
+///         .timeout(Duration::from_secs(2))
+///         .callback_sync(|reply| { let _ = reply; })
+///         .finish().await?;
+///     while !replies.is_complete().await {
+///         embassy_time::Timer::after_millis(10).await;
+///     }
+///     Ok(())
+/// }
+/// ```
 pub struct GetResponses<
     'a,
     'transport,
@@ -61,11 +102,21 @@ impl<
     const CHANNEL: bool,
 > GetResponses<'a, 'transport, 'resources, Config, OwnedResponse, CHANNEL>
 {
-    /// Remove the callback. Late responses for this request are ignored.
+    /// Remove the local callback so late replies for this request are ignored.
+    ///
+    /// Does not send a remote cancellation or undo an interrupted transport write.
+    /// Use after the get's `finish` has completed; cancelling that send future
+    /// requires dropping the whole connection. Already queued replies are not
+    /// removed from an application-owned channel. Do not await inside a callback.
     pub async fn cancel(self) -> Result<(), SessionError> {
         Ok(self.session.state().await.get_callbacks.remove(self.id)?)
     }
 
+    /// Whether the callback has been removed by a final response, timeout, or cleanup.
+    ///
+    /// Performs timeout cleanup for the get registry. Completion is independent of
+    /// whether the owned reply channel still contains data. This method acquires
+    /// session state and must not be awaited from a receive callback.
     pub async fn is_complete(&self) -> bool {
         let mut state = self.session.state().await;
         state.get_callbacks.drop_timedout();
@@ -84,6 +135,11 @@ impl<'a, 'transport, 'resources: 'transport, Config: ZSessionConfig, OwnedRespon
         self.receiver.as_ref().unwrap().try_receive().ok()
     }
 
+    /// Receive a queued reply, or `None` after completion/timeout when none is queued.
+    ///
+    /// Buffered replies are returned before checking completion. Poll the session
+    /// driver concurrently; this method alone does not receive network traffic.
+    /// Completion checks poll at 10 ms intervals while waiting for channel input.
     pub async fn recv(&self) -> Option<OwnedResponse> {
         loop {
             if let Some(value) = self.try_recv() {
@@ -117,6 +173,12 @@ type FutureStorage<'transport, Config> =
         GetResponseRef,
     >>::Future;
 
+/// Configure one outgoing query; select a callback/channel and call `finish`.
+///
+/// Replies may arrive multiple times before a final response. Callback captures
+/// must live for `'transport`; input key, parameters and payload are borrowed.
+/// Callbacks execute under the driver's session-state lock; defer state-changing
+/// operations until after the callback returns.
 pub struct GetBuilder<
     'a,
     'transport,
@@ -194,6 +256,11 @@ where
         }
     }
 
+    /// Convert replies to owned values and send them through the supplied channel.
+    ///
+    /// Conversion errors drop a reply after logging. A full channel blocks the driver
+    /// until drained. Consume concurrently, or choose a callback with a nonblocking
+    /// queue policy when driver progress must not depend on channel capacity.
     pub fn channel<OwnedResponse, E>(
         self,
         sender: DynamicSender<'transport, OwnedResponse>,
@@ -252,6 +319,10 @@ where
         self
     }
 
+    /// Set the request timeout (30 seconds by default), measured from `finish`.
+    ///
+    /// The deadline is cleaned up lazily when completion is checked or another get
+    /// is registered; it is not a dedicated timer that cancels remote processing.
     pub fn timeout(mut self, timeout: Duration) -> Self {
         self.timeout = Some(timeout);
         self
@@ -263,6 +334,11 @@ impl<'a, 'transport, 'resources: 'transport, Config, OwnedResponse, const CHANNE
 where
     Config: ZSessionConfig,
 {
+    /// Register reply delivery and write the query request to the link.
+    ///
+    /// Returns a handle after sending, without waiting for replies. Full registry or
+    /// key limits fail registration. Transport write errors or cancelling this future
+    /// require discarding the session and transport, even if local state was rolled back.
     pub async fn finish(
         self,
     ) -> core::result::Result<
@@ -331,6 +407,7 @@ impl<'transport, 'resources: 'transport, Config> Session<'transport, 'resources,
 where
     Config: ZSessionConfig,
 {
+    /// Configure a query on `ke`; select reply delivery and call `finish` to send it.
     pub fn get<'a>(&'a self, ke: &'a keyexpr) -> GetBuilder<'a, 'transport, 'resources, Config> {
         GetBuilder::new(self, ke)
     }

@@ -76,6 +76,11 @@ where
     }
 }
 
+/// Combine a platform link manager with Zenoh handshake settings.
+///
+/// Create with `TransportLinkManager::from(link_manager)`. The default open timeout
+/// and lease are ten seconds. Keep the manager alive while its links borrow
+/// resources; connection buffers are provided separately for each handshake.
 pub struct TransportLinkManager<LinkManager> {
     link_manager: LinkManager,
 
@@ -192,6 +197,11 @@ impl<LinkManager> TransportLinkManager<LinkManager> {
         Ok(TransportLink::new(link, transport))
     }
 
+    /// Open an outgoing link and complete its Zenoh handshake using `buff`.
+    ///
+    /// The returned transport may borrow this manager. Use it with
+    /// [`Session::new`](crate::session::Session::new) inside a connection scope.
+    /// A timeout or handshake error drops the newly opened link.
     pub async fn connect<Buff>(
         &self,
         endpoint: Endpoint<'_>,
@@ -233,6 +243,10 @@ impl<LinkManager> TransportLinkManager<LinkManager> {
         Ok(TransportLink::new(link, transport))
     }
 
+    /// Accept a link and complete the incoming Zenoh handshake using `buff`.
+    ///
+    /// Requires listening support in the underlying link manager. The open timeout
+    /// covers the handshake after accepting the raw link, not the wait for a peer.
     pub async fn listen<Buff>(
         &self,
         endpoint: Endpoint<'_>,

@@ -4,6 +4,16 @@ use zenoh_proto::{CollectionError, SessionError, keyexpr};
 
 use crate::{api::session::Session, config::ZSessionConfig};
 
+/// Borrowed incoming query delivered to a queryable callback.
+///
+/// Key, parameters and payload refer to receive data and cannot outlive the callback.
+/// For deferred handling, copy what is needed into bounded application storage along
+/// with [`Self::request_id`]. After the callback returns, use [`Session::reply`] or
+/// [`Session::err`], then [`Session::finalize`] exactly once for this accepted handler.
+/// Reject immediately with [`Self::reject`] when work cannot be accepted.
+///
+/// Dropping a query does not finalize it. Do not wait for finalization from inside
+/// the receive callback: finalization acquires the state lock held by the driver.
 pub struct QueryableQuery<'a, 'transport, 'resources: 'transport, Config>
 where
     Config: ZSessionConfig,
@@ -63,6 +73,7 @@ where
         self.payload
     }
 
+    /// Send a reply without finalizing the request. See [`Session::reply`].
     pub async fn reply(
         &self,
         ke: &keyexpr,
@@ -71,6 +82,7 @@ where
         self.session.reply(self.rid, ke, payload).await
     }
 
+    /// Send an error reply without finalizing the request. See [`Session::err`].
     pub async fn err(
         &self,
         ke: &keyexpr,
@@ -79,6 +91,12 @@ where
         self.session.err(self.rid, ke, payload).await
     }
 
+    /// Finish this handler's accepted request once; repeated calls on this handle
+    /// are no-ops after success. Dropping the handle does not finalize it.
+    ///
+    /// Call outside the receive callback because finalization locks session state.
+    /// For a borrowed callback query, defer its request ID and use [`Session::finalize`]
+    /// after returning. On write failure or cancellation, discard the connection.
     pub async fn finalize(&mut self) -> core::result::Result<(), SessionError> {
         if !self.finalized {
             self.session.finalize(self.rid).await?;
@@ -89,6 +107,15 @@ where
     }
 }
 
+/// Owned, bounded query data for the built-in static-session channel.
+///
+/// Key/parameter/payload capacities count bytes; conversion fails with
+/// `CollectionTooSmall` when an input exceeds its limit. The stored session
+/// reference requires static session storage. For a scoped session, queue copied
+/// data and a request ID in application-owned storage instead.
+///
+/// The consumer must explicitly finalize accepted work; dropping this value does
+/// not finalize the request or decrement its counter.
 pub struct FixedCapacityQueryableQuery<
     Config,
     const MAX_KEYEXPR: usize,
@@ -122,6 +149,7 @@ where
         self.payload.as_ref().map(|p| p.as_slice())
     }
 
+    /// Send a reply without finalizing the request. See [`Session::reply`].
     pub async fn reply(
         &self,
         ke: &keyexpr,
@@ -130,6 +158,7 @@ where
         self.session.reply(self.rid, ke, payload).await
     }
 
+    /// Send an error reply without finalizing the request. See [`Session::err`].
     pub async fn err(
         &self,
         ke: &keyexpr,
@@ -138,6 +167,12 @@ where
         self.session.err(self.rid, ke, payload).await
     }
 
+    /// Finish this handler's accepted request once; repeated calls on this handle
+    /// are no-ops after success. Dropping the handle does not finalize it.
+    ///
+    /// Call outside the receive callback because finalization locks session state.
+    /// For a borrowed callback query, defer its request ID and use [`Session::finalize`]
+    /// after returning. On write failure or cancellation, discard the connection.
     pub async fn finalize(&mut self) -> core::result::Result<(), SessionError> {
         if !self.finalized {
             self.session.finalize(self.rid).await?;
@@ -187,6 +222,11 @@ where
 }
 
 #[cfg(feature = "alloc")]
+/// Heap-owned incoming query data retaining a static session reference.
+///
+/// Available with `alloc`. Conversion copies key, parameters and payload using the
+/// application allocator. The consumer must finalize accepted work explicitly;
+/// dropping this value leaves the incoming-request counter unchanged.
 pub struct AllocQueryableQuery<Config>
 where
     Config: ZSessionConfig + 'static,
@@ -216,6 +256,7 @@ where
         self.payload.as_deref()
     }
 
+    /// Send a reply without finalizing the request. See [`Session::reply`].
     pub async fn reply(
         &self,
         ke: &keyexpr,
@@ -224,6 +265,7 @@ where
         self.session.reply(self.rid, ke, payload).await
     }
 
+    /// Send an error reply without finalizing the request. See [`Session::err`].
     pub async fn err(
         &self,
         ke: &keyexpr,
@@ -232,6 +274,12 @@ where
         self.session.err(self.rid, ke, payload).await
     }
 
+    /// Finish this handler's accepted request once; repeated calls on this handle
+    /// are no-ops after success. Dropping the handle does not finalize it.
+    ///
+    /// Call outside the receive callback because finalization locks session state.
+    /// For a borrowed callback query, defer its request ID and use [`Session::finalize`]
+    /// after returning. On write failure or cancellation, discard the connection.
     pub async fn finalize(&mut self) -> core::result::Result<(), SessionError> {
         if !self.finalized {
             self.session.finalize(self.rid).await?;

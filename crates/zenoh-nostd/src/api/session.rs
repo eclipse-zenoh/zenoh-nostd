@@ -56,7 +56,11 @@ where
 ///
 /// Cancelling an operation or encountering a transport write error requires
 /// stopping the driver and dropping the session and its transport before any
-/// further network I/O. Reconnect with a new transport to continue. Use
+/// further network I/O. [`Self::run`] must be polled concurrently with operations;
+/// constructing a session starts no executor task. Session access is confined to
+/// one executor/thread context because it uses `NoopRawMutex`.
+///
+/// Reconnect with a new transport to continue. Use
 /// [`Self::flush`] for normal completion, not to recover an interrupted write.
 pub struct Session<'transport, 'resources: 'transport, Config>
 where
@@ -71,6 +75,16 @@ impl<'transport, 'resources: 'transport, Config> Session<'transport, 'resources,
 where
     Config: ZSessionConfig + 'resources,
 {
+    /// Borrow an already-handshaken transport and split it into driver RX/TX halves.
+    ///
+    /// `'transport` is the duration of this mutable borrow; `'resources` covers
+    /// resources borrowed by the underlying link and must outlive it. No background
+    /// task is started. Poll [`Self::run`] concurrently with application operations,
+    /// and keep all session access in one executor/thread context.
+    ///
+    /// Drop operations and the session before dropping or replacing the transport.
+    /// After cancellation or a transport write error, discard the entire connection;
+    /// this constructor does not reset an existing transport.
     pub fn new(
         transport: &'transport mut TransportLink<
             <Config::LinkManager as ZLinkManager>::Link<'resources>,

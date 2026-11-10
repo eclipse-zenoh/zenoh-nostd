@@ -3,6 +3,10 @@ use core::str::FromStr;
 use zenoh_proto::{CollectionError, keyexpr};
 
 #[derive(Debug)]
+/// A borrowed sample view; copy it before returning from a receive callback.
+///
+/// Use [`FixedCapacitySample`] for bounded owned storage, or `AllocSample` with
+/// `alloc`. The owned forms implement `TryFrom<&Sample>` for channel delivery.
 pub struct Sample<'a> {
     ke: &'a keyexpr,
     payload: &'a [u8],
@@ -23,6 +27,10 @@ impl<'a> Sample<'a> {
 }
 
 #[derive(Debug)]
+/// Owned sample with key/payload capacities measured in bytes.
+///
+/// Conversion from a borrowed [`Sample`] copies both fields and returns
+/// `CollectionTooSmall` if either does not fit.
 pub struct FixedCapacitySample<const MAX_KEYEXPR: usize, const MAX_PAYLOAD: usize> {
     ke: heapless::String<MAX_KEYEXPR>,
     payload: heapless::Vec<u8, MAX_PAYLOAD>,
@@ -64,6 +72,7 @@ impl<const MAX_KEYEXPR: usize, const MAX_PAYLOAD: usize> TryFrom<&Sample<'_>>
 
 #[cfg(feature = "alloc")]
 #[derive(Debug)]
+/// Heap-owned sample copied from a borrowed [`Sample`], available with `alloc`.
 pub struct AllocSample {
     ke: alloc::string::String,
     payload: alloc::vec::Vec<u8>,
