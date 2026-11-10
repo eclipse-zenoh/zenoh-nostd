@@ -15,242 +15,61 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-EPL--2.0%20OR%20Apache--2.0-blue.svg" alt="License: EPL-2.0 OR Apache-2.0" /></a>
 </p>
 
----
+## Overview
 
-## 📦 Overview
+`zenoh-nostd` is an async Rust implementation of the Zenoh protocol for
+`no_std` systems. It uses fixed-capacity storage by default; optional `alloc`
+adds heap-backed storage and broker support. Applications provide their
+transport, runtime/time integration, entropy, and memory configuration.
 
-⚠️ This project is in early development.
+The core libraries are independent of MCU hardware. Transport adapters and
+standalone applications support native hosts, browsers, and Embassy-based
+ESP32-S3, ESP32-C6-Pico, and NUCLEO-H753ZI targets.
+The NUCLEO-H753ZI firmware has not been tested on a physical board.
 
-**zenoh-nostd** is a Rust-native, `async`, `#![no_std]`, `no_alloc` library that provides a **zero-overhead network abstraction layer** for ultra-constrained and bare-metal environments. In other terms you can run this *bare metal* on your favourite microcontroller.
+This project is in early development. The minimum supported Rust version is
+1.91.0, declared in [Cargo.toml](Cargo.toml).
 
-> ⚡ Built on the <a href="https://github.com/eclipse-zenoh/zenoh">Zenoh protocol</a>, but stripped to the bone for minimalism and raw performance.
+## Start working
 
----
+From the repository root, with Nix flakes enabled:
 
-## ✨ Features
+```sh
+nix develop
+just test
+just check
+```
 
-- **`#![no_std]`**: No reliance on the Rust standard library.
-- **No dynamic allocation**: Fully `no_alloc`, ideal for bare-metal targets.
-- **Deterministic**: No heap, no surprises.
-- **Safe Rust**: Entirely memory-safe.
-- **Testable**: Supports both embedded and native testing environments.
-- **Embassy Integration**: Seamlessly integrates with the Embassy async runtime for embedded systems.
-- **Broker**: A `#![no_std]` broker to broke multiple zenoh `clients` with an optional gateway to a `zenoh` network.
+The Nix environment provides the Rust toolchains, cross-compilation targets,
+flash tools, and a Zenoh router. All Just commands are available from the root;
+`just --list` shows them. The [contributor guide](docs/README.md) explains which
+checks to run and how the independent Cargo projects fit together.
 
----
+## Documentation
 
-## 🔧 Installation
+- [Getting started and development commands](docs/README.md)
+- [Architecture, integration contract, and porting](docs/architecture.md)
+- [Running applications: CLI, headless, MCU, and browser](docs/applications.md)
+- [Example projects and board guides](examples/README.md)
+- [Shared agent playbook](docs/SKILLS.md), loaded through `AGENTS.md` for Codex
+  and `CLAUDE.md` for Claude Code
 
-Add this to your `Cargo.toml`:
+## Use the library
 
 ```toml
 [dependencies]
-zenoh-nostd = { git = "https://github.com/eclipse-zenoh/zenoh-nostd" }
+zenoh-nostd = { git = "https://github.com/eclipse-zenoh/zenoh-nostd", default-features = false }
 ```
 
-> For embedded systems, ensure your crate uses `#![no_std]`:
+See the [application contract](docs/architecture.md#application-contract) and
+[example projects](examples/README.md) for complete runtime and transport setup.
+Each example builds one `zenoh-app`; `cli` is enabled by default and can be
+removed for an unattended startup scenario. CLI, HAL, and board configuration
+remain outside the core libraries.
 
-```rust
-#![no_std]
-```
+## Limitations
 
----
-
-## 🔌 Integration
-
-### Minimal Example
-
-Here’s a simple example of sending a payload with `zenoh-nostd`:
-
-```rust
-async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
-    // Parsing the endpoint first so that the one-time cell is not consumed
-    // in the potentially static builder
-    let endpoint = Endpoint::try_from(ENDPOINT)?;
-    let config = init_session_example(&spawner).await;
-
-    // If you care about maintaining the session alive, then you have two choices:
-    //  1) Spawn a new task to run the `session.run()` in background, but it requires the `session` to be `'static`.
-    //     `let builder = zenoh::session!(static ExampleConfig: config);`
-    //     See the Open scenario in examples/common/src/scenarios.
-    //  2) Use `select` or `join` to run both the session and the subscriber in the same task. See the Put scenario in examples/common/src/scenarios.
-    // ESP32-S3 users must use the `static` form above.
-    let builder = zenoh::session!(ExampleConfig: config);
-    let session = builder.connect(endpoint).await?;
-
-    let ke = zenoh::keyexpr::new("demo/example")?;
-    let payload = b"Hello, from no-std!";
-    
-    session.put(ke, payload).finish().await?;
-    
-    Ok(())
-}
-```
-
----
-
-## 🔬 MSRV
-
-> 🛠️ **Minimum Supported Rust Version**: Currently `1.91.0`
-
----
-
-## ⚠️ Limitations
-
-* No serial support yet. ([#11](https://github.com/eclipse-zenoh/zenoh-nostd/issues/11))
-* `Interest` protocol not implemented yet. ([#46](https://github.com/eclipse-zenoh/zenoh-nostd/issues/46))
-
----
-
-## 🧪 Building and Testing
-
-This project uses [`just`](https://github.com/casey/just) for task management. Use `just check` to check the project and examples, `just test` to run the tests and `just bench` to run the benchmarks.
-
-### Nix development environment
-
-With Nix flakes enabled, enter the development environment from this directory:
-
-```bash
-nix develop
-```
-
-If flakes are not enabled, you can enable them for this command with:
-
-```bash
-nix --extra-experimental-features 'nix-command flakes' develop
-```
-
-> 🔍 Pull requests that slow down the bench should be avoided.
-
-### Testing Examples
-
-The root Cargo workspace contains only the core libraries. Applications have
-their own Cargo projects under [examples/](examples/README.md); their `just`
-recipes remain available from the repository root. When using Cargo directly,
-run it from the application's directory to load its `.cargo/config.toml`.
-
-Each target builds one `zenoh-app`, with the optional `cli` feature enabled by default:
-
-```bash
-just std
-just std z_put demo/example "hello world"
-```
-
-Use `help` at the prompt for commands. `just wasm`, `just esp32s3`, `just esp32c6`,
-and `just stm32` start the other applications. MCU consoles use UART by default; select `console-usb` for USB
-(see the [application guide](examples/README.md)).
-Prefix MCU recipes with `build-` to build without flashing.
-
-To run a startup scenario without the CLI:
-
-```bash
-SCENARIO=pub COUNT=3 just std-headless
-```
-
-See [application commands and headless recipes](examples/README.md) for other scenarios and optional features.
-
-Set `ENDPOINT=<endpoint>` to specify the endpoint (default `tcp/127.0.0.1:7447`).
-Set `LISTEN=1` to listen. Native settings are read at startup; MCU/browser settings
-are compiled into the application.
-
-For `esp32s3` and `esp32c6`, you must also provide:
-
-* `WIFI_SSID` (default is `Zenoh`).
-* `WIFI_PASSWORD` (no default, must be provided).
-
-See the [ESP32-S3 setup documentation](examples/embassy/esp/esp32s3-wifi/README.md) for toolchain and target installation.
-The [ESP32-C6-Pico project](examples/embassy/esp/esp32c6-pico-wifi/README.md) uses stable Rust and a RISC-V target.
-The [NUCLEO-H753ZI project](examples/embassy/stm32/nucleo-h753zi-ethernet/README.md) uses Ethernet and an ARM target.
-This firmware has not been tested on a physical NUCLEO-H753ZI board.
-
-Example of few commands:
-
-```bash
-ENDPOINT=tcp/127.0.0.1:7447 just std z_pub demo/example "hello"
-```
-
-```bash
-WIFI_PASSWORD=* ENDPOINT=tcp/192.168.21.1:7447 just esp32s3
-```
-
-### Example: Local TCP
-
-Run a Zenoh router with:
-
-```bash
-zenohd -l tcp/127.0.0.1:7447
-```
-
-In two terminals:
-
-```bash
-# Terminal 1
-just std z_pub demo/example "hello"
-
-# Terminal 2
-just std z_sub demo/example
-```
-
-### Example: WebSocket + WASM
-
-Run a Zenoh router with:
-
-```bash
-zenohd -l tcp/127.0.0.1:7447 -l ws/127.0.0.1:7446
-```
-
-Then:
-
-```bash
-# Terminal 1 (WASM)
-ENDPOINT=ws/127.0.0.1:7446 just wasm
-
-# Terminal 2 (STD)
-just std z_sub demo/example
-```
-
-> 📦 Note: For WASM, ensure you have:
->
-> * `wasm32-unknown-unknown` target
-> * `wasm-bindgen-cli`
-> * Python 3 (used by `just wasm` to serve the browser example)
-
----
-
-## 📁 Project Layout
-
-```text
-zenoh-nostd/            # Git repository root
-├── crates/
-│   ├── zenoh-derive/   # Derive macros
-│   ├── zenoh-nostd/    # Zenoh with IO, embassy
-│   ├── zenoh-proto/    # Zenoh Protocol
-│   └── zenoh-sansio/   # Zenoh Sans-IO objects (Transport only right now)
-│
-├── examples/
-│   ├── common/         # Shared configuration and scenario sources
-│   ├── native/         # Native application project
-│   ├── wasm/           # Browser project, including web/index.html
-│   ├── embassy/
-│   │   ├── esp/        # Shared ESP startup and Wi-Fi support
-│   │   │   ├── esp32s3-wifi/ # ESP32-S3 project
-│   │   │   └── esp32c6-pico-wifi/ # ESP32-C6-Pico project
-│   │   └── stm32/
-│   │       └── nucleo-h753zi-ethernet/ # NUCLEO-H753ZI project
-│   └── justfile        # Example recipes imported by the root justfile
-│
-├── platforms/          # Platform-specific implementations
-│   ├── zenoh-embassy/  # Embassy platforms (no_std)
-│   ├── zenoh-std/      # Standard platforms (std)
-│   └── zenoh-wasm/     # WASM32 platforms (wasm)
-│
-└── Cargo.toml          # Workspace for the core libraries
-```
-
----
-
-## 📚 Documentation
-
-The base project has been implemented in ([#6](https://github.com/eclipse-zenoh/zenoh-nostd/pull/6))
-The structure and API have been reworked in ([#34](https://github.com/eclipse-zenoh/zenoh-nostd/pull/24))
-The API has been reworked ([#52](https://github.com/eclipse-zenoh/zenoh-nostd/pull/52))
+- Serial network transport is not implemented. UART/USB example consoles are
+  command interfaces. ([#11](https://github.com/eclipse-zenoh/zenoh-nostd/issues/11))
+- The Interest protocol is not implemented.
+  ([#46](https://github.com/eclipse-zenoh/zenoh-nostd/issues/46))
