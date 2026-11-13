@@ -1,7 +1,13 @@
+# Explicit medium selection keeps network-driver policy out of library defaults.
 check:
-    cargo clippy
-    cargo clippy --features=zenoh-nostd/defmt
+    cargo test --locked --features=medium-ip
+    cargo clippy --features=medium-ip
+    cargo clippy --features=medium-ethernet,defmt
+    cargo clippy --no-default-features --features=tcp,medium-ip
+    cargo clippy --no-default-features --features=udp,medium-ip
+    cargo clippy --no-default-features --features=tcp,medium-ethernet,defmt
+    cargo clippy --no-default-features --features=udp,medium-ethernet,defmt
 
 fix:
-    cargo clippy --fix --lib --allow-dirty --allow-staged
-    cargo clippy --features=zenoh-nostd/defmt --fix --lib --allow-dirty --allow-staged
+    cargo clippy --features=medium-ip --fix --lib --allow-dirty --allow-staged
+    cargo clippy --features=medium-ethernet,defmt --fix --lib --allow-dirty --allow-staged
