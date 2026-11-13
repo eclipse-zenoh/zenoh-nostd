@@ -113,7 +113,7 @@ terminal port:
 [working-directory: repository_root]
 wasm features="":
     just build-wasm "{{ features }}"
-    python3 -m http.server 8000 --bind 127.0.0.1 --directory ./examples/wasm/web
+    python3 -m http.server "${WASM_PORT:-8000}" --bind 127.0.0.1 --directory ./examples/wasm/web
 
 [working-directory: repository_root]
 build-wasm features="":
@@ -170,7 +170,7 @@ build-wasm-headless scenario="pub" features="":
 [working-directory: repository_root]
 wasm-headless scenario="pub" features="":
     just build-wasm-headless "{{ scenario }}" "{{ features }}"
-    python3 -m http.server 8000 --bind 127.0.0.1 --directory ./examples/wasm/web
+    python3 -m http.server "${WASM_PORT:-8000}" --bind 127.0.0.1 --directory ./examples/wasm/web
 
 [working-directory: repository_root]
 test-headless router="zenohd":
