@@ -1,20 +1,15 @@
-use core::cell::RefCell;
-
 use embassy_net::udp::{UdpMetadata, UdpSocket};
 use zenoh_nostd::platform::*;
 
-use crate::BufferPoolDrop;
+use crate::PoolLease;
 
 pub struct EmbassyUdpLink<'net> {
     socket: UdpSocket<'net>,
     addr: UdpMetadata,
     mtu: u16,
 
-    idx1: usize,
-    pool1: &'net RefCell<dyn BufferPoolDrop>,
-
-    idx2: usize,
-    pool2: &'net RefCell<dyn BufferPoolDrop>,
+    _buffers: PoolLease<'net>,
+    _metadatas: PoolLease<'net>,
 }
 
 impl<'net> EmbassyUdpLink<'net> {
@@ -22,27 +17,16 @@ impl<'net> EmbassyUdpLink<'net> {
         socket: UdpSocket<'net>,
         metadata: UdpMetadata,
         mtu: u16,
-        idx1: usize,
-        pool1: &'net RefCell<dyn BufferPoolDrop>,
-        idx2: usize,
-        pool2: &'net RefCell<dyn BufferPoolDrop>,
+        buffers: PoolLease<'net>,
+        metadatas: PoolLease<'net>,
     ) -> Self {
         Self {
             socket,
             addr: metadata,
             mtu,
-            idx1,
-            pool1,
-            idx2,
-            pool2,
+            _buffers: buffers,
+            _metadatas: metadatas,
         }
-    }
-}
-
-impl Drop for EmbassyUdpLink<'_> {
-    fn drop(&mut self) {
-        self.pool1.borrow_mut().release(self.idx1);
-        self.pool2.borrow_mut().release(self.idx2);
     }
 }
 
