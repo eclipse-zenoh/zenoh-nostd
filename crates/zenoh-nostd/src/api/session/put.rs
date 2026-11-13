@@ -2,11 +2,15 @@ use zenoh_proto::{exts::*, fields::*, msgs::*, *};
 
 use crate::{api::session::Session, config::ZSessionConfig, io::transport::ZTransportLinkTx};
 
-pub struct PutBuilder<'a, 'res, Config>
+/// Borrowed publication data, sent only when [`Self::finish`] is awaited.
+///
+/// Key, payload and optional metadata must remain valid through the send. Creating
+/// or dropping an unpolled builder sends nothing.
+pub struct PutBuilder<'a, 'transport, 'resources: 'transport, Config>
 where
     Config: ZSessionConfig,
 {
-    pub(crate) session: &'a Session<'res, Config>,
+    pub(crate) session: &'a Session<'transport, 'resources, Config>,
 
     pub(crate) ke: &'a keyexpr,
     pub(crate) payload: &'a [u8],
@@ -16,12 +20,12 @@ where
     pub(crate) attachment: Option<Attachment<'a>>,
 }
 
-impl<'a, 'res, Config> PutBuilder<'a, 'res, Config>
+impl<'a, 'transport, 'resources: 'transport, Config> PutBuilder<'a, 'transport, 'resources, Config>
 where
     Config: ZSessionConfig,
 {
     pub(crate) fn new(
-        session: &'a Session<'res, Config>,
+        session: &'a Session<'transport, 'resources, Config>,
         ke: &'a keyexpr,
         payload: &'a [u8],
     ) -> Self {
@@ -55,6 +59,11 @@ where
         self
     }
 
+    /// Write the publication to the transport.
+    ///
+    /// Success is not a remote delivery acknowledgment and may leave adapter-owned
+    /// buffers pending; use [`Session::flush`] for normal finite completion.
+    /// If sending is cancelled or fails, discard the whole connection.
     pub async fn finish(self) -> core::result::Result<(), SessionError> {
         let msg = Push {
             wire_expr: WireExpr::from(self.ke),
@@ -83,11 +92,15 @@ where
     }
 }
 
-impl<'res, Config> Session<'res, Config>
+impl<'transport, 'resources: 'transport, Config> Session<'transport, 'resources, Config>
 where
     Config: ZSessionConfig,
 {
-    pub fn put<'a>(&'a self, ke: &'a keyexpr, payload: &'a [u8]) -> PutBuilder<'a, 'res, Config> {
+    pub fn put<'a>(
+        &'a self,
+        ke: &'a keyexpr,
+        payload: &'a [u8],
+    ) -> PutBuilder<'a, 'transport, 'resources, Config> {
         PutBuilder::new(self, ke, payload)
     }
 }

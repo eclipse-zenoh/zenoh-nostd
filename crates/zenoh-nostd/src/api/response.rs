@@ -2,6 +2,12 @@ use super::sample::*;
 use zenoh_proto::{CollectionError, keyexpr};
 
 #[derive(Debug)]
+/// A borrowed successful or error reply to an outgoing get.
+///
+/// Copy reply data before the callback returns. `FixedCapacityGetResponse` and,
+/// with `alloc`, `AllocGetResponse` provide owned forms for channel delivery.
+/// An error reply is distinct from a transport/session error; final completion is
+/// tracked by [`GetResponses`](crate::session::GetResponses).
 pub enum GetResponse<'a> {
     Ok(Sample<'a>),
     Err(Sample<'a>),

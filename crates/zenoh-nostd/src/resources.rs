@@ -2,6 +2,13 @@ use core::hint::unreachable_unchecked;
 
 use crate::{config::ZSessionConfig, io::transport::TransportLink, platform::ZLinkManager};
 
+/// Caller-owned storage used by [`crate::session::SessionBuilder`].
+///
+/// Keeps the connected transport alive while the session borrows it. The builder
+/// retains the resource lifetime for that borrow. For a shorter, reconnectable
+/// scope, open a local transport through [`TransportLinkManager`](crate::session::TransportLinkManager)
+/// and pass it to [`Session::new`](crate::session::Session::new) instead.
+/// Static builders use one-shot storage; do not reset an occupied static cell.
 pub struct Resources<'res, Config>
 where
     Config: ZSessionConfig,

@@ -1,5 +1,7 @@
 use zenoh_proto::{exts::Value, msgs::*, *};
 
+use crate::io::transport::ZTransportLinkTx;
+
 use crate::{
     api::{
         callbacks::{ZCallbacks, ZDynCallback},
@@ -10,10 +12,26 @@ use crate::{
     session::{GetResponse, Sample},
 };
 
-impl<'res, Config> Session<'res, Config>
+impl<'transport, 'resources: 'transport, Config> Session<'transport, 'resources, Config>
 where
     Config: ZSessionConfig,
 {
+    /// Drive incoming messages, callbacks, keepalives, and lease expiry.
+    ///
+    /// Poll one driver future alongside the session's application operations. Normal
+    /// operation is long-lived; treat a returned error as the end of the connection.
+    /// Dropping this future is not a pause/resume mechanism: drop the operation,
+    /// session and transport before reconnecting or awaiting unrelated diagnostics.
+    ///
+    /// # Callback execution
+    ///
+    /// Callbacks are awaited sequentially while the session-state lock is held.
+    /// Do not call APIs that acquire that state from inside a callback (declaration,
+    /// undeclaration, get completion/cancellation, or query finalization): they would
+    /// wait for the callback itself to release the lock. Copy bounded data into an
+    /// application queue and return, then perform session operations outside it.
+    /// Waiting on a full channel or slow console also stalls receive/lease handling.
+    /// For a query that cannot be queued, use [`crate::session::QueryableQuery::reject`].
     pub async fn run(&self) -> core::result::Result<(), SessionError> {
         self.driver
             .run(&self.state, async |_, state, msg, _| {
@@ -84,9 +102,46 @@ where
                         );
 
                         let count = state.queryable_callbacks.intersects(ke).count();
-                        state.queryable_callbacks.set_counter(id, count)?;
-                        for cb in state.queryable_callbacks.intersects(ke) {
-                            cb.call(&query).await;
+                        // Bounded handlers may decline work instead of blocking RX.
+                        // A saturated request table must not terminate the session.
+                        if count == 0 || state.queryable_callbacks.set_counter(id, count).is_err() {
+                            self.driver
+                                .tx()
+                                .await
+                                .send(core::iter::once(NetworkMessage {
+                                    reliability: fields::Reliability::default(),
+                                    qos: exts::QoS::default(),
+                                    body: NetworkBody::ResponseFinal(ResponseFinal {
+                                        rid: id,
+                                        ..Default::default()
+                                    }),
+                                }))
+                                .await?;
+                        } else {
+                            let mut rejected = 0;
+                            for cb in state.queryable_callbacks.intersects(ke) {
+                                query.rejected.set(false);
+                                cb.call(&query).await;
+                                if query.rejected.get() {
+                                    rejected += 1;
+                                }
+                            }
+                            for _ in 0..rejected {
+                                if state.queryable_callbacks.decrease(id) {
+                                    self.driver
+                                        .tx()
+                                        .await
+                                        .send(core::iter::once(NetworkMessage {
+                                            reliability: fields::Reliability::default(),
+                                            qos: exts::QoS::default(),
+                                            body: NetworkBody::ResponseFinal(ResponseFinal {
+                                                rid: id,
+                                                ..Default::default()
+                                            }),
+                                        }))
+                                        .await?;
+                                }
+                            }
                         }
                     }
                     _ => {}

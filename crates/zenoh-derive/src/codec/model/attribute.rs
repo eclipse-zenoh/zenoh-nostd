@@ -181,11 +181,7 @@ impl ZenohAttribute {
 /// When present, the field's encoding is inlined into the parent struct
 /// instead of being encoded as a separate nested structure.
 fn flatten_from_meta(meta: &ParseNestedMeta) -> syn::Result<bool> {
-    if meta.path.is_ident("flatten") {
-        return Ok(true);
-    }
-
-    Ok(false)
+    Ok(meta.path.is_ident("flatten"))
 }
 
 /// Parses the `shift = N` attribute.
@@ -205,11 +201,7 @@ fn shift_from_meta(meta: &ParseNestedMeta) -> syn::Result<Option<usize>> {
 }
 
 fn maybe_empty_from_meta(meta: &ParseNestedMeta) -> syn::Result<bool> {
-    if meta.path.is_ident("maybe_empty") {
-        return Ok(true);
-    }
-
-    Ok(false)
+    Ok(meta.path.is_ident("maybe_empty"))
 }
 
 /// Parses the `mandatory` attribute.
@@ -219,11 +211,7 @@ fn maybe_empty_from_meta(meta: &ParseNestedMeta) -> syn::Result<bool> {
 /// Marks a protocol extension as mandatory. Decoders that don't understand
 /// this extension must fail instead of skipping it. Used with `ext`.
 fn mandatory_from_meta(meta: &ParseNestedMeta) -> syn::Result<bool> {
-    if meta.path.is_ident("mandatory") {
-        return Ok(true);
-    }
-
-    Ok(false)
+    Ok(meta.path.is_ident("mandatory"))
 }
 
 fn ident_to_header_path(ident: &Ident) -> TokenStream {

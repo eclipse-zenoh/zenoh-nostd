@@ -52,13 +52,18 @@ and force-push.
 These match what CI runs:
 
 ```bash
-cargo fmt --all --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
+nix develop
+just fmt
+just test
+just check
 ```
 
-`just check` runs clippy on every feature and platform, including wasm and
-ESP32 (it needs those toolchains installed).
+The root is a virtual workspace; adapters and example applications are
+independent Cargo projects. The Just recipes cover them together. Use
+`just test-cli` and `just test-headless` for native integration suites and
+release-link recipes for affected firmware targets. See the
+[contributor guide](docs/README.md) for the full workflow and the
+[shared agent playbook](docs/SKILLS.md) for coding-agent instructions.
 
 ## PR titles & labels
 

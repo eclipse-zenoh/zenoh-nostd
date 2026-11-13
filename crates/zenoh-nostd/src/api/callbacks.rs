@@ -1,3 +1,27 @@
+//! Callback storage for subscriptions, outgoing gets, and incoming query handlers.
+//!
+//! Applications choose each registry independently through
+//! [`ZSessionConfig`](crate::session::ZSessionConfig). Capacities count active
+//! registrations per session: subscriptions, pending outgoing gets, or declared
+//! queryables. A wildcard expression occupies one registration; registering the
+//! same expression twice occupies two. This does not limit the number of samples
+//! or replies a registration can receive.
+//!
+//! See [`ZSessionConfig`](crate::session::ZSessionConfig) for a complete
+//! application configuration example with independently selected capacities.
+//!
+//! Both implementations copy registered key text. The registry therefore does
+//! not borrow the caller's key buffer, but public operation handles may still
+//! borrow it, and callbacks must satisfy their own capture lifetimes. Explicit
+//! undeclaration, get completion/cancellation, and timeout cleanup release entries;
+//! dropping a public handle alone does not unregister its callback.
+//!
+//! Queryable registries also track how many handlers still need to finalize each
+//! incoming request. These counters use request IDs, independently of declaration
+//! IDs. Fixed-capacity registries give this separate table the same capacity as
+//! the registration table. UDP packet metadata and socket buffers are configured
+//! separately in the network adapter.
+
 use core::marker::PhantomData;
 
 use dyn_utils::{DynObject, storage::Storage};
@@ -9,46 +33,85 @@ use crate::api::arg::ZArg;
 
 #[dyn_utils::dyn_trait(trait = ZDynCallback)]
 #[dyn_trait(dyn_utils::dyn_object)]
+/// A callback invoked with a borrowed event; it may complete synchronously or asynchronously.
+///
+/// The session driver awaits callback completion. Keep callbacks short so that
+/// receiving traffic and maintaining the session can continue.
 pub trait ZCallback {
+    /// Event family, with a borrow lifetime selected independently for each call.
     type Arg: ZArg;
 
     #[dyn_trait(maybe_sync)]
+    /// Process one event before its borrowed data expires.
     fn call(&mut self, arg: <Self::Arg as ZArg>::Of<'_>) -> impl Future<Output = ()>;
 }
 
+/// A type-erased callback with separately selected callback and future storage.
+///
+/// `'a` bounds references captured by the callback, rather than its registered key.
 pub type DynCallback<'a, Callback, Future, Arg> =
     DynObject<dyn ZDynCallback<Future, Arg = Arg> + 'a, Callback>;
 
+/// Registry operations used by the session's callback tables.
+///
+/// Registration IDs and incoming-query counter IDs belong to separate tables.
+/// These methods manage local storage; they do not send protocol messages.
 pub trait ZCallbacks<'a, Arg>
 where
     Arg: ZArg,
 {
+    /// Storage policy for each callback object.
     type Callback: Storage;
+    /// Storage policy for the future returned when a callback is invoked.
     type Future: Storage;
 
+    /// Construct a registry without registrations or request counters.
     fn empty() -> Self;
 
+    /// Register a callback, copying its key text and optionally setting a deadline.
+    ///
+    /// The provided implementations reject duplicate IDs. Failed insertion leaves
+    /// existing entries unchanged. A deadline is enforced when `drop_timedout` is
+    /// called; the registry does not run a background timer.
     fn insert(
         &mut self,
         id: u32,
-        ke: &'static keyexpr,
+        ke: &keyexpr,
         timedout: Option<Instant>,
         callback: DynCallback<'a, Self::Callback, Self::Future, Arg>,
     ) -> core::result::Result<(), zenoh_proto::CollectionError>;
 
+    /// Remove registrations whose deadlines have elapsed, leaving counters intact.
     fn drop_timedout(&mut self);
+    /// Remove and drop one callback registration, returning its ID.
+    /// Ordering is unspecified; return `None` only when no registrations remain.
+    /// Incoming-query counters are unaffected.
+    fn pop(&mut self) -> Option<u32>;
+    #[cfg(test)]
+    fn is_empty(&self) -> bool;
+    /// Drop all local registrations and counters without sending undeclarations.
+    fn clear(&mut self);
+    /// Look up a callback by registration ID without running timeout cleanup.
     fn get(&mut self, id: u32) -> Option<&mut DynCallback<'a, Self::Callback, Self::Future, Arg>>;
 
+    /// Remove a registration and its owned key, succeeding if the ID is absent.
+    /// Request counters are unaffected; use `decrease` to finish tracked queries.
     fn remove(&mut self, id: u32) -> core::result::Result<(), zenoh_proto::CollectionError>;
 
+    /// Set or replace the number of query handlers still expected to finalize `id`.
+    /// Fixed-capacity storage returns `CollectionIsFull` for a new ID when full.
     fn set_counter(
         &mut self,
         id: u32,
         value: usize,
     ) -> core::result::Result<(), zenoh_proto::CollectionError>;
 
+    /// Decrement a request counter, removing it and returning `true` at zero.
+    /// Return `false` while work remains or when the request ID is absent.
     fn decrease(&mut self, id: u32) -> bool;
 
+    /// Iterate over callbacks whose registered expressions intersect `ke`.
+    /// One wildcard registration can match arbitrarily many concrete keys.
     fn intersects<'r>(
         &'r mut self,
         ke: &keyexpr,
@@ -57,124 +120,111 @@ where
         DynCallback<'a, Self::Callback, Self::Future, Arg>: 'r;
 }
 
+type Entry<'a, Key, Callback, Future, Arg> =
+    (Key, DynCallback<'a, Callback, Future, Arg>, Option<Instant>);
+
+/// Callback registrations with fixed entry and key-text capacities.
+///
+/// - `CAPACITY` bounds registrations and, separately, incoming-query counters.
+///   A full table rejects new entries with `CollectionIsFull`; it does not grow
+///   or evict an existing entry. Removing an entry makes its slot reusable.
+/// - `MAX_KEYEXPR` bounds each owned key in **UTF-8 bytes**, defaulting to 128.
+///   Longer keys fail registration with `CollectionTooSmall`.
+/// - `Callback` and `Future` choose object storage independently of these counts.
+///   The session aliases provide defaults that applications may override.
+///
+/// Key text is copied into an inline `heapless::String`. Increasing either
+/// capacity increases reserved storage, including space for every key slot.
+/// Enabling `alloc` does not change these fixed table/key limits; callback and
+/// future allocation behavior still depends on their selected storage policies.
+/// Choose the `Alloc*Callbacks` session aliases for heap-backed registry tables.
 pub struct FixedCapacityCallbacks<
     'a,
     Arg: ZArg,
     const CAPACITY: usize,
     Callback: Storage,
     Future: Storage,
+    const MAX_KEYEXPR: usize = 128,
 > {
-    keyexprs: FnvIndexMap<u32, &'static keyexpr, CAPACITY>,
-    callbacks:
-        FnvIndexMap<(u32, &'static keyexpr), DynCallback<'a, Callback, Future, Arg>, CAPACITY>,
-    timedouts: FnvIndexMap<u32, Instant, CAPACITY>,
+    entries:
+        FnvIndexMap<u32, Entry<'a, heapless::String<MAX_KEYEXPR>, Callback, Future, Arg>, CAPACITY>,
     counters: FnvIndexMap<u32, usize, CAPACITY>,
 }
 
-impl<'a, Arg: ZArg + 'a, const CAPACITY: usize, Callback: Storage, Future: Storage>
-    ZCallbacks<'a, Arg> for FixedCapacityCallbacks<'a, Arg, CAPACITY, Callback, Future>
+impl<
+    'a,
+    Arg: ZArg + 'a,
+    const CAPACITY: usize,
+    Callback: Storage,
+    Future: Storage,
+    const MAX_KEYEXPR: usize,
+> ZCallbacks<'a, Arg> for FixedCapacityCallbacks<'a, Arg, CAPACITY, Callback, Future, MAX_KEYEXPR>
 {
     type Callback = Callback;
     type Future = Future;
-
     fn empty() -> Self {
         Self {
-            keyexprs: FnvIndexMap::new(),
-            callbacks: FnvIndexMap::new(),
-            timedouts: FnvIndexMap::new(),
+            entries: FnvIndexMap::new(),
             counters: FnvIndexMap::new(),
         }
     }
-
     fn insert(
         &mut self,
         id: u32,
-        ke: &'static keyexpr,
+        ke: &keyexpr,
         timedout: Option<Instant>,
         callback: DynCallback<'a, Callback, Future, Arg>,
-    ) -> core::result::Result<(), zenoh_proto::CollectionError> {
-        if self.keyexprs.contains_key(&id) {
+    ) -> Result<(), zenoh_proto::CollectionError> {
+        if self.entries.contains_key(&id) {
             return Err(zenoh_proto::CollectionError::KeyAlreadyExists);
         }
-
-        if self.callbacks.contains_key(&(id, ke)) {
-            return Err(zenoh_proto::CollectionError::KeyAlreadyExists);
-        }
-
-        if self.timedouts.contains_key(&id) {
-            return Err(zenoh_proto::CollectionError::KeyAlreadyExists);
-        }
-
-        self.keyexprs
-            .insert(id, ke)
+        let key = heapless::String::try_from(ke.as_str())
+            .map_err(|_| zenoh_proto::CollectionError::CollectionTooSmall)?;
+        self.entries
+            .insert(id, (key, callback, timedout))
             .map_err(|_| zenoh_proto::CollectionError::CollectionIsFull)?;
-
-        self.callbacks
-            .insert((id, ke), callback)
-            .map_err(|_| zenoh_proto::CollectionError::CollectionIsFull)?;
-
-        if let Some(timedout) = timedout {
-            self.timedouts
-                .insert(id, timedout)
-                .map_err(|_| zenoh_proto::CollectionError::CollectionIsFull)?;
-        }
-
         Ok(())
     }
-
     fn drop_timedout(&mut self) {
-        self.timedouts.retain(|id, timedout| {
-            if Instant::now() >= *timedout {
-                if let Some(ke) = self.keyexprs.remove(id) {
-                    self.callbacks.remove(&(*id, ke));
-                }
-                self.counters.remove(id);
-
-                false
-            } else {
-                true
-            }
-        });
+        self.entries
+            .retain(|_, (_, _, timeout)| timeout.is_none_or(|t| Instant::now() < t));
     }
-
-    fn remove(&mut self, id: u32) -> core::result::Result<(), zenoh_proto::CollectionError> {
-        if let Some(ke) = self.keyexprs.remove(&id) {
-            self.callbacks.remove(&(id, ke));
-        }
-        self.timedouts.remove(&id);
-        self.counters.remove(&id);
-
+    fn pop(&mut self) -> Option<u32> {
+        let id = self.entries.keys().next().copied()?;
+        self.entries.remove(&id);
+        Some(id)
+    }
+    #[cfg(test)]
+    fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+    fn clear(&mut self) {
+        self.entries.clear();
+        self.counters.clear();
+    }
+    fn remove(&mut self, id: u32) -> Result<(), zenoh_proto::CollectionError> {
+        self.entries.remove(&id);
         Ok(())
     }
-
     fn get(&mut self, id: u32) -> Option<&mut DynCallback<'a, Callback, Future, Arg>> {
-        let ke = self.keyexprs.get(&id)?;
-        self.callbacks.get_mut(&(id, ke))
+        self.entries.get_mut(&id).map(|(_, callback, _)| callback)
     }
-
-    fn set_counter(
-        &mut self,
-        id: u32,
-        value: usize,
-    ) -> core::result::Result<(), zenoh_proto::CollectionError> {
+    fn set_counter(&mut self, id: u32, value: usize) -> Result<(), zenoh_proto::CollectionError> {
         self.counters
             .insert(id, value)
-            .map_err(|_| zenoh_proto::CollectionError::CollectionIsFull)
-            .map(|_| ())
+            .map_err(|_| zenoh_proto::CollectionError::CollectionIsFull)?;
+        Ok(())
     }
-
     fn decrease(&mut self, id: u32) -> bool {
         if let Some(value) = self.counters.get_mut(&id) {
-            if *value > 0 {
-                *value -= 1;
+            *value = value.saturating_sub(1);
+            if *value == 0 {
+                self.counters.remove(&id);
+                return true;
             }
-
-            *value == 0
-        } else {
-            false
         }
+        false
     }
-
     fn intersects<'r>(
         &'r mut self,
         ke: &keyexpr,
@@ -182,127 +232,94 @@ impl<'a, Arg: ZArg + 'a, const CAPACITY: usize, Callback: Storage, Future: Stora
     where
         DynCallback<'a, Callback, Future, Arg>: 'r,
     {
-        self.callbacks
+        self.entries
             .iter_mut()
-            .filter_map(move |((_, registered_ke), callback)| {
-                if registered_ke.intersects(ke) {
-                    Some(callback)
-                } else {
-                    None
-                }
+            .filter_map(move |(_, (registered, callback, _))| {
+                keyexpr::from_str_unchecked(registered)
+                    .intersects(ke)
+                    .then_some(callback)
             })
     }
 }
 
 #[cfg(feature = "alloc")]
+/// Callback registrations and request counters backed by heap-allocated maps.
+///
+/// Registered key text is copied into an owned `String`. There is no configured
+/// entry count or key-length bound; growth depends on the application's allocator.
+/// Duplicate registration IDs are still rejected. `Callback` and `Future` retain
+/// their independently selected storage policies.
 pub struct AllocCallbacks<'a, Arg: ZArg, Callback: Storage, Future: Storage> {
-    keyexprs: alloc::collections::BTreeMap<u32, &'static keyexpr>,
-    callbacks: alloc::collections::BTreeMap<
-        (u32, &'static keyexpr),
-        DynCallback<'a, Callback, Future, Arg>,
-    >,
-    timedouts: alloc::collections::BTreeMap<u32, Instant>,
+    entries:
+        alloc::collections::BTreeMap<u32, Entry<'a, alloc::string::String, Callback, Future, Arg>>,
     counters: alloc::collections::BTreeMap<u32, usize>,
 }
-
 #[cfg(feature = "alloc")]
 impl<'a, Arg: ZArg + 'a, Callback: Storage, Future: Storage> ZCallbacks<'a, Arg>
     for AllocCallbacks<'a, Arg, Callback, Future>
 {
     type Callback = Callback;
     type Future = Future;
-
     fn empty() -> Self {
         Self {
-            keyexprs: alloc::collections::BTreeMap::new(),
-            callbacks: alloc::collections::BTreeMap::new(),
-            timedouts: alloc::collections::BTreeMap::new(),
+            entries: alloc::collections::BTreeMap::new(),
             counters: alloc::collections::BTreeMap::new(),
         }
     }
-
     fn insert(
         &mut self,
         id: u32,
-        ke: &'static keyexpr,
+        ke: &keyexpr,
         timedout: Option<Instant>,
         callback: DynCallback<'a, Callback, Future, Arg>,
-    ) -> core::result::Result<(), zenoh_proto::CollectionError> {
-        if self.keyexprs.contains_key(&id) {
+    ) -> Result<(), zenoh_proto::CollectionError> {
+        if self.entries.contains_key(&id) {
             return Err(zenoh_proto::CollectionError::KeyAlreadyExists);
         }
-
-        if self.callbacks.contains_key(&(id, ke)) {
-            return Err(zenoh_proto::CollectionError::KeyAlreadyExists);
-        }
-
-        if self.timedouts.contains_key(&id) {
-            return Err(zenoh_proto::CollectionError::KeyAlreadyExists);
-        }
-
-        self.keyexprs.insert(id, ke);
-
-        self.callbacks.insert((id, ke), callback);
-
-        if let Some(timedout) = timedout {
-            self.timedouts.insert(id, timedout);
-        }
-
+        self.entries.insert(
+            id,
+            (alloc::string::String::from(ke.as_str()), callback, timedout),
+        );
         Ok(())
     }
-
     fn drop_timedout(&mut self) {
-        self.timedouts.retain(|id, timedout| {
-            if Instant::now() >= *timedout {
-                if let Some(ke) = self.keyexprs.remove(id) {
-                    self.callbacks.remove(&(*id, ke));
-                }
-                self.counters.remove(id);
-
-                false
-            } else {
-                true
-            }
-        });
+        self.entries
+            .retain(|_, (_, _, timeout)| timeout.is_none_or(|t| Instant::now() < t));
     }
-
-    fn remove(&mut self, id: u32) -> core::result::Result<(), zenoh_proto::CollectionError> {
-        if let Some(ke) = self.keyexprs.remove(&id) {
-            self.callbacks.remove(&(id, ke));
-        }
-        self.timedouts.remove(&id);
-        self.counters.remove(&id);
-
+    fn pop(&mut self) -> Option<u32> {
+        let id = self.entries.keys().next().copied()?;
+        self.entries.remove(&id);
+        Some(id)
+    }
+    #[cfg(test)]
+    fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+    fn clear(&mut self) {
+        self.entries.clear();
+        self.counters.clear();
+    }
+    fn remove(&mut self, id: u32) -> Result<(), zenoh_proto::CollectionError> {
+        self.entries.remove(&id);
         Ok(())
     }
-
     fn get(&mut self, id: u32) -> Option<&mut DynCallback<'a, Callback, Future, Arg>> {
-        let ke = self.keyexprs.get(&id)?;
-        self.callbacks.get_mut(&(id, ke))
+        self.entries.get_mut(&id).map(|(_, callback, _)| callback)
     }
-
-    fn set_counter(
-        &mut self,
-        id: u32,
-        value: usize,
-    ) -> core::result::Result<(), zenoh_proto::CollectionError> {
+    fn set_counter(&mut self, id: u32, value: usize) -> Result<(), zenoh_proto::CollectionError> {
         self.counters.insert(id, value);
-
         Ok(())
     }
-
     fn decrease(&mut self, id: u32) -> bool {
         if let Some(value) = self.counters.get_mut(&id) {
-            if *value > 0 {
-                *value -= 1;
+            *value = value.saturating_sub(1);
+            if *value == 0 {
+                self.counters.remove(&id);
+                return true;
             }
-
-            *value == 0
-        } else {
-            false
         }
+        false
     }
-
     fn intersects<'r>(
         &'r mut self,
         ke: &keyexpr,
@@ -310,27 +327,28 @@ impl<'a, Arg: ZArg + 'a, Callback: Storage, Future: Storage> ZCallbacks<'a, Arg>
     where
         DynCallback<'a, Callback, Future, Arg>: 'r,
     {
-        self.callbacks
+        self.entries
             .iter_mut()
-            .filter_map(move |((_, registered_ke), callback)| {
-                if registered_ke.intersects(ke) {
-                    Some(callback)
-                } else {
-                    None
-                }
+            .filter_map(move |(_, (registered, callback, _))| {
+                keyexpr::from_str_unchecked(registered)
+                    .intersects(ke)
+                    .then_some(callback)
             })
     }
 }
 
+/// Storage policies re-exported to applications through `session::zenoh::storage`.
 pub mod storage {
     #[cfg(feature = "alloc")]
     pub use dyn_utils::storage::Box;
     pub use dyn_utils::storage::{Raw, RawOrBox};
 }
 
+/// Adapt a synchronous `FnMut` to the callback interface.
 pub struct SyncCallback<Arg, F>(F, PhantomData<Arg>);
 
 impl<Arg, F> SyncCallback<Arg, F> {
+    /// Wrap a synchronous callback without invoking it.
     pub fn new(f: F) -> Self {
         Self(f, PhantomData)
     }
@@ -349,9 +367,11 @@ where
     }
 }
 
+/// Adapt an `AsyncFnMut` to the callback interface.
 pub struct AsyncCallback<Arg, F>(F, PhantomData<Arg>);
 
 impl<Arg, F> AsyncCallback<Arg, F> {
+    /// Wrap an asynchronous callback without invoking it.
     pub fn new(f: F) -> Self {
         Self(f, PhantomData)
     }
@@ -365,5 +385,127 @@ where
 
     fn call(&mut self, arg: <Self::Arg as ZArg>::Of<'_>) -> impl Future<Output = ()> {
         (self.0)(arg)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::api::arg::SampleRef;
+    use dyn_utils::storage::Raw;
+    type Registry = FixedCapacityCallbacks<'static, SampleRef, 2, Raw<16>, Raw<32>, 32>;
+    fn callback() -> DynCallback<'static, Raw<16>, Raw<32>, SampleRef> {
+        DynObject::new(SyncCallback::new(|_: &crate::session::Sample<'_>| {}))
+    }
+    #[test]
+    fn registration_owns_runtime_key_and_slots_are_reusable() {
+        let mut registry = Registry::empty();
+        for id in 0..1000 {
+            let mut input = heapless::String::<32>::try_from("sensors/room/**").unwrap();
+            registry
+                .insert(id, keyexpr::new(&input).unwrap(), None, callback())
+                .unwrap();
+            input.clear();
+            input.push_str("another/key").unwrap();
+            assert_eq!(
+                registry
+                    .intersects(keyexpr::new("sensors/room/temp").unwrap())
+                    .count(),
+                1
+            );
+            assert_eq!(registry.pop(), Some(id));
+            assert!(registry.is_empty());
+        }
+    }
+    #[test]
+    fn failed_inserts_are_atomic_and_request_counters_are_reclaimed() {
+        let mut registry = Registry::empty();
+        let long = keyexpr::new("this/key/is/too/long/for/the/registry/storage").unwrap();
+        assert!(registry.insert(1, long, None, callback()).is_err());
+        assert!(registry.is_empty());
+        for id in 0..2 {
+            registry
+                .insert(id, keyexpr::new("a").unwrap(), None, callback())
+                .unwrap();
+        }
+        assert!(
+            registry
+                .insert(2, keyexpr::new("b").unwrap(), None, callback())
+                .is_err()
+        );
+        assert!(
+            registry
+                .insert(1, keyexpr::new("b").unwrap(), None, callback())
+                .is_err()
+        );
+        for id in 0..1000 {
+            registry.set_counter(id, 1).unwrap();
+            assert!(registry.decrease(id));
+            assert!(!registry.decrease(id));
+        }
+        registry.clear();
+        assert!(registry.is_empty());
+    }
+    fn exercise_pop<R: ZCallbacks<'static, SampleRef, Callback = Raw<16>, Future = Raw<32>>>() {
+        let mut registry = R::empty();
+        assert!(registry.is_empty());
+        assert_eq!(registry.pop(), None);
+        for id in [7, 9] {
+            registry
+                .insert(id, keyexpr::new("a").unwrap(), None, callback())
+                .unwrap();
+        }
+        registry.set_counter(7, 2).unwrap();
+
+        let first = registry.pop().unwrap();
+        assert!(matches!(first, 7 | 9));
+        assert!(registry.get(first).is_none());
+        assert!(!registry.is_empty());
+        assert_eq!(registry.intersects(keyexpr::new("a").unwrap()).count(), 1);
+        let second = registry.pop().unwrap();
+        assert!(matches!(second, 7 | 9));
+        assert_ne!(first, second);
+        assert!(registry.get(second).is_none());
+        assert!(registry.is_empty());
+        assert_eq!(registry.pop(), None);
+
+        // Popping registration 7 must preserve the independent request counter 7.
+        assert!(!registry.decrease(7));
+        assert!(registry.decrease(7));
+        assert!(!registry.decrease(7));
+        registry
+            .insert(11, keyexpr::new("reused/key").unwrap(), None, callback())
+            .unwrap();
+        registry.set_counter(11, 1).unwrap();
+        registry.clear();
+        assert!(registry.is_empty());
+        assert_eq!(registry.pop(), None);
+        assert!(!registry.decrease(11));
+    }
+
+    #[test]
+    fn fixed_pop_removes_registrations_and_preserves_request_counters() {
+        exercise_pop::<Registry>();
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn allocated_pop_removes_registrations_and_preserves_request_counters() {
+        exercise_pop::<AllocCallbacks<'static, SampleRef, Raw<16>, Raw<32>>>();
+    }
+
+    #[test]
+    fn expired_get_releases_key_and_callback() {
+        let mut registry = Registry::empty();
+        registry
+            .insert(
+                1,
+                keyexpr::new("a").unwrap(),
+                Some(Instant::from_ticks(0)),
+                callback(),
+            )
+            .unwrap();
+        registry.drop_timedout();
+        assert!(registry.is_empty());
     }
 }
