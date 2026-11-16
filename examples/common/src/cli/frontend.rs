@@ -403,6 +403,19 @@ mod tests {
         assert!(command("z_open --listen").listen);
     }
     #[test]
+    fn unquoted_publish_payload_is_accepted() {
+        let plain = command("z_pub demo/esp32c6 ping");
+        let quoted = command("z_pub demo/esp32c6 \"ping\"");
+        assert_eq!(plain.kind, Kind::Pub);
+        assert_eq!(plain.key, quoted.key);
+        assert_eq!(plain.payload, "ping");
+        assert_eq!(plain.payload, quoted.payload);
+        let missing = parse_line("z_pub demo/esp32c6").unwrap();
+        assert!(missing.invalid && missing.command.is_none());
+        let output = core::str::from_utf8(&missing.output).unwrap();
+        assert!(output.contains("error: missing required argument: <PAYLOAD>"));
+    }
+    #[test]
     fn malformed_commands_cannot_reach_the_runner() {
         for input in [
             "z_get",
