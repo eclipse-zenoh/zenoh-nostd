@@ -27,6 +27,17 @@ impl WasmWsLink {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
+impl Drop for WasmWsLink {
+    fn drop(&mut self) {
+        use futures_util::FutureExt as _;
+
+        // yawc's browser sink calls WebSocket.close() synchronously. Dropping
+        // its stream alone leaves the router's previous connection alive.
+        let _ = self.sink.close().now_or_never();
+    }
+}
+
 pub struct WasmWsLinkTx<'a> {
     sink: &'a mut SplitSink<WebSocket, FrameView>,
     mtu: u16,

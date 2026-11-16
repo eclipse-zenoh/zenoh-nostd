@@ -30,21 +30,46 @@ pub type FixedCapacityGetCallbacks<
     const CAPACITY: usize,
     Callback = RawOrBox<16>,
     Future = RawOrBox<128>,
-> = FixedCapacityCallbacks<'a, GetResponseRef, CAPACITY, Callback, Future>;
+    const MAX_KEYEXPR: usize = 128,
+> = FixedCapacityCallbacks<'a, GetResponseRef, CAPACITY, Callback, Future, MAX_KEYEXPR>;
 
 #[cfg(feature = "alloc")]
 pub type AllocGetCallbacks<'a, Callback = RawOrBox<16>, Future = RawOrBox<128>> =
     AllocCallbacks<'a, GetResponseRef, Callback, Future>;
 
-pub struct GetResponses<'res, OwnedResponse = (), const CHANNEL: bool = false> {
-    ke: &'static keyexpr,
+pub struct GetResponses<
+    'a,
+    'transport,
+    'resources: 'transport,
+    Config: ZSessionConfig,
+    OwnedResponse = (),
+    const CHANNEL: bool = false,
+> {
+    session: &'a Session<'transport, 'resources, Config>,
+    id: u32,
+    ke: &'a keyexpr,
     timedout: Instant,
-    receiver: Option<DynamicReceiver<'res, OwnedResponse>>,
+    receiver: Option<DynamicReceiver<'transport, OwnedResponse>>,
 }
 
-impl<'res, OwnedResponse, const CHANNEL: bool> GetResponses<'res, OwnedResponse, CHANNEL> {
-    pub fn cancel(self) {
-        todo!()
+impl<
+    'a,
+    'transport,
+    'resources: 'transport,
+    Config: ZSessionConfig,
+    OwnedResponse,
+    const CHANNEL: bool,
+> GetResponses<'a, 'transport, 'resources, Config, OwnedResponse, CHANNEL>
+{
+    /// Remove the callback. Late responses for this request are ignored.
+    pub async fn cancel(self) -> Result<(), SessionError> {
+        Ok(self.session.state().await.get_callbacks.remove(self.id)?)
+    }
+
+    pub async fn is_complete(&self) -> bool {
+        let mut state = self.session.state().await;
+        state.get_callbacks.drop_timedout();
+        state.get_callbacks.get(self.id).is_none()
     }
 
     pub fn keyexpr(&self) -> &keyexpr {
@@ -52,33 +77,50 @@ impl<'res, OwnedResponse, const CHANNEL: bool> GetResponses<'res, OwnedResponse,
     }
 }
 
-impl<'res, OwnedResponse> GetResponses<'res, OwnedResponse, true> {
+impl<'a, 'transport, 'resources: 'transport, Config: ZSessionConfig, OwnedResponse>
+    GetResponses<'a, 'transport, 'resources, Config, OwnedResponse, true>
+{
     pub fn try_recv(&self) -> Option<OwnedResponse> {
         self.receiver.as_ref().unwrap().try_receive().ok()
     }
 
     pub async fn recv(&self) -> Option<OwnedResponse> {
-        match select(
-            Timer::at(self.timedout),
-            self.receiver.as_ref().unwrap().receive(),
-        )
-        .await
-        {
-            Either::First(_) => None,
-            Either::Second(v) => Some(v),
+        loop {
+            if let Some(value) = self.try_recv() {
+                return Some(value);
+            }
+            if self.is_complete().await || Instant::now() >= self.timedout {
+                return None;
+            }
+            match select(
+                Timer::after(embassy_time::Duration::from_millis(10)),
+                self.receiver.as_ref().unwrap().receive(),
+            )
+            .await
+            {
+                Either::First(_) => {}
+                Either::Second(value) => return Some(value),
+            }
         }
     }
 }
 
-type CallbackStorage<'res, Config> =
-    <<Config as ZSessionConfig>::GetCallbacks<'res> as ZCallbacks<'res, GetResponseRef>>::Callback;
+type CallbackStorage<'transport, Config> =
+    <<Config as ZSessionConfig>::GetCallbacks<'transport> as ZCallbacks<
+        'transport,
+        GetResponseRef,
+    >>::Callback;
 
-type FutureStorage<'res, Config> =
-    <<Config as ZSessionConfig>::GetCallbacks<'res> as ZCallbacks<'res, GetResponseRef>>::Future;
+type FutureStorage<'transport, Config> =
+    <<Config as ZSessionConfig>::GetCallbacks<'transport> as ZCallbacks<
+        'transport,
+        GetResponseRef,
+    >>::Future;
 
 pub struct GetBuilder<
     'a,
-    'res,
+    'transport,
+    'resources: 'transport,
     Config,
     OwnedResponse = (),
     const READY: bool = false,
@@ -86,27 +128,31 @@ pub struct GetBuilder<
 > where
     Config: ZSessionConfig,
 {
-    pub(crate) session: &'a Session<'res, Config>,
-    pub(crate) ke: &'static keyexpr,
+    pub(crate) session: &'a Session<'transport, 'resources, Config>,
+    pub(crate) ke: &'a keyexpr,
     pub(crate) parameters: Option<&'a str>,
     pub(crate) payload: Option<&'a [u8]>,
     pub(crate) timeout: Option<Duration>,
     pub(crate) callback: Option<
         DynCallback<
-            'res,
-            CallbackStorage<'res, Config>,
-            FutureStorage<'res, Config>,
+            'transport,
+            CallbackStorage<'transport, Config>,
+            FutureStorage<'transport, Config>,
             GetResponseRef,
         >,
     >,
-    pub(crate) receiver: Option<DynamicReceiver<'res, OwnedResponse>>,
+    pub(crate) receiver: Option<DynamicReceiver<'transport, OwnedResponse>>,
 }
 
-impl<'a, 'res, Config> GetBuilder<'a, 'res, Config, (), false, false>
+impl<'a, 'transport, 'resources: 'transport, Config>
+    GetBuilder<'a, 'transport, 'resources, Config, (), false, false>
 where
     Config: ZSessionConfig,
 {
-    pub(crate) fn new(session: &'a Session<'res, Config>, ke: &'static keyexpr) -> Self {
+    pub(crate) fn new(
+        session: &'a Session<'transport, 'resources, Config>,
+        ke: &'a keyexpr,
+    ) -> Self {
         Self {
             session,
             ke,
@@ -120,8 +166,8 @@ where
 
     pub fn callback(
         self,
-        callback: impl AsyncFnMut(&GetResponse<'_>) + 'res,
-    ) -> GetBuilder<'a, 'res, Config, (), true> {
+        callback: impl AsyncFnMut(&GetResponse<'_>) + 'transport,
+    ) -> GetBuilder<'a, 'transport, 'resources, Config, (), true> {
         GetBuilder {
             session: self.session,
             ke: self.ke,
@@ -135,8 +181,8 @@ where
 
     pub fn callback_sync(
         self,
-        callback: impl FnMut(&GetResponse<'_>) + 'res,
-    ) -> GetBuilder<'a, 'res, Config, (), true> {
+        callback: impl FnMut(&GetResponse<'_>) + 'transport,
+    ) -> GetBuilder<'a, 'transport, 'resources, Config, (), true> {
         GetBuilder {
             session: self.session,
             ke: self.ke,
@@ -150,9 +196,9 @@ where
 
     pub fn channel<OwnedResponse, E>(
         self,
-        sender: DynamicSender<'res, OwnedResponse>,
-        receiver: DynamicReceiver<'res, OwnedResponse>,
-    ) -> GetBuilder<'a, 'res, Config, OwnedResponse, true, true>
+        sender: DynamicSender<'transport, OwnedResponse>,
+        receiver: DynamicReceiver<'transport, OwnedResponse>,
+    ) -> GetBuilder<'a, 'transport, 'resources, Config, OwnedResponse, true, true>
     where
         OwnedResponse: for<'any> TryFrom<&'any GetResponse<'any>, Error = E>,
     {
@@ -179,12 +225,19 @@ where
     }
 }
 
-impl<'a, 'res, Config, OwnedResponse, const READY: bool, const CHANNEL: bool>
-    GetBuilder<'a, 'res, Config, OwnedResponse, READY, CHANNEL>
+impl<
+    'a,
+    'transport,
+    'resources: 'transport,
+    Config,
+    OwnedResponse,
+    const READY: bool,
+    const CHANNEL: bool,
+> GetBuilder<'a, 'transport, 'resources, Config, OwnedResponse, READY, CHANNEL>
 where
     Config: ZSessionConfig,
 {
-    pub fn keyexpr(mut self, ke: &'static keyexpr) -> Self {
+    pub fn keyexpr(mut self, ke: &'a keyexpr) -> Self {
         self.ke = ke;
         self
     }
@@ -205,14 +258,17 @@ where
     }
 }
 
-impl<'a, 'res, Config, OwnedResponse, const CHANNEL: bool>
-    GetBuilder<'a, 'res, Config, OwnedResponse, true, CHANNEL>
+impl<'a, 'transport, 'resources: 'transport, Config, OwnedResponse, const CHANNEL: bool>
+    GetBuilder<'a, 'transport, 'resources, Config, OwnedResponse, true, CHANNEL>
 where
     Config: ZSessionConfig,
 {
     pub async fn finish(
         self,
-    ) -> core::result::Result<GetResponses<'res, OwnedResponse, CHANNEL>, SessionError> {
+    ) -> core::result::Result<
+        GetResponses<'a, 'transport, 'resources, Config, OwnedResponse, CHANNEL>,
+        SessionError,
+    > {
         let timedout = Instant::now()
             + self
                 .timeout
@@ -245,7 +301,8 @@ where
             ..Default::default()
         };
 
-        self.session
+        let result = self
+            .session
             .driver
             .tx()
             .await
@@ -254,9 +311,15 @@ where
                 qos: QoS::default(),
                 body: NetworkBody::Request(msg),
             }))
-            .await?;
+            .await;
+        if let Err(error) = result {
+            state.get_callbacks.remove(rid)?;
+            return Err(error.into());
+        }
 
         Ok(GetResponses {
+            session: self.session,
+            id: rid,
             ke: self.ke,
             timedout,
             receiver: self.receiver,
@@ -264,11 +327,11 @@ where
     }
 }
 
-impl<'res, Config> Session<'res, Config>
+impl<'transport, 'resources: 'transport, Config> Session<'transport, 'resources, Config>
 where
     Config: ZSessionConfig,
 {
-    pub fn get(&self, ke: &'static keyexpr) -> GetBuilder<'_, 'res, Config> {
+    pub fn get<'a>(&'a self, ke: &'a keyexpr) -> GetBuilder<'a, 'transport, 'resources, Config> {
         GetBuilder::new(self, ke)
     }
 }

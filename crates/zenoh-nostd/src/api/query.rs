@@ -4,24 +4,26 @@ use zenoh_proto::{CollectionError, SessionError, keyexpr};
 
 use crate::{api::session::Session, config::ZSessionConfig};
 
-pub struct QueryableQuery<'a, 'res, Config>
+pub struct QueryableQuery<'a, 'transport, 'resources: 'transport, Config>
 where
     Config: ZSessionConfig,
 {
-    session: &'a Session<'res, Config>,
+    session: &'a Session<'transport, 'resources, Config>,
     rid: u32,
     ke: &'a keyexpr,
     parameters: Option<&'a str>,
     payload: Option<&'a [u8]>,
     finalized: bool,
+    pub(crate) rejected: core::cell::Cell<bool>,
 }
 
-impl<'a, 'res, Config> QueryableQuery<'a, 'res, Config>
+impl<'a, 'transport, 'resources: 'transport, Config>
+    QueryableQuery<'a, 'transport, 'resources, Config>
 where
     Config: ZSessionConfig,
 {
     pub(crate) fn new(
-        session: &'a Session<'res, Config>,
+        session: &'a Session<'transport, 'resources, Config>,
         rid: u32,
         ke: &'a keyexpr,
         parameters: Option<&'a str>,
@@ -34,7 +36,19 @@ where
             parameters,
             payload,
             finalized: false,
+            rejected: core::cell::Cell::new(false),
         }
+    }
+
+    /// Decline a query when an application queue is full. The session sends a
+    /// final response once all matching handlers have either finalized or declined.
+    pub fn reject(&self) {
+        self.rejected.set(true);
+    }
+
+    /// Identifier for replying from an application-owned queue.
+    pub fn request_id(&self) -> u32 {
+        self.rid
     }
 
     pub fn keyexpr(&self) -> &keyexpr {
@@ -83,7 +97,7 @@ pub struct FixedCapacityQueryableQuery<
 > where
     Config: ZSessionConfig + 'static,
 {
-    session: &'static Session<'static, Config>,
+    session: &'static Session<'static, 'static, Config>,
     rid: u32,
     ke: heapless::String<MAX_KEYEXPR>,
     parameters: Option<heapless::String<MAX_PARAMETERS>>,
@@ -136,8 +150,8 @@ where
 
 impl<'a, Config, const MAX_KEYEXPR: usize, const MAX_PARAMETERS: usize, const MAX_PAYLOAD: usize>
     TryFrom<(
-        &QueryableQuery<'a, 'static, Config>,
-        &'static Session<'static, Config>,
+        &QueryableQuery<'a, 'static, 'static, Config>,
+        &'static Session<'static, 'static, Config>,
     )> for FixedCapacityQueryableQuery<Config, MAX_KEYEXPR, MAX_PARAMETERS, MAX_PAYLOAD>
 where
     Config: ZSessionConfig,
@@ -146,8 +160,8 @@ where
 
     fn try_from(
         value: (
-            &QueryableQuery<'a, 'static, Config>,
-            &'static Session<'static, Config>,
+            &QueryableQuery<'a, 'static, 'static, Config>,
+            &'static Session<'static, 'static, Config>,
         ),
     ) -> Result<Self, Self::Error> {
         let (value, session) = value;
@@ -177,7 +191,7 @@ pub struct AllocQueryableQuery<Config>
 where
     Config: ZSessionConfig + 'static,
 {
-    session: &'static Session<'static, Config>,
+    session: &'static Session<'static, 'static, Config>,
     rid: u32,
     ke: alloc::string::String,
     parameters: Option<alloc::string::String>,
@@ -231,8 +245,8 @@ where
 #[cfg(feature = "alloc")]
 impl<'a, Config>
     TryFrom<(
-        &QueryableQuery<'a, 'static, Config>,
-        &'static Session<'static, Config>,
+        &QueryableQuery<'a, 'static, 'static, Config>,
+        &'static Session<'static, 'static, Config>,
     )> for AllocQueryableQuery<Config>
 where
     Config: ZSessionConfig,
@@ -241,8 +255,8 @@ where
 
     fn try_from(
         value: (
-            &QueryableQuery<'a, 'static, Config>,
-            &'static Session<'static, Config>,
+            &QueryableQuery<'a, 'static, 'static, Config>,
+            &'static Session<'static, 'static, Config>,
         ),
     ) -> Result<Self, Self::Error> {
         let (value, session) = value;

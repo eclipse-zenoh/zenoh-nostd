@@ -72,8 +72,8 @@ async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
     // If you care about maintaining the session alive, then you have two choices:
     //  1) Spawn a new task to run the `session.run()` in background, but it requires the `session` to be `'static`.
     //     `let builder = zenoh::session!(static ExampleConfig: config);`
-    //     See the `z_open` example
-    //  2) Use `select` or `join` to run both the session and the subscriber in the same task. See the `z_put` example.
+    //     See the Open scenario in examples/common/src/scenarios.
+    //  2) Use `select` or `join` to run both the session and the subscriber in the same task. See the Put scenario in examples/common/src/scenarios.
     // ESP32-S3 users must use the `static` form above.
     let builder = zenoh::session!(ExampleConfig: config);
     let session = builder.connect(endpoint).await?;
@@ -106,37 +106,71 @@ async fn entry(spawner: embassy_executor::Spawner) -> zenoh::ZResult<()> {
 
 This project uses [`just`](https://github.com/casey/just) for task management. Use `just check` to check the project and examples, `just test` to run the tests and `just bench` to run the benchmarks.
 
+### Nix development environment
+
+With Nix flakes enabled, enter the development environment from this directory:
+
+```bash
+nix develop
+```
+
+If flakes are not enabled, you can enable them for this command with:
+
+```bash
+nix --extra-experimental-features 'nix-command flakes' develop
+```
+
 > 🔍 Pull requests that slow down the bench should be avoided.
 
 ### Testing Examples
 
-Use the following command structure:
+The root Cargo workspace contains only the core libraries. Applications have
+their own Cargo projects under [examples/](examples/README.md); their `just`
+recipes remain available from the repository root. When using Cargo directly,
+run it from the application's directory to load its `.cargo/config.toml`.
+
+Each target builds one `zenoh-app`, with the optional `cli` feature enabled by default:
 
 ```bash
-just <platform> <example> [optional features]
+just std
+just std z_put demo/example "hello world"
 ```
 
-* **Platforms**: `std`, `wasm`, `esp32s3`
-* **Examples**: `z_get`, `z_open`, `z_ping`, `z_pong`, `z_pub`, `z_pub_thr`, `z_put`, `z_querier`, `z_queryable`, `z_sub`, , `z_sub_thr`,
-* **Broker**: `z_broker` (with `alloc` feature)
+Use `help` at the prompt for commands. `just wasm`, `just esp32s3`, `just esp32c6`,
+and `just stm32` start the other applications. MCU consoles use UART by default; select `console-usb` for USB
+(see the [application guide](examples/README.md)).
+Prefix MCU recipes with `build-` to build without flashing.
 
-Set the `ENDPOINT=<endpoint>` environment variable to specify the endpoint (default is `tcp/127.0.0.1:7447`). Set `LISTEN=1` to specify the connection method.
+To run a startup scenario without the CLI:
 
-For `esp32s3`, you must also provide:
+```bash
+SCENARIO=pub COUNT=3 just std-headless
+```
+
+See [application commands and headless recipes](examples/README.md) for other scenarios and optional features.
+
+Set `ENDPOINT=<endpoint>` to specify the endpoint (default `tcp/127.0.0.1:7447`).
+Set `LISTEN=1` to listen. Native settings are read at startup; MCU/browser settings
+are compiled into the application.
+
+For `esp32s3` and `esp32c6`, you must also provide:
 
 * `WIFI_SSID` (default is `Zenoh`).
 * `WIFI_PASSWORD` (no default, must be provided).
 
-See the ESP32 setup documentation for toolchain and target installation.
+See the [ESP32-S3 setup documentation](examples/embassy/esp/esp32s3-wifi/README.md) for toolchain and target installation.
+The [ESP32-C6-Pico project](examples/embassy/esp/esp32c6-pico-wifi/README.md) uses stable Rust and a RISC-V target.
+The [NUCLEO-H753ZI project](examples/embassy/stm32/nucleo-h753zi-ethernet/README.md) uses Ethernet and an ARM target.
+This firmware has not been tested on a physical NUCLEO-H753ZI board.
 
 Example of few commands:
 
 ```bash
-ENDPOINT=tcp/127.0.0.1:7447 just std z_pub
+ENDPOINT=tcp/127.0.0.1:7447 just std z_pub demo/example "hello"
 ```
 
 ```bash
-WIFI_PASSWORD=* ENDPOINT=tcp/192.168.21.1:7447 just esp32s3 z_sub
+WIFI_PASSWORD=* ENDPOINT=tcp/192.168.21.1:7447 just esp32s3
 ```
 
 ### Example: Local TCP
@@ -151,10 +185,10 @@ In two terminals:
 
 ```bash
 # Terminal 1
-just std z_pub
+just std z_pub demo/example "hello"
 
 # Terminal 2
-just std z_sub
+just std z_sub demo/example
 ```
 
 ### Example: WebSocket + WASM
@@ -169,17 +203,17 @@ Then:
 
 ```bash
 # Terminal 1 (WASM)
-ENDPOINT=ws/127.0.0.1:7446 just wasm z_pub
+ENDPOINT=ws/127.0.0.1:7446 just wasm
 
 # Terminal 2 (STD)
-just std z_sub
+just std z_sub demo/example
 ```
 
 > 📦 Note: For WASM, ensure you have:
 >
 > * `wasm32-unknown-unknown` target
 > * `wasm-bindgen-cli`
-> * `basic-http-server` (or similar)
+> * Python 3 (used by `just wasm` to serve the browser example)
 
 ---
 
@@ -194,30 +228,23 @@ zenoh-nostd/            # Git repository root
 │   └── zenoh-sansio/   # Zenoh Sans-IO objects (Transport only right now)
 │
 ├── examples/
-│   ├── web/
-│   │   └── index.html  # File to test wasm example
-│   │
-│   ├── z_broker.rs     # Example with std/wasm/embassy io
-│   ├── z_get.rs        # Example with std/wasm/embassy io
-│   ├── z_open.rs       # Example with std/wasm/embassy io
-│   ├── z_ping.rs       # Example with std/wasm/embassy io
-│   ├── z_pong.rs       # Example with std/wasm/embassy io
-│   ├── z_pub.rs        # Example with std/wasm/embassy io
-│   ├── z_pub_thr.rs    # Example with std/wasm/embassy io
-│   ├── z_put.rs        # Example with std/wasm/embassy io
-│   ├── z_querier.rs    # Example with std/wasm/embassy io
-│   ├── z_queryable.rs  # Example with std/wasm/embassy io
-│   ├── z_sub.rs        # Example with std/wasm/embassy io
-│   └── z_sub_thr.rs    # Example with std/wasm/embassy io
+│   ├── common/         # Shared configuration and scenario sources
+│   ├── native/         # Native application project
+│   ├── wasm/           # Browser project, including web/index.html
+│   ├── embassy/
+│   │   ├── esp/        # Shared ESP startup and Wi-Fi support
+│   │   │   ├── esp32s3-wifi/ # ESP32-S3 project
+│   │   │   └── esp32c6-pico-wifi/ # ESP32-C6-Pico project
+│   │   └── stm32/
+│   │       └── nucleo-h753zi-ethernet/ # NUCLEO-H753ZI project
+│   └── justfile        # Example recipes imported by the root justfile
 │
 ├── platforms/          # Platform-specific implementations
 │   ├── zenoh-embassy/  # Embassy platforms (no_std)
 │   ├── zenoh-std/      # Standard platforms (std)
 │   └── zenoh-wasm/     # WASM32 platforms (wasm)
 │
-├── Cargo.toml          # Workspace + example package
-└── src/
-    └── lib.rs          # Example lib.rs
+└── Cargo.toml          # Workspace for the core libraries
 ```
 
 ---
