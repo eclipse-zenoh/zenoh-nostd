@@ -1,4 +1,6 @@
+/// Wire extensions shared by network and transport messages.
 pub mod exts;
+/// Shared wire fields, identifiers, encoding metadata and negotiated resolutions.
 pub mod fields;
 
 mod err;
@@ -38,17 +40,26 @@ pub use open::*;
 use zenoh_derive::ZEnum;
 
 #[derive(ZEnum, Debug, PartialEq)]
+/// Network-level operation payload. Borrowed strings and bytes retain their input-buffer lifetime.
 pub enum NetworkBody<'a> {
+    /// Unsolicited publication envelope, carrying a wire expression and data operation.
     Push(Push<'a>),
+    /// Outgoing request envelope, carrying a request ID, key and query-routing metadata.
     Request(Request<'a>),
+    /// Reply envelope correlated to an outgoing request by `rid`.
     Response(Response<'a>),
+    /// Mark the end of responses for a request ID; carries no sample payload.
     ResponseFinal(ResponseFinal),
+    /// Declaration interest with an ID, update mode and optional routing metadata.
     Interest(Interest<'a>),
+    /// Completion/removal marker for an interest ID.
     InterestFinal(InterestFinal),
+    /// Declaration envelope containing a registration, removal or declaration-completion marker.
     Declare(Declare<'a>),
 }
 
 impl NetworkBody<'_> {
+    /// Borrow a message view without cloning its payload or allocating storage.
     pub fn as_ref(&self) -> NetworkBodyRef<'_> {
         match self {
             NetworkBody::Push(x) => NetworkBodyRef::Push(x),
@@ -63,13 +74,21 @@ impl NetworkBody<'_> {
 }
 
 #[derive(Debug, PartialEq, Clone)]
+/// Borrowed view of a network operation for forwarding without cloning its payload.
 pub enum NetworkBodyRef<'a> {
+    /// Unsolicited publication envelope, carrying a wire expression and data operation.
     Push(&'a Push<'a>),
+    /// Outgoing request envelope, carrying a request ID, key and query-routing metadata.
     Request(&'a Request<'a>),
+    /// Reply envelope correlated to an outgoing request by `rid`.
     Response(&'a Response<'a>),
+    /// Mark the end of responses for a request ID; carries no sample payload.
     ResponseFinal(&'a ResponseFinal),
+    /// Declaration interest with an ID, update mode and optional routing metadata.
     Interest(&'a Interest<'a>),
+    /// Completion/removal marker for an interest ID.
     InterestFinal(&'a InterestFinal),
+    /// Declaration envelope containing a registration, removal or declaration-completion marker.
     Declare(&'a Declare<'a>),
 }
 
@@ -128,13 +147,18 @@ impl<'a> crate::ZEncode for NetworkBodyRef<'a> {
 }
 
 #[derive(Debug, PartialEq)]
+/// Network operation plus framing reliability and QoS. These fields describe wire policy, not delivery acknowledgment.
 pub struct NetworkMessage<'a> {
+    /// Reliability class for the enclosing transport frame.
     pub reliability: fields::Reliability,
+    /// Wire QoS settings or negotiated QoS extension for this message.
     pub qos: exts::QoS,
+    /// Operation/value carried by the envelope; borrowed data retains the input lifetime.
     pub body: NetworkBody<'a>,
 }
 
 impl NetworkMessage<'_> {
+    /// Borrow a message view without cloning its payload or allocating storage.
     pub fn as_ref(&self) -> NetworkMessageRef<'_> {
         NetworkMessageRef {
             reliability: self.reliability,
@@ -145,23 +169,35 @@ impl NetworkMessage<'_> {
 }
 
 #[derive(Debug, PartialEq, Clone)]
+/// Borrowed network operation with copied framing metadata, used for re-encoding or forwarding.
 pub struct NetworkMessageRef<'a> {
+    /// Reliability class for the enclosing transport frame.
     pub reliability: fields::Reliability,
+    /// Wire QoS settings or negotiated QoS extension for this message.
     pub qos: exts::QoS,
+    /// Operation/value carried by the envelope; borrowed data retains the input lifetime.
     pub body: NetworkBodyRef<'a>,
 }
 
 #[derive(ZEnum, Debug, PartialEq)]
+/// Transport control message used for handshakes, keepalives and closure.
 pub enum TransportMessage<'a> {
+    /// Transport closure notification with a reason code and link/session scope.
     Close(Close),
+    /// Initial outgoing transport proposal. Optional extensions describe wire capabilities, not implemented runtime features.
     InitSyn(InitSyn<'a>),
+    /// Transport initialization acknowledgment with negotiated settings and an opaque cookie.
     InitAck(InitAck<'a>),
+    /// Payload-free transport keepalive; its encoded representation includes the message header.
     KeepAlive(KeepAlive),
+    /// Open request confirming lease, initial sequence number and the initialization cookie.
     OpenSyn(OpenSyn<'a>),
+    /// Open acknowledgment confirming lease and initial sequence number.
     OpenAck(OpenAck<'a>),
 }
 
 impl TransportMessage<'_> {
+    /// Borrow a message view without cloning its payload or allocating storage.
     pub fn as_ref(&self) -> TransportMessageRef<'_> {
         match self {
             TransportMessage::Close(x) => TransportMessageRef::Close(x),
@@ -175,12 +211,19 @@ impl TransportMessage<'_> {
 }
 
 #[derive(Debug, PartialEq)]
+/// Borrowed transport control message for encoding without cloning payload data.
 pub enum TransportMessageRef<'a> {
+    /// Transport closure notification with a reason code and link/session scope.
     Close(&'a Close),
+    /// Initial outgoing transport proposal. Optional extensions describe wire capabilities, not implemented runtime features.
     InitSyn(&'a InitSyn<'a>),
+    /// Transport initialization acknowledgment with negotiated settings and an opaque cookie.
     InitAck(&'a InitAck<'a>),
+    /// Payload-free transport keepalive; its encoded representation includes the message header.
     KeepAlive(&'a KeepAlive),
+    /// Open request confirming lease, initial sequence number and the initialization cookie.
     OpenSyn(&'a OpenSyn<'a>),
+    /// Open acknowledgment confirming lease and initial sequence number.
     OpenAck(&'a OpenAck<'a>),
 }
 
@@ -236,18 +279,25 @@ impl<'a> crate::ZEncode for TransportMessageRef<'a> {
 }
 
 #[derive(Debug, PartialEq)]
+/// Decoded transport control or network message borrowing its input buffer.
 pub enum Message<'a> {
+    /// Network-level operation and framing metadata.
     Network(NetworkMessage<'a>),
+    /// Transport handshake, keepalive or closure message.
     Transport(TransportMessage<'a>),
 }
 
 #[derive(Debug, PartialEq)]
+/// Borrowed message view used by encoding and forwarding paths.
 pub enum MessageRef<'a> {
+    /// Network-level operation and framing metadata.
     Network(NetworkMessageRef<'a>),
+    /// Transport handshake, keepalive or closure message.
     Transport(TransportMessageRef<'a>),
 }
 
 impl Message<'_> {
+    /// Borrow a message view without cloning its payload or allocating storage.
     pub fn as_ref(&self) -> MessageRef<'_> {
         match self {
             Message::Transport(msg) => MessageRef::Transport(msg.as_ref()),

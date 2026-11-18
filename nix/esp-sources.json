@@ -1,0 +1,53 @@
+{
+  "rustVersion": "1.97.0.0",
+  "gccVersion": "15.2.0_20250920",
+  "llvmVersion": "20.1.1_20250829",
+  "rustSrc": {
+    "url": "https://github.com/esp-rs/rust-build/releases/download/v1.97.0.0/rust-src-1.97.0.0.tar.xz",
+    "sha256": "568d688b9f8f332ec4d04657544fad23e99ce11e9e6cf5835979e68a28c68b73"
+  },
+  "hosts": {
+    "aarch64-darwin": {
+      "rust": {
+        "url": "https://github.com/esp-rs/rust-build/releases/download/v1.97.0.0/rust-1.97.0.0-aarch64-apple-darwin.tar.xz",
+        "sha256": "430fcbf54967e99d16debe48926a1df558ab8b67af3c060a658d25ce752bd790"
+      },
+      "gcc": {
+        "url": "https://github.com/espressif/crosstool-NG/releases/download/esp-15.2.0_20250920/xtensa-esp-elf-15.2.0_20250920-aarch64-apple-darwin.tar.xz",
+        "sha256": "6f48b791c5b849339a521a000ccbc6cd83e702ad36c7dd6983d057d0c868be33"
+      },
+      "llvm": {
+        "url": "https://github.com/espressif/llvm-project/releases/download/esp-20.1.1_20250829/libs-clang-esp-20.1.1_20250829-aarch64-apple-darwin.tar.xz",
+        "sha256": "9582374ed7664aa46c5fc8cedde74b81ec85db9013e7ce85d01e172e92f0ac1f"
+      }
+    },
+    "aarch64-linux": {
+      "rust": {
+        "url": "https://github.com/esp-rs/rust-build/releases/download/v1.97.0.0/rust-1.97.0.0-aarch64-unknown-linux-gnu.tar.xz",
+        "sha256": "dc6efa8906849608497c2ffb3d6a9466588835a79b5e8886c229de133640945c"
+      },
+      "gcc": {
+        "url": "https://github.com/espressif/crosstool-NG/releases/download/esp-15.2.0_20250920/xtensa-esp-elf-15.2.0_20250920-aarch64-linux-gnu.tar.xz",
+        "sha256": "66ae567726b9d7ab234b16dfebbe5a7ba8891463bfb3e28cc4a45c509c9b0b7b"
+      },
+      "llvm": {
+        "url": "https://github.com/espressif/llvm-project/releases/download/esp-20.1.1_20250829/libs-clang-esp-20.1.1_20250829-aarch64-linux-gnu.tar.xz",
+        "sha256": "cca598861f999bfd408491f4288c2f381b448f9ddbdac2fb4144747329878405"
+      }
+    },
+    "x86_64-linux": {
+      "rust": {
+        "url": "https://github.com/esp-rs/rust-build/releases/download/v1.97.0.0/rust-1.97.0.0-x86_64-unknown-linux-gnu.tar.xz",
+        "sha256": "a99bfee69221e9ff6d86388f6811ee688cd405e6a0400a3cd1784e8d463e9d99"
+      },
+      "gcc": {
+        "url": "https://github.com/espressif/crosstool-NG/releases/download/esp-15.2.0_20250920/xtensa-esp-elf-15.2.0_20250920-x86_64-linux-gnu.tar.xz",
+        "sha256": "e3d77ad14544814527bbe7a2d0f79ec4592a4e23392c51c7388c0e686b6a6977"
+      },
+      "llvm": {
+        "url": "https://github.com/espressif/llvm-project/releases/download/esp-20.1.1_20250829/libs-clang-esp-20.1.1_20250829-x86_64-linux-gnu.tar.xz",
+        "sha256": "0128e2a86b262e3edfce026034ede07e2f45732b10c6cb8ac522c8f4c72befd8"
+      }
+    }
+  }
+}

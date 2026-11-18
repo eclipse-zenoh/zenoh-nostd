@@ -5,38 +5,52 @@ use crate::*;
 
 #[repr(u8)]
 #[derive(ZRU8, Debug, Default, Copy, Clone, PartialEq, Eq, Hash)]
+/// Transport frame reliability class. This wire flag alone does not implement retransmission.
 pub enum Reliability {
+    /// Best-effort frame delivery class.
     BestEffort = 0,
     #[default]
+    /// Reliable frame delivery class (default).
     Reliable = 1,
 }
 
 #[repr(u8)]
 #[derive(Debug, Default, PartialEq)]
+/// Wire priority class; this implementation currently represents only ordinary data.
 pub enum Priority {
     #[default]
+    /// Ordinary data priority (wire value 5).
     Data = 5,
 }
 
 #[derive(Debug, Default, PartialEq)]
 #[repr(u8)]
+/// Wire policy for handling congestion; actual enforcement depends on the peer/transport.
 pub enum CongestionControl {
     #[default]
+    /// Request dropping under congestion (default).
     Drop = 0,
+    /// Request backpressure under congestion.
     Block = 1,
 }
 
 #[repr(u8)]
 #[derive(ZRU8, Debug, Default, Clone, PartialEq, Copy)]
+/// Wire policy for consolidating query replies; the session get implementation currently sends `None`.
 pub enum ConsolidationMode {
     #[default]
+    /// Let the peer select a consolidation policy.
     Auto = 0,
+    /// Do not consolidate replies.
     None = 1,
+    /// Request monotonic reply consolidation.
     Monotonic = 2,
+    /// Request only the latest applicable replies.
     Latest = 3,
 }
 
 #[derive(Debug, PartialEq)]
+/// Negotiated maximum transport batch size in bytes; defaults to `u16::MAX`.
 pub struct BatchSize(pub u16);
 
 impl Default for BatchSize {
@@ -78,15 +92,18 @@ crate::derive_zstruct_with_body!(BatchSize);
 
 #[derive(Copy, Clone, Eq, PartialEq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
+/// Zenoh node identifier. `Default` generates a random ID and therefore requires a working entropy backend.
 pub struct ZenohIdProto(pub(crate) uhlc::ID);
 
 impl ZenohIdProto {
     #[inline]
+    /// Number of significant bytes in this Zenoh identifier.
     pub fn size(&self) -> usize {
         self.0.size()
     }
 
     #[inline]
+    /// Return the identifier bytes in little-endian order; use `size()` for the significant prefix.
     pub fn as_le_bytes(&self) -> [u8; uhlc::ID::MAX_SIZE] {
         self.0.to_le_bytes()
     }
@@ -94,6 +111,13 @@ impl ZenohIdProto {
 impl core::fmt::Debug for ZenohIdProto {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+#[cfg(feature = "defmt")]
+impl defmt::Format for ZenohIdProto {
+    fn format(&self, fmt: defmt::Formatter) {
+        defmt::write!(fmt, "{:?}", defmt::Debug2Format(self));
     }
 }
 
@@ -189,15 +213,19 @@ impl<'a> ZExt<'a> for Timestamp {
 }
 
 #[derive(Debug, PartialEq, Default, Clone)]
+/// Payload encoding ID and optional borrowed schema bytes. Metadata does not encode or decode the payload.
 pub struct Encoding<'a> {
+    /// Wire encoding identifier; zero is raw bytes and one is string.
     pub id: u16,
 
+    /// Optional borrowed encoding-schema bytes.
     pub schema: Option<&'a [u8]>,
 }
 
 impl Encoding<'_> {
     const FLAG_S: u8 = 0b0000_0001;
 
+    /// Encoding metadata for raw bytes (ID 0), with no schema.
     pub const fn bytes() -> Self {
         Self {
             id: 0,
@@ -205,6 +233,7 @@ impl Encoding<'_> {
         }
     }
 
+    /// Encoding metadata for a string (ID 1), with no schema; does not validate payload UTF-8.
     pub const fn string() -> Self {
         Self {
             id: 1,
@@ -275,25 +304,35 @@ crate::derive_zstruct_with_body!(lt, Encoding<'a>);
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+/// Bit-width selection encoded in a negotiated resolution field.
 pub enum Bits {
+    /// 8-bit integer resolution.
     U8 = 0b0000_0000,
+    /// 16-bit integer resolution.
     U16 = 0b0000_0001,
+    /// 32-bit integer resolution.
     U32 = 0b0000_0010,
+    /// 64-bit integer resolution.
     U64 = 0b0000_0011,
 }
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Transport field whose integer resolution can be selected.
 pub enum Field {
+    /// Transport frame sequence numbers.
     FrameSN = 0,
+    /// Network request identifiers.
     RequestID = 2,
 }
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+/// Packed frame-sequence/request-ID widths; defaults to 32 bits for both.
 pub struct Resolution(pub(crate) u8);
 
 impl Resolution {
+    /// Read the negotiated bit width for the selected transport field.
     pub const fn get(&self, field: Field) -> Bits {
         let value = (self.0 >> (field as u8)) & 0b11;
 
@@ -306,6 +345,7 @@ impl Resolution {
         }
     }
 
+    /// Replace the bit width for one field while preserving the other packed bits.
     pub fn set(&mut self, field: Field, bits: Bits) {
         self.0 &= !(0b11 << field as u8);
         self.0 |= (bits as u8) << (field as u8);
@@ -355,10 +395,14 @@ crate::derive_zstruct_with_body!(Resolution);
 
 #[repr(u8)]
 #[derive(ZRU8, Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+/// Advertised Zenoh node role; defaults to client.
 pub enum WhatAmI {
+    /// Peer role.
     Peer = Self::U8_P,
+    /// Router role.
     Router = Self::U8_R,
     #[default]
+    /// Client role (default).
     Client = Self::U8_C,
 }
 
@@ -370,21 +414,28 @@ impl WhatAmI {
 
 #[repr(u8)]
 #[derive(ZRU8, Debug, Default, PartialEq, Clone, Copy)]
+/// Whose key-expression scope table interprets a compressed wire expression.
 pub enum Mapping {
     #[default]
+    /// Use the receiving side's scope table.
     Receiver = 0,
+    /// Use the sending side's scope table.
     Sender = 1,
 }
 
 #[derive(ZExt, Debug, PartialEq, Default)]
 #[zenoh(header = "_:6|M|N|")]
+/// Compressed key expression: scope ID, mapping side and borrowed suffix. Scope zero with a full suffix represents an uncompressed key.
 pub struct WireExpr<'a> {
+    /// Declared key-expression ID; zero means the suffix contains the full expression.
     pub scope: u16,
 
     #[zenoh(header = M)]
+    /// Side whose declaration table interprets `scope`.
     pub mapping: Mapping,
 
     #[zenoh(presence = header(N), default = "", size = prefixed)]
+    /// Borrowed key-expression suffix, or full text when the scope is zero.
     pub suffix: &'a str,
 }
 

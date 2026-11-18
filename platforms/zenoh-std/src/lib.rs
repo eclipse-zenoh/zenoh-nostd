@@ -1,3 +1,20 @@
+//! Native TCP, UDP and outgoing WebSocket links for `zenoh-nostd`.
+//!
+//! Construct [`StdLinkManager`] and wrap it with
+//! [`TransportLinkManager`](zenoh_nostd::session::TransportLinkManager). Connect
+//! using numeric `tcp/IP:port`, `udp/IP:port` or `ws/IP:port` endpoints; DNS names,
+//! TLS (`wss`) and WebSocket paths are not supported by this manager. Listening
+//! supports TCP and UDP, not WebSocket. A UDP listener selects its first sender.
+//!
+//! This adapter uses `async-net` sockets but installs no executor or Embassy time
+//! driver. The application must provide both, poll the session driver alongside
+//! operations, and keep session access within one executor/thread context. Select
+//! `alloc` on the application's core dependency for heap-backed Zenoh storage;
+//! this adapter has no feature of that name and itself uses host allocations.
+//! Socket buffer acceptance does not establish remote delivery.
+
+#![warn(missing_docs)]
+
 use std::net::SocketAddr;
 
 use async_net::{TcpListener, TcpStream, UdpSocket};
@@ -11,28 +28,44 @@ mod tcp;
 mod udp;
 mod ws;
 
+/// Stateless native link factory; use `TransportLinkManager::from(StdLinkManager)` for Zenoh handshakes.
+///
+/// Raw `connect` supports TCP/UDP/WebSocket; raw `listen` supports TCP/UDP.
+/// Both require numeric socket addresses and return one link per invocation.
 pub struct StdLinkManager;
 
 #[allow(clippy::large_enum_variant)]
 #[derive(ZLinkInfo, ZLinkTx, ZLinkRx, ZLink)]
 #[zenoh(ZLink = (StdLinkTx<'link>, StdLinkRx<'link>))]
+/// Connection selected by the link manager; split it through the `ZLink` trait.
 pub enum StdLink {
+    /// TCP byte stream.
     Tcp(tcp::StdTcpLink),
+    /// UDP datagrams.
     Udp(udp::StdUdpLink),
+    /// Binary WebSocket messages.
     Ws(ws::StdWsLink),
 }
 
 #[derive(ZLinkInfo, ZLinkTx)]
+/// Transmit half produced by `ZLink::split`; retains the selected framing policy.
 pub enum StdLinkTx<'link> {
+    /// TCP byte stream.
     Tcp(tcp::StdTcpLinkTx),
+    /// UDP datagrams.
     Udp(udp::StdUdpLinkTx),
+    /// Binary WebSocket messages.
     Ws(ws::StdWsLinkTx<'link>),
 }
 
 #[derive(ZLinkInfo, ZLinkRx)]
+/// Receive half produced by `ZLink::split`; retains the selected framing policy.
 pub enum StdLinkRx<'link> {
+    /// TCP byte stream.
     Tcp(tcp::StdTcpLinkRx),
+    /// UDP datagrams.
     Udp(udp::StdUdpLinkRx),
+    /// Binary WebSocket messages.
     Ws(ws::StdWsLinkRx<'link>),
 }
 
