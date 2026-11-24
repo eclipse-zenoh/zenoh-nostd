@@ -13,18 +13,20 @@ than selecting a board feature in the library.
 | [crates/zenoh-proto](../crates/zenoh-proto/) | Protocol messages, encoding, endpoints, and key expressions |
 | [crates/zenoh-sansio](../crates/zenoh-sansio/) | Protocol state machines independent of network I/O |
 | [crates/zenoh-nostd](../crates/zenoh-nostd/) | Async sessions, pub/sub/query APIs, storage, transport driving, and optional broker |
+| [crates/zenoh-cli](../crates/zenoh-cli/) | Shared Zenoh command schema and bounded inbox for application-owned requests |
 | [platforms/](../platforms/) | Transport adapters: host sockets, browser WebSockets, and Embassy networking |
 | [examples/common](../examples/common/) | Example configuration, typed scenarios, and optional `embedded-cli` frontend |
 | [examples/embassy](../examples/embassy/) | Shared MCU startup/USB helpers and independent board applications |
 | [examples/native](../examples/native/), [examples/wasm](../examples/wasm/) | Host and browser applications |
 
-The root is a virtual workspace containing the four core crates. Adapters and
-example projects have their own manifests, lockfiles, and workspaces to isolate
-target requirements and Cargo feature selection.
+The root is a virtual workspace containing the five crates listed above.
+Adapters and example projects have their own manifests, lockfiles, and
+workspaces to isolate target requirements and Cargo feature selection.
 
 ```mermaid
 flowchart TD
-    CLI[Optional CLI] --> Scenarios[Shared example scenarios]
+    CLI[Optional example CLI] --> Scenarios[Shared example scenarios]
+    CLI -->|uses command schema and inbox| CliCrate[zenoh-cli]
     Startup[Headless startup] --> Scenarios
     Scenarios --> Session[zenoh-nostd]
     App[Application hardware and runtime setup] --> Adapter[Platform transport adapter]
@@ -34,8 +36,10 @@ flowchart TD
     SansIO --> Proto[zenoh-proto]
 ```
 
-The CLI, scenarios, console drivers, and HAL dependencies stay in `examples/`.
-A production application can call the session API directly.
+`zenoh-cli` provides the reusable `ZenohCommand` schema and `CommandInbox`.
+The example applications own the console frontend, command execution, scenarios,
+console drivers, and HAL setup. An application can reuse the CLI crate in its own
+console or call the session API directly.
 
 ## Application contract
 
@@ -43,19 +47,12 @@ A production application can call the session API directly.
   adapter. `zenoh-embassy` borrows an initialized `embassy_net::Stack`; the
   application brings up Wi-Fi/Ethernet and DHCP. `EmbeddedIOLink` can wrap split
   async readers/writers; connection management is still application-owned.
-- **Execution and time:** continuously poll the session driver alongside
-  operations, and provide an Embassy-compatible time driver. The core uses
-  Embassy futures, synchronization, and timers without selecting an executor
-  architecture. An unpolled driver cannot receive traffic or maintain a session.
-- **Entropy:** bare-metal builds enable `zenoh-nostd/embedded`; the final binary
-  registers a `getrandom` 0.2 custom backend backed by suitable entropy. The
-  feature alone does not provide the implementation.
-- **Memory:** implement `ZSessionConfig` for buffers and callback capacities.
-  Enabling `alloc` requires an application-owned global allocator. Network/HAL
-  dependencies may require a heap even when Zenoh uses fixed storage.
-- **Synchronization:** current sessions/drivers/brokers use `NoopRawMutex`.
-  Keep access in one executor/thread context; this is not cross-core or
-  interrupt-safe shared storage.
+- **Execution and time:** the application supplies the executor and time driver
+  and schedules the session driver alongside its operations.
+- **Entropy:** the final binary supplies the backend required by the core
+  features it selects.
+- **Memory:** the application chooses Zenoh buffer and registry capacity via
+  `ZSessionConfig` and budgets its network, HAL, and application storage separately.
 - **Firmware:** the application owns entry points, panic/logging handlers,
   critical-section support, target/toolchain configuration, linker scripts,
   and the flash runner.
@@ -63,35 +60,19 @@ A production application can call the session API directly.
 See [ExampleConfig](../examples/common/src/lib.rs), the
 [session configuration trait](../crates/zenoh-nostd/src/config.rs), and the
 [scenario runner](../examples/common/src/scenarios/runner.rs) for working code.
-For reusable connections, create a local transport, then borrow it with
-`Session::new(&mut transport)` inside the connection scope. The session/driver
-is dropped before the transport, including when the connection future is cancelled.
-`Session<'transport, 'resources, Config>` separates the local transport borrow (`'transport`) from
-the lifetime of the link resources (`'resources`, which must outlive `'transport`). Queryable
-callback storage carries both lifetimes; subscription/get callbacks retain one.
-The existing resource-backed and static session builders remain available.
-Keep receive callbacks short; copy bounded data for later reporting instead of
-waiting for console output inside a callback.
+For session lifetimes, executor constraints, callback locking, and cancellation,
+start at the scoped connection example and task index in the
+[core crate Rustdoc](../crates/zenoh-nostd/src/lib.rs). Read the relevant type
+and method contracts for the revision and features in use.
 
 ## Library features
 
-| Feature | Effect |
-| --- | --- |
-| default (empty) | `no_std`, fixed-capacity storage |
-| `alloc` | Heap-backed storage and broker API; does not enable `std` |
-| `std` | Standard-library support in core/protocol dependencies |
-| `embedded` | Custom randomness backend path; implementation supplied by the application |
-| `log`, `defmt`, `web_console` | Logging backend choices; `web_console` also enables `std` |
-
-Use `default-features = false` on library dependencies and choose one logging
-backend per application. The `cli` and `console-usb` features belong to examples.
-
-`zenoh-embassy` enables TCP and UDP by default. Select `medium-ip` or
-`medium-ethernet` for the device, and enable DHCP in the application's
-`embassy-net` dependency if needed. The adapter currently uses IPv4 socket
-addresses; UDP listening is not implemented. Browser applications use WebSockets
-and cannot listen or run the broker. Serial network transport is not implemented;
-UART/USB consoles are command interfaces.
+Choose library features explicitly and select one logging backend per application.
+Check the feature table in the [core crate Rustdoc](../crates/zenoh-nostd/src/lib.rs)
+and the adapter docs for [Embassy](../platforms/zenoh-embassy/src/lib.rs),
+[native](../platforms/zenoh-std/src/lib.rs), or [browser](../platforms/zenoh-wasm/src/lib.rs)
+endpoint support. The `cli` and `console-usb` features configure example
+applications. UART and USB consoles are command interfaces.
 
 ## Add an MCU target
 

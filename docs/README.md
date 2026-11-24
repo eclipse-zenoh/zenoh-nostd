@@ -82,6 +82,9 @@ features being used. Runnable examples check local data/configuration behavior;
 `no_run` networking examples compile but need a running driver and peer to execute.
 Both agent skills route to these contracts before generating or changing code.
 
+Run `python3 .github/scripts/check_md.py` from the repository root to check
+local Markdown links, skill frontmatter, and discovery symlinks.
+
 ## Agent skills
 
 Two tool-neutral skills separate repository development from application integration:
@@ -91,9 +94,10 @@ Two tool-neutral skills separate repository development from application integra
 - [zenoh-nostd-integrate](../skills/zenoh-nostd-integrate/SKILL.md) covers adapters,
   features, runtime/memory requirements, and session lifecycles in a consumer's
   project. It does not require this repository's build environment or example CLI.
-  Includes [native](../skills/zenoh-nostd-integrate/references/native.md),
-  [Embassy](../skills/zenoh-nostd-integrate/references/embassy.md), and
-  [WASM](../skills/zenoh-nostd-integrate/references/wasm.md) integration recipes.
+  Includes recipes for [native](../skills/zenoh-nostd-integrate/references/native.md),
+  [Embassy](../skills/zenoh-nostd-integrate/references/embassy.md),
+  [WASM](../skills/zenoh-nostd-integrate/references/wasm.md), and an
+  [existing embedded console](../skills/zenoh-nostd-integrate/references/embedded-cli.md).
 
 The canonical files live in `skills/`. `.agents/skills/` and `.claude/skills/`
 contain symlinks to those same folders for local Codex and Claude Code discovery.
@@ -107,22 +111,38 @@ Inside this repository, invoke `$zenoh-nostd-develop` in Codex or
 
 ### Use the integration skill in your project
 
-Copy the complete integration folder into the consuming project's skill location.
-For example, from your application's root (replace the upstream checkout path):
+Install the complete integration folder from a committed Zenoh revision that
+matches your dependency. From your application's root, set `upstream` to the
+checkout at that revision. These commands archive the committed files and store
+the full commit ID in `SOURCE_REVISION` beside the installed `SKILL.md`.
 
 ```sh
-mkdir -p .agents/skills .claude/skills
-cp -R /path/to/zenoh-nostd/skills/zenoh-nostd-integrate .agents/skills/
-ln -s ../../.agents/skills/zenoh-nostd-integrate .claude/skills/zenoh-nostd-integrate
+upstream=/path/to/zenoh-nostd
+destination=.agents/skills/zenoh-nostd-integrate
+revision=$(git -C "$upstream" rev-parse --verify HEAD) &&
+  mkdir -p "$(dirname "$destination")" &&
+  mkdir "$destination" &&
+  git -C "$upstream" archive "$revision:skills/zenoh-nostd-integrate" |
+    tar -xf - -C "$destination" &&
+  printf '%s\n' "$revision" > "$destination/SOURCE_REVISION"
 ```
 
-If you only use Claude Code, copy the folder directly into `.claude/skills/`
-instead. Reuse existing directories/links when already installed; do not overwrite
-local customizations. The integration skill has no relative dependency on the
-upstream checkout, so the copied folder remains usable after removing that checkout.
+To expose that same copy to Claude Code:
+
+```sh
+mkdir -p .claude/skills &&
+  test ! -e .claude/skills/zenoh-nostd-integrate &&
+  test ! -L .claude/skills/zenoh-nostd-integrate &&
+  ln -s ../../.agents/skills/zenoh-nostd-integrate .claude/skills/zenoh-nostd-integrate
+```
+
+For Claude Code alone, set `destination=.claude/skills/zenoh-nostd-integrate`
+in the first block. The install command expects a new destination.
+For an upgrade, stage a fresh copy, review it against the installed copy, and
+carry forward local customizations before replacing the folder and
+`SOURCE_REVISION`. The installed skill and recipes work without the checkout.
 Invoke `$zenoh-nostd-integrate` in Codex or `/zenoh-nostd-integrate` in Claude Code.
 For example: “Add a fixed-capacity TCP session to this Embassy application.”
 
-Keep documentation and examples aligned with the library revision your application
-uses. Update the copied skill when upgrading; do not copy upstream `AGENTS.md` or
-`CLAUDE.md` over your application's own instructions.
+Keep the skill, documentation and examples aligned with the library revision
+your application uses. Preserve your application's own agent instructions.

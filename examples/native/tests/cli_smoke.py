@@ -197,7 +197,7 @@ def main():
                     mark = a.send("zenoh sub cli_smoke/cancel_queued\n\x03")
                     a.expect(b"cancelled", mark)
                     a.expect(b"zenoh> ", mark)
-                    assert b"session=closed" in a.command("status")
+                    assert b"session=closed" in a.command("zenoh status")
                     b.command(
                         "zenoh queryable cli_smoke/** 'query response'", b"queryable ready"
                     )

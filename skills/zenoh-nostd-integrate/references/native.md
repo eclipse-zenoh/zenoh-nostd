@@ -24,9 +24,7 @@ framework and CLI are optional references, not dependencies.
   combination is `digest` 0.11.0-rc.9 and `crypto-common` 0.2.0-rc.13. Check
   the resolved graph and preserve the application's own lockfile; reassess
   these constraints when changing adapter revisions.
-- Implement `ZSessionConfig` with explicit callback/buffer storage, create a
-  local transport and session, and poll its driver alongside operations on one
-  thread. Native networking still allocates even with fixed Zenoh registries.
+- Account for native networking allocations when budgeting fixed Zenoh registries.
 
 Run Cargo from the application directory, including a complete binary link:
 

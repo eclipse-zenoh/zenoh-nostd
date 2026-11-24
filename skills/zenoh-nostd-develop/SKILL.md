@@ -16,7 +16,7 @@ relative to this skill's canonical directory.
 | Protocol encoding or state machines | `crates/zenoh-proto`, `crates/zenoh-sansio`; [architecture](../../docs/architecture.md) |
 | Session, callbacks, storage, or broker API | `crates/zenoh-nostd`; [application contract](../../docs/architecture.md#application-contract) |
 | Network adapter or new MCU | `platforms/`, board project; [porting steps](../../docs/architecture.md#add-an-mcu-target) |
-| Reusable CLI schema or inbox | [`crates/zenoh-cli`](../../crates/zenoh-cli/README.md); [consumer integration skill](../zenoh-nostd-integrate/SKILL.md#add-zenoh-commands-to-an-existing-embedded-cli-console) |
+| Reusable CLI schema or inbox | [`crates/zenoh-cli`](../../crates/zenoh-cli/README.md); [consumer console recipe](../zenoh-nostd-integrate/references/embedded-cli.md) |
 | CLI command or startup scenario | `examples/common/src/cli`, `examples/common/src/scenarios`; [applications](../../docs/applications.md) |
 | Console or board startup | `examples/embassy`; [MCU consoles and board guides](../../examples/embassy/README.md) |
 | Build, test, or documentation | [development commands](../../docs/README.md#development-commands), root/example justfiles, CI |
@@ -47,18 +47,11 @@ missing public documentation, broken links and invalid examples across libraries
 - Keep shared command definitions and the bounded inbox in `zenoh-cli`.
   Applications choose which commands to support, convert parsed arguments to
   owned requests, and execute them using their own session and transport policy.
-- Poll the session driver alongside operations. Preserve separate transport and
-  link-resource lifetimes and drop the driver/session before its transport.
-  Static cells are one-shot storage, not a reconnect mechanism. Keep current
-  `NoopRawMutex` access in one executor/thread context.
-- Keep receive callbacks short: they run under the session-state lock. Queue
-  bounded data rather than awaiting console output, full channels, or session
-  operations that need that lock. Finalize accepted query work outside callbacks.
-- Cancellation or transport write errors end the connection. Drop operation,
-  driver, session and transport before awaiting diagnostics or other cleanup.
-  Only successful operations may clean up declarations and retain a connection.
-  Example frontend buffers remain bounded with `alloc`; scenario changes must
-  work through both CLI and typed headless entry points.
+- For session changes, check the Rustdoc for driver polling, transport and
+  resource lifetimes, callback locking, and cleanup after cancellation or write
+  failure. Keep example callbacks short and queues bounded with `alloc` as well
+  as with fixed storage. Verify scenario changes through both CLI and typed
+  headless entry points.
 
 ## Build and verify the change
 

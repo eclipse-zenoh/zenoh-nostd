@@ -12,18 +12,13 @@ project directory, preserving its existing bindgen/bundler configuration. Do not
 copy the example CLI or its HTML assets merely to use the session API.
 
 Use `WasmLinkManager` with a router WebSocket endpoint such as
-`ws/127.0.0.1:7446`. A browser cannot use the native TCP adapter. The current
-adapter accepts numeric socket addresses and supports neither listening nor
-broker mode. `127.0.0.1` identifies the browser's machine, not a remote router.
-A page served over HTTPS may require secure WebSockets; verify transport support
-in the actual adapter revision before promising that deployment.
+`ws/127.0.0.1:7446`. For a remote router, choose an address the browser can
+reach. Check endpoint syntax and secure WebSocket support in the adapter Rustdoc
+for the deployment.
 
-Poll the session driver while UI operations run. Keep callbacks short and bounded;
-hand owned data to the UI after returning from receive callbacks. Closing a UI
-operation must drop the connection scope on cancellation/error. Verify the pinned
-WebSocket dependency's close/drop behavior when diagnosing reconnect failures;
-retain close/error details rather than treating generic link errors as proof of a
-particular cause. Do not suppress failures or work around them by retrying forever.
+Hand owned callback data to the UI. When diagnosing reconnect failures, inspect
+the pinned WebSocket dependency's close/drop behavior and retain close/error
+details for comparison with the router's logs.
 
 ## Acceptance
 

@@ -405,6 +405,9 @@ mod tests {
         assert_eq!(command("zenoh put a 'héllo 🌍'").payload, "héllo 🌍");
         assert_eq!(command("zenoh ping").count, Some(100));
         assert!(command("zenoh open --listen").listen);
+        let subscription = command("zenoh sub-thr test/throughput --count 4");
+        assert_eq!(subscription.kind, Kind::SubThr);
+        assert_eq!(subscription.count, Some(4));
     }
     #[test]
     fn unquoted_publish_payload_is_accepted() {
@@ -418,35 +421,6 @@ mod tests {
         assert!(missing.invalid && missing.command.is_none());
         let output = core::str::from_utf8(&missing.output).unwrap();
         assert!(output.contains("error: missing required argument: <PAYLOAD>"));
-    }
-    #[test]
-    fn namespaced_commands_use_the_existing_operations() {
-        for (subcommand, kind) in [
-            ("status", Kind::Status),
-            ("open tcp/192.0.2.1:7447 --listen", Kind::Open),
-            ("close", Kind::Close),
-            ("put office/pressure '1016.5 hPa'", Kind::Put),
-            (
-                "get office/** --parameters 'unit=hPa' --timeout-ms 20",
-                Kind::Get,
-            ),
-            (
-                "pub office/pressure 1016.5 --interval-ms 60 --count 2",
-                Kind::Pub,
-            ),
-            ("sub office/**", Kind::Sub),
-            ("queryable office/pressure 1016.5", Kind::Queryable),
-            ("querier office/** --count 2", Kind::Querier),
-            ("ping --size 16 --count 2", Kind::Ping),
-            ("pong test/ping --peer-key test/reply", Kind::Pong),
-            ("pub-thr --size 16 --count 4", Kind::PubThr),
-            ("sub-thr test/throughput --count 4", Kind::SubThr),
-            ("broker --listen-2 tcp/192.0.2.1:7447", Kind::Broker),
-        ] {
-            let mut line = heapless::String::<128>::new();
-            write!(line, "zenoh {subcommand}").unwrap();
-            assert_eq!(command(&line).kind, kind);
-        }
     }
     #[test]
     fn malformed_commands_cannot_reach_the_runner() {

@@ -5,177 +5,60 @@ description: Add or troubleshoot zenoh-nostd in a consuming Rust application on 
 
 # Integrate zenoh-nostd
 
-Work in the application's repository and preserve its runtime, networking, and
-build conventions. This skill is self-contained: it can be copied without the
-upstream checkout. Repository development tools, the example CLI, and example
-scenarios are optional references, not application dependencies.
+Work in the consuming application and reuse its build environment, executor and
+network setup. Inspect its manifests, lockfile, target configuration, allocator
+availability, memory budget and access to a peer.
 
-## Choose a concrete workflow
+## Choose the relevant recipe
 
-Load only the recipe matching the application's environment:
+- [Native](references/native.md) for host sockets and time drivers.
+- [Embassy](references/embassy.md) for an MCU with an application-owned network stack.
+- [WASM](references/wasm.md) for browser builds and WebSocket transport.
+- [Embedded CLI](references/embedded-cli.md) when adding Zenoh commands to an existing
+  `embedded-cli` console.
 
-- [Native](references/native.md): select host dependencies and timer integration,
-  then verify pub/sub/query behavior in the application.
-- [Embassy](references/embassy.md): reuse an application's HAL/network stack and
-  executor with bounded storage and target-specific build verification.
-- [WASM](references/wasm.md): browser dependencies, WebSocket endpoints, and runtime
-  checks for handshake, message exchange and teardown.
+For a custom transport, start with `ZLinkManager` and the link traits in the
+core crate's platform Rustdoc. Inspect `EmbeddedIOLink` for split async I/O.
 
-For example, “add a subscriber to this Embassy application” should preserve its
-existing setup; “create a minimal native demo” should follow the native recipe.
-Each recipe describes the observable results needed to finish that task.
+## Resolve and read the API
 
-## Establish the application context
+1. Resolve compatible core and adapter versions or Git revisions from the
+   dependency graph. Check availability before choosing registry or Git dependencies.
+   If present, compare the installed skill's `SOURCE_REVISION` with the SDK revision.
+2. Open the public task index in the matching `zenoh-nostd` crate Rustdoc. Use
+   `cargo doc --locked -p zenoh-nostd` with the application's target and features,
+   or read the matching crate's Rustdoc comments in source. Check the type and
+   method contracts used by the task, including errors and cleanup.
+3. Use the core feature table and adapter crate docs to select features,
+   transports and network media. Check time, entropy and allocator requirements
+   against the application's existing runtime. Use the matching platform example
+   for setup patterns and verify any required manifest patches.
 
-Inspect its manifests, lockfile, target/toolchain configuration and existing
-network/executor setup. Identify `std` versus `no_std`, allocator availability,
-transport needs, memory limits, and whether a router is reachable. Ask only for
-missing decisions that affect integration; do not assume an ESP board or Nix.
+## Apply the session contracts
 
-Resolve the exact zenoh-nostd version or Git revision from the application's
-dependency graph. Use source, Rustdoc and examples for that revision; the API is
-still evolving. Keep core and adapter revisions compatible. Check whether the
-needed crates are published before choosing registry versus Git dependencies;
-do not assume all platform adapters are available from crates.io.
+- Configure `ZSessionConfig` for packet and registry capacity. Check callback
+  capture and future storage independently, and budget adapter buffers and
+  application queues. See [fixed callback storage](references/embassy.md#fixed-callback-storage)
+  when diagnosing an inline-storage limit.
+- Use the scoped connection example in the core Rustdoc. Keep link resources
+  alive, poll `Session::run` alongside operations, and check the `Session`
+  contract for executor access and drop order.
+- Keep receive callbacks short. Copy needed data into bounded owned storage,
+  handle saturation, and defer work that locks session state. For queryables,
+  check how to reject work when a queue is full and finalize accepted requests.
+- Read the operation's normal cleanup contract, including flushing,
+  undeclaration and reply completion where applicable. For a cancelled transport
+  operation or write failure, discard the connection before awaiting diagnostics
+  or reconnecting. Check `GetResponses::cancel` separately for sent queries.
 
-The contracts below describe the current API. Check names and behavior against
-the resolved revision before producing code or changing dependencies.
+## Verify in the application
 
-Read the resolved revision's Rustdoc before writing integration code. Generate it
-in the consuming project with `cargo doc --locked -p zenoh-nostd` (include its
-chosen features and target), or read the Rustdoc comments in that dependency's
-source if rendered docs are unavailable. Do not substitute documentation from a
-different Git revision. Start at the core crate's task index, then inspect the
-types and methods used for configuration, driver polling, delivery and cleanup;
-read the adapter's crate docs for endpoint support and resource requirements.
-Check defaults, errors, capacities and cancellation behavior against those docs.
-Use the examples as patterns, compile the adapted code in the application, and
-report which contracts/examples informed the integration and what was verified.
+Build on the application's target and release-link firmware. Observe the
+requested message exchange with a reachable peer, allowing declarations to
+propagate before checking delivery. Exercise queue saturation and reconnect when
+those paths are involved. Report the contracts and examples used, and distinguish
+compilation, observed network behaviour and physical-board coverage.
 
-## Select transport and features
-
-| Application | Starting point |
-| --- | --- |
-| Native host | `zenoh-std` and `StdLinkManager`; supply host time/runtime integration |
-| Browser/WASM | `zenoh-wasm` and `WasmLinkManager`; router WebSocket endpoint; listening/brokering unsupported |
-| Embassy networking | `zenoh-embassy` and `EmbassyLinkManager`; application-owned initialized network stack |
-| Other network/runtime | Implement `ZLinkManager` and link traits, or adapt established async readers/writers with `EmbeddedIOLink` |
-
-Use explicit dependency features. Core defaults are empty: `alloc` adds storage
-alternatives and broker support without enabling `std`. Allocated operation needs
-an application allocator; networking/HALs may require their own heap even when
-Zenoh uses fixed storage. Choose logging at the application level. `cli` and
-`console-usb` belong to example applications, not the core library.
-
-For `zenoh-embassy`, select only needed TCP/UDP capabilities and a network medium
-matching the driver; its defaults enable both transports. The application owns
-Wi-Fi/Ethernet initialization and DHCP or static addressing. Current endpoints
-use IPv4 addresses, and UDP listening is unsupported. A device's loopback address
-cannot reach a router on another machine.
-
-## Supply runtime and memory policy
-
-- Provide an Embassy-compatible time driver while using the application's
-  executor. The core uses Embassy futures/synchronization/timers without selecting
-  a board or executor architecture. Firmware still owns critical-section/panic
-  handlers, linker configuration, and hardware startup.
-- For bare-metal custom entropy, enable `embedded` and register a suitable
-  `getrandom` 0.2 custom backend in the final application; enabling the feature
-  alone does not provide entropy. Check the resolved revision's backend requirements.
-- Implement `ZSessionConfig`: choose the link manager, protocol buffer, and
-  subscription/get/queryable registries independently. Count active subscriptions,
-  pending outgoing gets, and queryable declarations; a wildcard is one registration.
-  Fixed queryable storage separately bounds tracked incoming requests.
-- Choose registry entry counts, key capacities in UTF-8 bytes, callback object
-  storage and callback-future storage. Fixed tables reject excess entries/keys.
-  `alloc` does not automatically switch fixed aliases to allocated maps; select
-  `Alloc*Callbacks` explicitly when wanted. Socket buffers, UDP packet metadata,
-  owned receive data, and application queues need their own memory budgets.
-
-Callback entry count does not size the callback object. Current fixed aliases
-reserve 16 inline bytes for captures and 128 for the returned future. A closure
-capturing several queues/counters may exceed that even when the registry has free
-entries. Select larger fixed storage or capture a single reference to preallocated
-context; see [fixed callback storage](references/embassy.md#fixed-callback-storage).
-
-## Drive and clean up the connection
-
-Open a handshaken transport through `TransportLinkManager`, then borrow it with
-`Session::new(&mut transport)`. Keep link resources alive for the transport and
-poll `session.run()` alongside operations. Use a connection scope that drops
-operations/driver/session before the transport. MCU sessions can use ordinary
-locals; `zenoh::session!` and static builders are optional, one-shot alternatives.
-Current `NoopRawMutex` access stays in one executor/thread context.
-
-Callbacks borrow receive data and execute sequentially while session state is
-locked. Copy needed data into owned bounded storage before returning. Avoid
-awaiting slow output/full queues, or methods that reacquire session state such as
-undeclaration, get completion/cancellation, and query finalization. Handle queue
-saturation explicitly rather than blocking receive progress.
-
-- Publish with `put(...).finish().await`; success is not remote acknowledgment.
-  Flush adapter-owned TX buffers for normal finite completion while driving the
-  session. Subscriptions need propagation time before publications are expected.
-- Explicitly undeclare subscribers/queryables after successful work. Dropping a
-  handle alone does not unregister callbacks. The supplied registries copy keys,
-  but public handles may still borrow the caller's key text.
-- A get can receive multiple replies before finalization or timeout. Observe
-  completion or use its local `cancel` method after sending; timeout cleanup is
-  lazy. This local cancellation is distinct from interrupting a transport future.
-  A prior publication is not stored for `get` unless a queryable/storage serves it.
-- For queryables, queue owned request data and its request ID, then reply and
-  finalize once per accepted handler outside the callback. Reject work that
-  cannot be queued. Dropping a query does not finalize it. The built-in owned-query
-  channel requires a static session; scoped sessions can queue application-owned
-  data/IDs. Inspect conversion-failure handling when choosing the built-in channel.
-- Cancelling an operation or encountering a transport write error requires
-  discarding the whole connection before further network I/O or awaited diagnostics.
-  Recreate transport/session to continue; do not resume an interrupted write or
-  attempt declaration cleanup on that connection.
-
-## Add Zenoh commands to an existing `embedded-cli` console
-
-Use `zenoh-cli` (`zenoh_cli` in Rust) with its default `commands` feature and
-keep the application's `embedded-cli` dependency compatible with the version
-used by that revision. Read the `zenoh-cli` crate Rustdoc or its
-`crates/zenoh-cli/README.md` for a runnable example.
-
-1. Add `#[command(subcommand)] Zenoh(zenoh_cli::ZenohCommand<'a>)` to the
-   existing derived command enum. Keep using that enum in `process_byte`.
-2. In the existing processor, use `embedded_cli::service::FromRaw` and parse
-   once with `AppCommand::parse(raw).map_err(ProcessError::ParseError)?`.
-   Match the typed `AppCommand::Zenoh(command)` variant and keep the existing
-   handlers for local commands. For raw input dedicated to Zenoh,
-   `CommandInbox::forward` can parse, convert, and enqueue in one call.
-3. Convert supported Zenoh variants into application-owned requests before
-   the editor reuses its buffer. Validate arguments and copy borrowed keys,
-   payloads, or endpoints into bounded storage on fixed-memory targets.
-   Enqueue with `CommandInbox::try_send`, and report unsupported commands,
-   invalid arguments, and full queues on the console. Size the editor and the
-   inbox for the application's input limits and use a mutex suited to the tasks
-   sharing it.
-4. Let the existing Zenoh task await `inbox.receive()` and execute each request
-   alongside the session driver. Keep connection and transport policy in that
-   task. Report when an operation completes separately from queue acceptance.
-
-Test an existing local command, a namespaced command with a quoted payload,
-malformed input, and queue saturation. With `embedded-cli` help enabled,
-`help zenoh` displays the shared schema. Document the subset the application
-executes. Verify the command's effect against a peer when possible.
-
-## Verify in the consuming project
-
-Use its build environment and target configuration; run Cargo from the directory
-whose target configuration should apply. Check feature compatibility and perform
-a release link for firmware, then exercise a minimal publication/subscription and
-query/reply exchange with a reachable peer when available. Confirm bounded-queue
-behavior and the teardown/reconnect path the application uses. Distinguish compile
-checks from runtime and physical-board tests, and report what was actually run.
-There is no requirement to run the upstream Nix/Just matrix in a consumer project.
-
-For further detail, locate the matching revision in the
-[upstream repository](https://github.com/eclipse-zenoh/zenoh-nostd). Consult its
-`docs/architecture.md` application contract, public API Rustdoc and closest platform
-example. Inspect that example's manifest for target-specific patches/features;
-copy only the integration pieces the application needs. Do not import upstream
-repository instructions or replace the application's own project layout.
+The entire skill folder can be copied as a unit. Use the exact dependency's source or
+the [upstream repository](https://github.com/eclipse-zenoh/zenoh-nostd) to find
+revision-matched Rustdoc and examples.
