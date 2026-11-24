@@ -17,7 +17,7 @@
 #[cfg(feature = "commands")]
 mod commands;
 #[cfg(feature = "commands")]
-pub use commands::{LegacyZenohCommand, ZenohCommand};
+pub use commands::ZenohCommand;
 
 use embassy_sync::{
     blocking_mutex::raw::RawMutex,

@@ -78,7 +78,7 @@ pub async fn application<C: AppConfig + 'static>(
             cmd.endpoint.as_str()
         };
         if address.is_empty() {
-            cli.text("error: set ENDPOINT or use z_open <endpoint>\r\n")
+            cli.text("error: set ENDPOINT or use zenoh open <endpoint>\r\n")
                 .await;
             if cli.one_shot.get() {
                 return 2;
@@ -134,7 +134,7 @@ pub async fn application<C: AppConfig + 'static>(
             }
             #[cfg(not(feature = "alloc"))]
             {
-                cli.text("error: z_broker requires --features alloc\r\n")
+                cli.text("error: zenoh broker requires --features alloc\r\n")
                     .await;
                 if cli.one_shot.get() {
                     return 2;
@@ -265,11 +265,11 @@ async fn connected<C: AppConfig>(
             Kind::Close => return Ok(None),
             Kind::Quit => return Ok(Some(0)),
             Kind::Open => {
-                cli.text("session already open; z_close before changing endpoint\r\n")
+                cli.text("session already open; zenoh close before changing endpoint\r\n")
                     .await;
             }
             Kind::Broker => {
-                cli.text("error: z_close before starting exclusive broker mode\r\n")
+                cli.text("error: zenoh close before starting exclusive broker mode\r\n")
                     .await;
             }
             Kind::Status => cli.status(),

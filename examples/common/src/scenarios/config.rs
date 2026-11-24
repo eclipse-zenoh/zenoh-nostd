@@ -20,7 +20,7 @@ pub enum Scenario {
 }
 impl Scenario {
     pub fn from_name(name: &str) -> Result<Self, &'static str> {
-        match name.strip_prefix("z_").unwrap_or(name) {
+        match name {
             "open" => Ok(Self::Open),
             "put" => Ok(Self::Put),
             "get" => Ok(Self::Get),
@@ -228,7 +228,7 @@ mod tests {
     #[test]
     fn configuration_is_typed_and_cli_independent() {
         let o = Options::from_lookup(|name| match name {
-            "SCENARIO" => Some("z_pub"),
+            "SCENARIO" => Some("pub"),
             "KEY_EXPR" => Some("sensors/a"),
             "COUNT" => Some("3"),
             "VALUE" => Some("hello world"),

@@ -9,7 +9,7 @@ If port 8000 is already in use, run `WASM_PORT=8001 just wasm` and open
 `http://127.0.0.1:8001`. The same override works with `just wasm-headless`.
 
 A Zenoh router must offer a WebSocket endpoint. The compiled default is
-`ws/127.0.0.1:7446`; use `z_open ws/host:port` to override it. Native TCP endpoints
+`ws/127.0.0.1:7446`; use `zenoh open ws/host:port` to override it. Native TCP endpoints
 are unavailable in the browser. Listening and broker mode report unsupported
 capability; they do not require separate browser binaries.
 

@@ -12,7 +12,7 @@ use zenoh_cli::{CommandError, parse_command};
 
 use super::{
     Command, LINE_CAPACITY, Line,
-    parser::{self, EDIT_CAPACITY, Schema},
+    parser::{self, ConsoleCommand, EDIT_CAPACITY},
 };
 
 pub(super) const RENDER_CAPACITY: usize = 4096;
@@ -80,7 +80,7 @@ impl CommandProcessor<Sink<'_>, RenderError> for Processor<'_> {
             writeln!(cli.writer(), "error: {error}").map_err(|_| RenderError)?;
             return Ok(());
         }
-        match parse_command::<Schema<'_>, _, _>(raw, Command::try_from) {
+        match parse_command::<ConsoleCommand<'_>, _, _>(raw, Command::try_from) {
             Ok(command) => *self.command = Some(command),
             Err(CommandError::Parse(error)) => {
                 *self.invalid = true;
@@ -178,7 +178,7 @@ impl<'a> Frontend<'a> {
         Ok(())
     }
     fn editor_byte(&mut self, byte: u8, frame: &mut Frame) -> Result<(), RenderError> {
-        self.editor.process_byte::<Schema<'_>, _>(
+        self.editor.process_byte::<ConsoleCommand<'_>, _>(
             byte,
             &mut Processor {
                 command: &mut frame.command,
@@ -385,117 +385,97 @@ mod tests {
     }
     #[test]
     fn runtime_arguments_and_shell_quoting_are_preserved() {
-        let cmd = command("z_pub sensors/room 'hello world' --count 3");
+        let cmd = command("zenoh pub sensors/room 'hello world' --count 3");
         assert_eq!(cmd.key, "sensors/room");
         assert_eq!(cmd.payload, "hello world");
         assert_eq!(cmd.count, Some(3));
         assert_eq!(
-            command("z_get 'sensors/**' --parameters 'x=1&y=2'").parameters,
+            command("zenoh get 'sensors/**' --parameters 'x=1&y=2'").parameters,
             "x=1&y=2"
         );
-        assert_eq!(command("z_put a \"\"").payload, "");
+        assert_eq!(command("zenoh put a \"\"").payload, "");
         assert_eq!(
-            command(r#"z_put a "space and quote: \"ok\"""#).payload,
+            command(r#"zenoh put a "space and quote: \"ok\"""#).payload,
             "space and quote: \"ok\""
         );
-        assert_eq!(command(r"z_put a escaped\ space").payload, "escaped space");
-        assert_eq!(command("z_put a 'héllo 🌍'").payload, "héllo 🌍");
-        assert_eq!(command("z_ping").count, Some(100));
-        assert!(command("z_open --listen").listen);
+        assert_eq!(
+            command(r"zenoh put a escaped\ space").payload,
+            "escaped space"
+        );
+        assert_eq!(command("zenoh put a 'héllo 🌍'").payload, "héllo 🌍");
+        assert_eq!(command("zenoh ping").count, Some(100));
+        assert!(command("zenoh open --listen").listen);
     }
     #[test]
     fn unquoted_publish_payload_is_accepted() {
-        let plain = command("z_pub demo/esp32c6 ping");
-        let quoted = command("z_pub demo/esp32c6 \"ping\"");
+        let plain = command("zenoh pub demo/esp32c6 ping");
+        let quoted = command("zenoh pub demo/esp32c6 \"ping\"");
         assert_eq!(plain.kind, Kind::Pub);
         assert_eq!(plain.key, quoted.key);
         assert_eq!(plain.payload, "ping");
         assert_eq!(plain.payload, quoted.payload);
-        let missing = parse_line("z_pub demo/esp32c6").unwrap();
+        let missing = parse_line("zenoh pub demo/esp32c6").unwrap();
         assert!(missing.invalid && missing.command.is_none());
         let output = core::str::from_utf8(&missing.output).unwrap();
         assert!(output.contains("error: missing required argument: <PAYLOAD>"));
     }
     #[test]
     fn namespaced_commands_use_the_existing_operations() {
-        for (namespaced, legacy) in [
-            ("status", "status"),
-            (
-                "open tcp/192.0.2.1:7447 --listen",
-                "z_open tcp/192.0.2.1:7447 --listen",
-            ),
-            ("close", "z_close"),
-            (
-                "put office/pressure '1016.5 hPa'",
-                "z_put office/pressure '1016.5 hPa'",
-            ),
+        for (subcommand, kind) in [
+            ("status", Kind::Status),
+            ("open tcp/192.0.2.1:7447 --listen", Kind::Open),
+            ("close", Kind::Close),
+            ("put office/pressure '1016.5 hPa'", Kind::Put),
             (
                 "get office/** --parameters 'unit=hPa' --timeout-ms 20",
-                "z_get office/** --parameters 'unit=hPa' --timeout-ms 20",
+                Kind::Get,
             ),
             (
                 "pub office/pressure 1016.5 --interval-ms 60 --count 2",
-                "z_pub office/pressure 1016.5 --interval-ms 60 --count 2",
+                Kind::Pub,
             ),
-            ("sub office/**", "z_sub office/**"),
-            (
-                "queryable office/pressure 1016.5",
-                "z_queryable office/pressure 1016.5",
-            ),
-            (
-                "querier office/** --count 2",
-                "z_querier office/** --count 2",
-            ),
-            ("ping --size 16 --count 2", "z_ping --size 16 --count 2"),
-            (
-                "pong test/ping --peer-key test/reply",
-                "z_pong test/ping --peer-key test/reply",
-            ),
-            (
-                "pub-thr --size 16 --count 4",
-                "z_pub_thr --size 16 --count 4",
-            ),
-            (
-                "sub-thr test/throughput --count 4",
-                "z_sub_thr test/throughput --count 4",
-            ),
-            (
-                "broker --listen-2 tcp/192.0.2.1:7447",
-                "z_broker --listen-2 tcp/192.0.2.1:7447",
-            ),
+            ("sub office/**", Kind::Sub),
+            ("queryable office/pressure 1016.5", Kind::Queryable),
+            ("querier office/** --count 2", Kind::Querier),
+            ("ping --size 16 --count 2", Kind::Ping),
+            ("pong test/ping --peer-key test/reply", Kind::Pong),
+            ("pub-thr --size 16 --count 4", Kind::PubThr),
+            ("sub-thr test/throughput --count 4", Kind::SubThr),
+            ("broker --listen-2 tcp/192.0.2.1:7447", Kind::Broker),
         ] {
             let mut line = heapless::String::<128>::new();
-            write!(line, "zenoh {namespaced}").unwrap();
-            assert_eq!(command(&line), command(legacy));
+            write!(line, "zenoh {subcommand}").unwrap();
+            assert_eq!(command(&line).kind, kind);
         }
     }
     #[test]
     fn malformed_commands_cannot_reach_the_runner() {
         for input in [
-            "z_get",
-            "z_get a b",
-            "z_get a --size 4",
-            "z_pub a b --interval-ms 0",
-            "z_ping --size 257",
-            "z_get a --timeout-ms",
-            "z_put a 'oops",
-            "z_put a \"oops",
-            "z_get a --timeout-ms 1 --timeout-ms 2",
-            "z_get a//b",
-            "z_put a/** x",
-            "z_put '' x",
+            "z_put office/pressure 1016.5",
+            "zenoh get",
+            "zenoh get a b",
+            "zenoh get a --size 4",
+            "zenoh pub a b --interval-ms 0",
+            "zenoh ping --size 257",
+            "zenoh get a --timeout-ms",
+            "zenoh put a 'oops",
+            "zenoh put a \"oops",
+            "zenoh get a --timeout-ms 1 --timeout-ms 2",
+            "zenoh get a//b",
+            "zenoh put a/** x",
+            "zenoh put '' x",
             "status unexpected",
             "zenoh status unexpected",
             "zenoh close unexpected",
             "zenoh put office/pressure",
             "zenoh put office/** 1016.5",
-            "z_close --unexpected",
+            "zenoh close --unexpected",
             "quit extra",
-            "z_open --listen --listen",
-            "z_pub a x --count nope",
-            "z_sub a --count 1",
-            "z_ping --size 4294967296",
-            "z_get a --timeout-ms 0",
+            "zenoh open --listen --listen",
+            "zenoh pub a x --count nope",
+            "zenoh sub a --count 1",
+            "zenoh ping --size 4294967296",
+            "zenoh get a --timeout-ms 0",
         ] {
             let parsed = parse_line(input).unwrap();
             assert!(
@@ -511,31 +491,29 @@ mod tests {
             "help",
             "--help",
             "-h",
-            "help z_open",
-            "help z_put",
-            "help z_get",
-            "help z_pub",
-            "help z_sub",
-            "help z_queryable",
-            "help z_querier",
-            "help z_ping",
-            "help z_pong",
-            "help z_pub_thr",
-            "help z_sub_thr",
-            "help z_broker",
-            "help status",
-            "help zenoh",
+            "help zenoh open",
             "help zenoh put",
             "help zenoh get",
+            "help zenoh pub",
+            "help zenoh sub",
+            "help zenoh queryable",
+            "help zenoh querier",
+            "help zenoh ping",
+            "help zenoh pong",
+            "help zenoh pub-thr",
+            "help zenoh sub-thr",
+            "help zenoh broker",
+            "help status",
+            "help zenoh",
             "zenoh pub-thr --help",
             "help quit",
-            "z_get --help",
+            "zenoh get --help",
         ] {
             let parsed = parse_line(name).unwrap();
             assert!(!parsed.invalid && parsed.command.is_none(), "{name}");
             assert!(!parsed.output.is_empty(), "{name}");
         }
-        let help = parse_line("help z_get").unwrap();
+        let help = parse_line("help zenoh get").unwrap();
         assert!(
             core::str::from_utf8(&help.output)
                 .unwrap()
@@ -549,28 +527,35 @@ mod tests {
         let render = RefCell::new(RenderState::new());
         let mut frontend = Frontend::new(&render).unwrap();
         frontend.set_idle(true).unwrap();
-        let frame = feed(&mut frontend, &render, b"z_put a ab\x1b[DX\n");
+        let frame = feed(&mut frontend, &render, b"zenoh put a ab\x1b[DX\n");
         assert_eq!(frame.command.unwrap().payload, "aXb");
         let frame = feed(&mut frontend, &render, b"\x1b[A\n");
         assert_eq!(frame.command.unwrap().payload, "aXb");
-        let frame = feed(&mut frontend, &render, b"z_ope\t\n");
+        let frame = feed(&mut frontend, &render, b"ze\t open\n");
         assert_eq!(frame.command.unwrap().kind, Kind::Open);
-        let frame = feed(&mut frontend, &render, b"z_get h\xc3\xa9\x7fi\n");
+        let frame = feed(&mut frontend, &render, b"zenoh get h\xc3\xa9\x7fi\n");
         assert_eq!(frame.command.unwrap().key, "hi");
     }
     #[test]
     fn cancellation_from_middle_of_line_keeps_history() {
         let render = RefCell::new(RenderState::new());
         let mut frontend = Frontend::new(&render).unwrap();
-        feed(&mut frontend, &render, b"z_get previous\n");
-        assert!(feed(&mut frontend, &render, b"z_put unsafe data\x1b[D\x1b[D\x03").cancelled);
+        feed(&mut frontend, &render, b"zenoh get previous\n");
+        assert!(
+            feed(
+                &mut frontend,
+                &render,
+                b"zenoh put unsafe data\x1b[D\x1b[D\x03"
+            )
+            .cancelled
+        );
         let frame = feed(&mut frontend, &render, b"\x1b[A\n");
         assert_eq!(frame.command.unwrap().key, "previous");
         assert!(feed(&mut frontend, &render, b"\r").command.is_none());
         for partial in [b"unsafe\x1b[\x03".as_slice(), b"unsafe\x1b\x03"] {
             assert!(feed(&mut frontend, &render, partial).cancelled);
             assert_eq!(
-                feed(&mut frontend, &render, b"z_get safe\n")
+                feed(&mut frontend, &render, b"zenoh get safe\n")
                     .command
                     .unwrap()
                     .key,
@@ -582,22 +567,22 @@ mod tests {
     fn oversize_and_invalid_utf8_discard_the_whole_line_then_recover() {
         let render = RefCell::new(RenderState::new());
         let mut frontend = Frontend::new(&render).unwrap();
-        feed(&mut frontend, &render, b"z_put unsafe ");
+        feed(&mut frontend, &render, b"zenoh put unsafe ");
         for _ in 0..513 {
             feed(&mut frontend, &render, b"x");
         }
         let frame = feed(&mut frontend, &render, b"\x7f\n");
         assert!(frame.invalid && frame.command.is_none());
         for bytes in [
-            b"z_put a \xc0\xaf\n".as_slice(),
-            b"z_put a \xed\xa0\x80\n",
-            b"z_put a \xf4\x90\x80\x80\n",
-            b"z_put a \xc3\n",
+            b"zenoh put a \xc0\xaf\n".as_slice(),
+            b"zenoh put a \xed\xa0\x80\n",
+            b"zenoh put a \xf4\x90\x80\x80\n",
+            b"zenoh put a \xc3\n",
         ] {
             let frame = feed(&mut frontend, &render, bytes);
             assert!(frame.invalid && frame.command.is_none());
             assert_eq!(
-                feed(&mut frontend, &render, b"z_get recovered\n")
+                feed(&mut frontend, &render, b"zenoh get recovered\n")
                     .command
                     .unwrap()
                     .key,
@@ -612,13 +597,13 @@ mod tests {
         let first = feed(
             &mut frontend,
             &render,
-            b"z_put initial 'retained payload'\n",
+            b"zenoh put initial 'retained payload'\n",
         )
         .command
         .unwrap();
         for _ in 0..300 {
             assert!(
-                feed(&mut frontend, &render, b"z_get replacement\n")
+                feed(&mut frontend, &render, b"zenoh get replacement\n")
                     .command
                     .is_some()
             );

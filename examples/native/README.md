@@ -5,16 +5,16 @@ One host executable provides all supported scenarios. From the repository root:
 ```sh
 nix develop
 just std
-just std z_put demo/example "hello world"
-just std z_get 'demo/example/**'
-just std-alloc z_broker
+just std zenoh put demo/example "hello world"
+just std zenoh get 'demo/example/**'
+just std-alloc zenoh broker
 ```
 
-Or run `cargo run --locked --bin zenoh-app -- z_get 'demo/example/**'` from this
+Or run `cargo run --locked --bin zenoh-app -- zenoh get 'demo/example/**'` from this
 directory. With no command arguments it opens an interactive console. Add
 `--features alloc` before `--` for broker capability. Native `ENDPOINT` is read
-at process startup and defaults to `tcp/127.0.0.1:7447`. Use `z_open <endpoint>`
-to choose an address interactively, and `z_close` before changing it.
+at process startup and defaults to `tcp/127.0.0.1:7447`. Use `zenoh open <endpoint>`
+to choose an address interactively, and `zenoh close` before changing it.
 
 Ctrl-C stops the foreground operation in an interactive Unix terminal; `quit`
 exits. The application restores terminal settings on normal exit. One-command

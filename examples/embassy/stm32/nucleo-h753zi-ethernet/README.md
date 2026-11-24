@@ -30,7 +30,7 @@ cargo run --locked --release --bin zenoh-app --features alloc
 The default text console uses USART3, TX PD8 and RX PD9, at 115200 baud, 8N1, without
 flow control. On this board it is connected to the ST-LINK virtual COM port.
 Open that serial port in a text terminal separately from the probe-rs RTT logs.
-At the prompt, use `z_open <endpoint>`, then `z_get <key>` or other commands.
+At the prompt, use `zenoh open <endpoint>`, then `zenoh get <key>` or other commands.
 Ctrl-C returns to the prompt; `help` lists the available operations.
 
 `just stm32 console-usb` selects the shared `embassy-usb` CDC-ACM console on
@@ -62,7 +62,7 @@ The M7 data cache stays disabled; enabling it requires DMA cache coherency work.
 
 No allocator is installed in the default configuration. `--features alloc`
 installs a 64 KiB heap and enables heap-backed Zenoh storage and the broker.
-`ENDPOINT` is an optional connection default; `z_open` accepts an address at
+`ENDPOINT` is an optional connection default; `zenoh open` accepts an address at
 runtime. The broker uses that default or its upstream command argument.
 See the [command guide](../../../../docs/applications.md#cli),
 [shared configuration](../../../README.md) and the

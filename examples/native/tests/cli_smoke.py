@@ -97,8 +97,8 @@ def free_port():
 
 def check_one_shot(binary, endpoint):
     for arguments, expected in [
-        (["--help"], b"z_get"),
-        (["help", "z_get"], b"--timeout-ms"),
+        (["--help"], b"zenoh"),
+        (["help", "zenoh", "get"], b"--timeout-ms"),
     ]:
         result = subprocess.run(
             [str(binary), *arguments], capture_output=True, timeout=10
@@ -107,13 +107,13 @@ def check_one_shot(binary, endpoint):
             result.stderr + result.stdout
         )
     result = subprocess.run(
-        [str(binary), "z_put", "cli_smoke/once", 'space and quote: "ok"'],
+        [str(binary), "zenoh", "put", "cli_smoke/once", 'space and quote: "ok"'],
         env={**os.environ, "ENDPOINT": endpoint},
         capture_output=True,
         timeout=10,
     )
     assert result.returncode == 0, result.stderr + result.stdout
-    result = subprocess.run([str(binary), "z_get"], capture_output=True, timeout=10)
+    result = subprocess.run([str(binary), "zenoh", "get"], capture_output=True, timeout=10)
     assert result.returncode == 2, result.stderr + result.stdout
 
 
@@ -190,92 +190,92 @@ def main():
                     print(f"Testing {binary}", flush=True)
                     a, b = Console(binary, endpoint), Console(binary, endpoint)
                     clients.extend([a, b])
-                    assert b"--timeout-ms" in a.command("help z_get")
-                    assert b"z_broker" in a.command("--help")
-                    assert b"session open" in a.command("z_ope\t")
+                    assert b"--timeout-ms" in a.command("help zenoh get")
+                    assert b"broker" in a.command("help zenoh")
+                    assert b"session open" in a.command("ze\t open")
                     assert b"session already open" in a.command("\x1b[A")
-                    mark = a.send("z_sub cli_smoke/cancel_queued\n\x03")
+                    mark = a.send("zenoh sub cli_smoke/cancel_queued\n\x03")
                     a.expect(b"cancelled", mark)
                     a.expect(b"zenoh> ", mark)
                     assert b"session=closed" in a.command("status")
                     b.command(
-                        "z_queryable cli_smoke/** 'query response'", b"queryable ready"
+                        "zenoh queryable cli_smoke/** 'query response'", b"queryable ready"
                     )
                     for i in range(args.cycles):
                         out = a.command(
-                            f"z_get cli_smoke/request/{i} --timeout-ms 1000"
+                            f"zenoh get cli_smoke/request/{i} --timeout-ms 1000"
                         )
                         assert b"query response" in out, out
                         if i == 0:
                             assert b"session open" in out, out
                     b.cancel()
                     for i in range(args.cycles):
-                        opened = a.command(f"z_sub cli_smoke/sample/{i}", b"subscriber ready")
+                        opened = a.command(f"zenoh sub cli_smoke/sample/{i}", b"subscriber ready")
                         if i > 0:
                             assert b"session open" in opened, opened
                         mark = len(a.output)
                         # Subscriber declarations have no router acknowledgement; publish a short
                         # burst so this tests command reuse without assuming propagation order.
                         b.command(
-                            f"z_pub cli_smoke/sample/{i} 'sample {i}' --count 3 --interval-ms 5"
+                            f"zenoh pub cli_smoke/sample/{i} 'sample {i}' --count 3 --interval-ms 5"
                         )
                         out = a.expect(f'"sample {i}"'.encode(), mark)
                         assert f"cli_smoke/sample/{i}".encode() in out
                         a.cancel()
-                    a.command("z_open")
+                    a.command("zenoh open")
                     for _ in range(20):
-                        a.command("z_close")
-                        a.command("z_open")
+                        a.command("zenoh close")
+                        a.command("zenoh open")
                     # Ctrl-C during a listen must permit the next connection.
-                    a.command("z_close")
+                    a.command("zenoh close")
                     a.command(
-                        f"z_open tcp/127.0.0.1:{free_port()} --listen", b"opening "
+                        f"zenoh open tcp/127.0.0.1:{free_port()} --listen", b"opening "
                     )
                     a.cancel()
-                    a.command("z_open")
+                    a.command("zenoh open")
                     a.command("zenoh get cli_smoke/no_queryable --timeout-ms 30")
-                    a.command("z_pub cli_smoke/publish hello --count 3 --interval-ms 1")
-                    a.command("z_pub_thr cli_smoke/throughput --count 100 --size 32")
-                    b.command("z_pong", b"subscriber ready")
-                    a.command("z_ping --count 3 --size 16")
+                    a.command("zenoh pub cli_smoke/publish hello --count 3 --interval-ms 1")
+                    a.command("zenoh pub-thr cli_smoke/throughput --count 100 --size 32")
+                    b.command("zenoh pong", b"subscriber ready")
+                    a.command("zenoh ping --count 3 --size 16")
                     b.cancel()
                     a.command(
-                        "z_querier cli_smoke/no_queryable --count 3 --timeout-ms 10 --interval-ms 1"
+                        "zenoh querier cli_smoke/no_queryable --count 3 --timeout-ms 10 --interval-ms 1"
                     )
-                    assert b"error:" in a.command("z_get")
+                    assert b"error:" in a.command("zenoh get")
                     assert b"line exceeds" in a.command(
-                        "z_put cli_smoke/unsafe " + "x" * 513
+                        "zenoh put cli_smoke/unsafe " + "x" * 513
                     )
                     a.command("zenoh put cli_smoke/recovered ok")
                     check_one_shot(binary, endpoint)
                     if args.alloc_cli and binary == args.alloc_cli:
                         for _ in range(3):
-                            b.command("z_close")
+                            b.command("zenoh close")
                             one, two = free_port(), free_port()
                             b.command(
-                                f"z_broker {endpoint} --listen-1 tcp/127.0.0.1:{one} --listen-2 tcp/127.0.0.1:{two}",
+                                f"zenoh broker {endpoint} --listen-1 tcp/127.0.0.1:{one} --listen-2 tcp/127.0.0.1:{two}",
                                 b"broker running",
                             )
                             c = Console(binary, f"tcp/127.0.0.1:{one}")
                             d = Console(binary, f"tcp/127.0.0.1:{two}")
                             clients.extend([c, d])
-                            c.command("z_open")
-                            d.command("z_open")
-                            d.command("z_sub cli_smoke/broker", b"subscriber ready")
+                            c.command("zenoh open")
+                            d.command("zenoh open")
+                            d.command("zenoh sub cli_smoke/broker", b"subscriber ready")
                             mark = len(d.output)
                             c.command(
-                                "z_pub cli_smoke/broker forwarded --count 3 --interval-ms 20"
+                                "zenoh pub cli_smoke/broker forwarded --count 3 --interval-ms 20"
                             )
                             d.expect(b'"forwarded"', mark)
                             mark = len(d.output)
                             a.command(
-                                "z_pub cli_smoke/broker upstream --count 3 --interval-ms 20"
+                                "zenoh pub cli_smoke/broker upstream --count 3 --interval-ms 20"
                             )
                             d.expect(b'"upstream"', mark)
                             b.cancel()
                             c.close()
                             d.close()
-                            b.command("z_put cli_smoke/after_broker ok")
+                            b.command("zenoh put cli_smoke/after_broker ok")
                         print(
                             "Passed broker forwarding and repeated exclusive-mode cleanup",
                             flush=True,

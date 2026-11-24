@@ -59,23 +59,23 @@ build-firmware-esp32s3 features="" mode="cli":
 
 [working-directory: repository_root]
 ping:
-    RUST_LOG=trace just std z_ping
+    RUST_LOG=trace just std zenoh ping
 
 [working-directory: repository_root]
 pong:
-    RUST_LOG=trace just std z_pong
+    RUST_LOG=trace just std zenoh pong
 
 [working-directory: repository_root]
 pub_thr:
-    RUST_LOG=trace just std z_pub_thr
+    RUST_LOG=trace just std zenoh pub-thr
 
 [working-directory: repository_root]
 sub_thr:
-    RUST_LOG=trace just std z_sub_thr
+    RUST_LOG=trace just std zenoh sub-thr
 
 [working-directory: repository_root]
 broker:
-    RUST_LOG=trace just std-alloc z_broker
+    RUST_LOG=trace just std-alloc zenoh broker
 
 # One native application accepts either process arguments or interactive stdin.
 [working-directory: repository_root]

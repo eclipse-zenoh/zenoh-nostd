@@ -1,5 +1,5 @@
 use heapless::{String, Vec};
-use zenoh_cli::{LegacyZenohCommand, ZenohCommand};
+use zenoh_cli::ZenohCommand;
 
 pub const LINE_CAPACITY: usize = 512;
 pub use crate::scenarios::{KEY_CAPACITY, PAYLOAD_CAPACITY};
@@ -41,14 +41,10 @@ pub struct Command {
     pub listen: bool,
 }
 
-#[derive(Debug, embedded_cli::CommandGroup)]
-pub(super) enum Schema<'a> {
-    Local(ConsoleCommand<'a>),
-    Legacy(LegacyZenohCommand<'a>),
-}
-
 #[derive(Debug, embedded_cli::Command)]
 pub(super) enum ConsoleCommand<'a> {
+    /// Show connection state, capacities and dropped output.
+    Status,
     /// Exit the application (reset an MCU to restart).
     Quit,
     /// Alias for quit.
@@ -122,13 +118,13 @@ impl Command {
     }
 }
 
-impl TryFrom<Schema<'_>> for Command {
+impl TryFrom<ConsoleCommand<'_>> for Command {
     type Error = &'static str;
-    fn try_from(schema: Schema<'_>) -> Result<Self, Self::Error> {
-        let command = match schema {
-            Schema::Local(ConsoleCommand::Quit | ConsoleCommand::Exit) => return Ok(Self::quit()),
-            Schema::Local(ConsoleCommand::Zenoh(command)) => command,
-            Schema::Legacy(command) => command.into(),
+    fn try_from(command: ConsoleCommand<'_>) -> Result<Self, Self::Error> {
+        let command = match command {
+            ConsoleCommand::Status => ZenohCommand::Status,
+            ConsoleCommand::Quit | ConsoleCommand::Exit => return Ok(Self::quit()),
+            ConsoleCommand::Zenoh(command) => command,
         };
         let (kind, key, payload) = match &command {
             ZenohCommand::Status => (Kind::Status, "", ""),
@@ -287,7 +283,7 @@ pub(super) fn validate_raw(
         if count > 19 {
             return Err("too many arguments");
         }
-        if matches!(raw.name(), "status" | "z_close" | "quit" | "exit") {
+        if matches!(raw.name(), "status" | "quit" | "exit") {
             return Err("this command takes no arguments");
         }
         match arg {

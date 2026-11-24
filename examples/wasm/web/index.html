@@ -14,10 +14,10 @@
 </head>
 <body>
   <h1>Zenoh command console</h1>
-  <p id="instructions">Type <code>help</code> for commands. Connect through a router's WebSocket endpoint with <code>z_open ws/host:port</code>.</p>
+  <p id="instructions">Type <code>help</code> for commands. Connect through a router's WebSocket endpoint with <code>zenoh open ws/host:port</code>.</p>
   <pre id="output" role="log" aria-label="Command output"></pre>
   <form id="command-form">
-    <input id="command" aria-label="Command" placeholder="z_get demo/example/**" autocomplete="off" disabled />
+    <input id="command" aria-label="Command" placeholder="zenoh get demo/example/**" autocomplete="off" disabled />
     <button id="send" disabled>Run</button>
     <button id="cancel" type="button" disabled>Stop (Ctrl-C)</button>
   </form>

@@ -17,48 +17,47 @@ zenohd --listen tcp/127.0.0.1:7447
 In a second terminal, subscribe; in a third, publish:
 
 ```sh
-just std z_sub 'demo/**'
+just std zenoh sub 'demo/**'
 ```
 
 ```sh
-just std z_put demo/example "hello world"
+just std zenoh put demo/example "hello world"
 ```
 
 `just std` opens an interactive console. `ENDPOINT` is read at process startup
 and defaults to `tcp/127.0.0.1:7447`. For a query, first start
-`just std z_queryable 'demo/**' 'reply'`, then use
-`just std z_get demo/example` in another terminal. Quote shell wildcards.
+`just std zenoh queryable 'demo/**' 'reply'`, then use
+`just std zenoh get demo/example` in another terminal. Quote shell wildcards.
 
 ## CLI
 
 At an interactive prompt:
 
 ```text
-z_open tcp/192.168.1.10:7447
-z_put demo/example "hello from the device"
-z_sub demo/**
+zenoh open tcp/192.168.1.10:7447
+zenoh put demo/example "hello from the device"
+zenoh sub demo/**
 ```
 
 Use a router address reachable from the device. Ctrl-C stops a foreground
-operation, closes its connection and returns to the prompt; `z_close` releases
-an idle session. Close
+operation, closes its connection and returns to the prompt. Run `zenoh close`
 before opening a different endpoint. A disconnected operation can open the
 configured default automatically. There is no automatic reconnection.
 
 | Commands | Purpose |
 | --- | --- |
-| `help`, `help z_get`, `status` | Discover syntax, limits, session/network state, and dropped output |
-| `zenoh <command>` | Namespaced forms such as `zenoh status`, `zenoh put`, `zenoh get`, and `zenoh pub-thr` |
-| `z_open [endpoint] [--listen]`, `z_close` | Manage a connection |
-| `z_put`, `z_pub`, `z_sub` | One-shot publication, repeated publication, subscription |
-| `z_get`, `z_querier`, `z_queryable` | One-shot query, repeated queries, replies |
-| `z_ping`, `z_pong`, `z_pub_thr`, `z_sub_thr` | Latency and throughput scenarios |
-| `z_broker` | Broker with upstream forwarding; requires `alloc` and listening support |
+| `help`, `help zenoh`, `help zenoh get` | List commands and discover syntax and defaults |
+| `zenoh status`, `status` | Show limits, session/network state, and dropped output |
+| `zenoh open [endpoint] [--listen]`, `zenoh close` | Manage a connection |
+| `zenoh put`, `zenoh pub`, `zenoh sub` | One-shot publication, repeated publication, subscription |
+| `zenoh get`, `zenoh querier`, `zenoh queryable` | One-shot query, repeated queries, replies |
+| `zenoh ping`, `zenoh pong`, `zenoh pub-thr`, `zenoh sub-thr` | Latency and throughput scenarios |
+| `zenoh broker` | Broker with upstream forwarding; requires `alloc` and listening support |
 | `quit`, `exit` | End the application console |
 
-Use generated `help <command>` for flags and defaults. One operation runs at a
-time; help/status remain available. Broker mode requires a closed session.
-`just std-alloc z_broker` enables it on the host; default listeners use ports
+One operation runs at a time. Help and status remain available. Broker mode
+requires a closed session.
+`just std-alloc zenoh broker` enables it on the host; default listeners use ports
 7444 and 7445. Browser listening/brokering is unsupported.
 
 The frontend uses `embedded-cli`, with completion, cursor editing, and history.
@@ -69,9 +68,8 @@ acknowledgment that the router has propagated it.
 
 The [`zenoh-cli`](../crates/zenoh-cli/README.md) crate provides `ZenohCommand`
 and a `CommandInbox` for native, WebAssembly, and embedded applications. A console
-can mount `ZenohCommand` as a subcommand or supply its own schema. The legacy
-spellings above use the same argument definitions and execution path. The
-console forwards requests through the inbox, and the Zenoh task executes them
+can mount `ZenohCommand` as a subcommand or supply its own schema. The console
+forwards requests through the inbox, and the Zenoh task executes them
 using its session and available transports.
 
 ## Microcontrollers
@@ -108,7 +106,7 @@ for S3 BOOT/RESET recovery and STM32's separate user USB connector/power setup.
 
 Run `just wasm` and open `http://127.0.0.1:8000`. The router must expose a
 WebSocket endpoint; the compiled default is `ws/127.0.0.1:7446`.
-Use `z_open ws/host:port` to select another endpoint. The Stop button or Ctrl-C
+Use `zenoh open ws/host:port` to select another endpoint. The Stop button or Ctrl-C
 in the command field cancels an operation.
 
 `just build-wasm` packages assets without starting a server. Add `alloc` to

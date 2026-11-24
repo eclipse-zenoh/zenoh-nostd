@@ -10,7 +10,7 @@ From the repository root:
 nix develop
 export WIFI_SSID=your-access-point
 export WIFI_PASSWORD=your-password
-export ENDPOINT=tcp/192.168.1.10:7447  # Optional default; z_open also accepts an address
+export ENDPOINT=tcp/192.168.1.10:7447  # Optional default; zenoh open also accepts an address
 just build-esp32c6
 just esp32c6
 ```
@@ -33,8 +33,8 @@ returns without opening a defmt monitor; the text terminal is a separate command
 From this directory, equivalent build/flash commands are
 `cargo build --locked --release --bin zenoh-app` and
 `cargo run --locked --release --bin zenoh-app --features console-usb`.
-Use `help`, `status`, `z_open <endpoint>`, then commands such as
-`z_get demo/example/**`. Ctrl-C stops the foreground operation without reflashing.
+Use `help`, `status`, `zenoh open <endpoint>`, then commands such as
+`zenoh get demo/example/**`. Ctrl-C stops the foreground operation without reflashing.
 
 The radio still needs a 73,744-byte heap when Zenoh allocation is disabled.
 This C6 application places it in ordinary SRAM because reclaimed RAM is smaller.
