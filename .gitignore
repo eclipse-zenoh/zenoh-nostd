@@ -36,3 +36,9 @@ old/
 
 # TODO
 TODO.md
+target/
+Cargo.lock
+.vscode/
+CACHEDIR.TAG
+.env
+node_modules/

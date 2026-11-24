@@ -9,6 +9,7 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
+workspace-hack = { version = "0.1", path = "../../../workspace-hack" }
 
 [dependencies.zenoh-sansio]
 path = ".."

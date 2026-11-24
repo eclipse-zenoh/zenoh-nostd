@@ -7,6 +7,7 @@ members = [
 
     "crates/zenoh-nostd",
     "platforms/zenoh-std",
+    "workspace-hack",
 ]
 exclude = [
     "platforms/zenoh-wasm",
@@ -126,6 +127,7 @@ esp-radio = { version = "0.17.0", features = ["unstable", "defmt", "esp-alloc", 
 defmt = { workspace = true }
 
 wasm-bindgen = { version = "0.2", optional = true }
+workspace-hack = { version = "0.1", path = "workspace-hack" }
 
 [[example]]
 path = "examples/z_broker.rs"
@@ -172,3 +174,19 @@ overflow-checks = false
 [patch.crates-io.yawc]
 git = "https://github.com/infinitefield/yawc"
 rev = "b43b05d51e18345d228b72c4f12a93e2f51df9d8"
+
+# Workspace lint rules — enforced by clippy + rustfmt in CI
+[workspace.lints.rust]
+unsafe_code = "forbid"
+unused_must_use = "forbid"
+future_incompatible = "warn"
+nonstandard_style = "warn"
+rust_2021_guards = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = "warn"
+
+[[test]]
+name = "mod"
+harness = true

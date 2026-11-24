@@ -3461,6 +3461,42 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 
 [[package]]
+name = "workspace-hack"
+version = "0.1.0"
+dependencies = [
+ "byteorder",
+ "crypto-common",
+ "defmt 0.3.101",
+ "defmt 1.2.0",
+ "digest",
+ "dyn-utils",
+ "embedded-io 0.7.1",
+ "esp-config",
+ "esp-metadata-generated 0.3.0",
+ "futures-channel",
+ "futures-sink",
+ "futures-util",
+ "getrandom 0.2.17",
+ "heapless 0.8.0",
+ "libc",
+ "log",
+ "memchr",
+ "num-traits",
+ "rand 0.8.8",
+ "rand_core 0.6.4",
+ "regex",
+ "regex-automata",
+ "regex-syntax",
+ "serde",
+ "serde_core",
+ "syn 2.0.119",
+ "syn 3.0.10",
+ "uuid",
+ "wasm-bindgen",
+ "zerocopy",
+]
+
+[[package]]
 name = "writeable"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3528,6 +3564,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+ "workspace-hack",
 ]
 
 [[package]]
@@ -3545,6 +3582,7 @@ dependencies = [
  "getrandom 0.2.17",
  "static_cell",
  "wasm-bindgen",
+ "workspace-hack",
  "zenoh-nostd",
  "zenoh-std",
  "zenoh-wasm",
@@ -3557,6 +3595,7 @@ dependencies = [
  "dyn-utils",
  "embedded-io 0.7.1",
  "heapless 0.8.0",
+ "workspace-hack",
  "zenoh-derive",
  "zenoh-proto",
  "zenoh-sansio",
@@ -3577,6 +3616,7 @@ dependencies = [
  "sha3",
  "uhlc",
  "web-sys",
+ "workspace-hack",
  "zenoh-derive",
 ]
 
@@ -3588,6 +3628,7 @@ dependencies = [
  "heapless 0.8.0",
  "proptest",
  "sha3",
+ "workspace-hack",
  "zenoh-proto",
 ]
 
@@ -3596,6 +3637,7 @@ name = "zenoh-sansio-fuzz"
 version = "0.0.0"
 dependencies = [
  "libfuzzer-sys",
+ "workspace-hack",
  "zenoh-proto",
  "zenoh-sansio",
 ]
@@ -3611,6 +3653,7 @@ dependencies = [
  "socket2",
  "tungstenite 0.24.0",
  "url",
+ "workspace-hack",
  "zenoh-nostd",
  "zenoh-proto",
 ]
