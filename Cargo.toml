@@ -45,33 +45,33 @@ zenoh-nostd = { version = "0.1.0", path = "crates/zenoh-nostd" }
 # General dependencies
 
 uhlc = { version = "0.9.0", default-features = false }
-sha3 = { version = "0.10.8", default-features = false }
-chacha20 = { version = "0.9" }
-dyn-utils = { version = "0.1.0", git = "https://github.com/wyfo/dyn-utils", default-features = false, features = ["macros", "const_panic"] }
+sha3 = { version = "^0.10.9", default-features = false }
+chacha20 = { version = "^0.10.2" }
+dyn-utils = { version = "^0.1.1", git = "https://github.com/wyfo/dyn-utils", default-features = false, features = ["macros", "const_panic"] }
 
 # Embedded I/O
-embedded-io = "0.7"
+embedded-io = "0.7.1"
 
 # Heapless / static
-heapless = { version = "0.8", default-features = false }
+heapless = { version = "^0.9.4", default-features = false }
 static_cell = "2.1.1"
 
 # Macros
-proc-macro2 = "1.0"
-quote = "1.0"
+proc-macro2 = "1.0.107"
+quote = "1.0.47"
 syn = { version = "2.0", features = ["full"] }
-paste = "1.0"
+paste = "1.0.15"
 
 # Logs
-defmt = "1.0"
-log = "0.4"
-web-sys = { version = "0.3.82", features = ["console"] }
+defmt = "1.2.0"
+log = "0.4.35"
+web-sys = { version = "^0.3.107", features = ["console"] }
 
 # Tests
-rand = "0.8"
-criterion = "0.7"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+rand = "0.10.4"
+criterion = "0.7.0"
+serde = { version = "^1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
 
 [package]
 name = "zenoh-examples"
@@ -115,9 +115,9 @@ static_cell = { workspace = true }
 zenoh-std = { version = "0.1.0", path = "platforms/zenoh-std", optional = true }
 zenoh-wasm = { version = "0.1.0", path = "platforms/zenoh-wasm", optional = true }
 
-env_logger = { version = "0.11", optional = true}
+env_logger = { version = "^0.11.12", optional = true}
 
-getrandom = { version = "0.2.16", features = ["custom"], optional = true }
+getrandom = { version = "0.2", features = ["custom"], optional = true }
 esp-bootloader-esp-idf = { version = "0.4.0", features = ["defmt", "esp32s3"], optional = true }
 esp-hal = { version = "1.0.0", features = ["defmt", "esp32s3", "unstable"], optional = true }
 esp-alloc = { version = "0.9.0", features = ["defmt"], optional = true }
@@ -126,8 +126,8 @@ esp-rtos = { version = "0.2.0", features = ["defmt", "esp32s3", "esp-radio", "es
 esp-radio = { version = "0.17.0", features = ["unstable", "defmt", "esp-alloc", "esp32s3", "smoltcp", "wifi"], optional = true }
 defmt = { workspace = true }
 
-wasm-bindgen = { version = "0.2", optional = true }
-workspace-hack = { version = "0.1", path = "workspace-hack" }
+wasm-bindgen = { version = "^0.2.130", optional = true }
+workspace-hack = { version = "^0.1.0", path = "workspace-hack" }
 
 [[example]]
 path = "examples/z_broker.rs"
