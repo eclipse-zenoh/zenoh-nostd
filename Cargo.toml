@@ -4,6 +4,7 @@ members = [
     "crates/zenoh-proto",
     "crates/zenoh-sansio",
     "crates/zenoh-nostd",
+    "crates/zenoh-cli",
 ]
 exclude = [
     "platforms/zenoh-std",

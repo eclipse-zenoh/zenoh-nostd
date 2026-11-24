@@ -233,7 +233,7 @@ def main():
                     )
                     a.cancel()
                     a.command("z_open")
-                    a.command("z_get cli_smoke/no_queryable --timeout-ms 30")
+                    a.command("zenoh get cli_smoke/no_queryable --timeout-ms 30")
                     a.command("z_pub cli_smoke/publish hello --count 3 --interval-ms 1")
                     a.command("z_pub_thr cli_smoke/throughput --count 100 --size 32")
                     b.command("z_pong", b"subscriber ready")
@@ -246,7 +246,7 @@ def main():
                     assert b"line exceeds" in a.command(
                         "z_put cli_smoke/unsafe " + "x" * 513
                     )
-                    a.command("z_put cli_smoke/recovered ok")
+                    a.command("zenoh put cli_smoke/recovered ok")
                     check_one_shot(binary, endpoint)
                     if args.alloc_cli and binary == args.alloc_cli:
                         for _ in range(3):

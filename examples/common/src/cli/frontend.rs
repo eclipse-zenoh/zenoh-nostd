@@ -5,9 +5,10 @@ use core::{cell::RefCell, fmt::Write as _};
 use embedded_cli::{
     cli::{Cli as EmbeddedCli, CliBuilder, CliHandle},
     command::RawCommand,
-    service::{CommandProcessor, FromRaw, ProcessError},
+    service::{CommandProcessor, ProcessError},
 };
 use heapless::Vec;
+use zenoh_cli::{CommandError, parse_command};
 
 use super::{
     Command, LINE_CAPACITY, Line,
@@ -79,13 +80,13 @@ impl CommandProcessor<Sink<'_>, RenderError> for Processor<'_> {
             writeln!(cli.writer(), "error: {error}").map_err(|_| RenderError)?;
             return Ok(());
         }
-        let schema = Schema::parse(raw).map_err(|error| {
-            *self.invalid = true;
-            ProcessError::ParseError(error)
-        })?;
-        match Command::try_from(schema) {
+        match parse_command::<Schema<'_>, _, _>(raw, Command::try_from) {
             Ok(command) => *self.command = Some(command),
-            Err(error) => {
+            Err(CommandError::Parse(error)) => {
+                *self.invalid = true;
+                return Err(ProcessError::ParseError(error));
+            }
+            Err(CommandError::Invalid(error)) => {
                 *self.invalid = true;
                 writeln!(cli.writer(), "error: {error}").map_err(|_| RenderError)?;
             }
@@ -416,6 +417,59 @@ mod tests {
         assert!(output.contains("error: missing required argument: <PAYLOAD>"));
     }
     #[test]
+    fn namespaced_commands_use_the_existing_operations() {
+        for (namespaced, legacy) in [
+            ("status", "status"),
+            (
+                "open tcp/192.0.2.1:7447 --listen",
+                "z_open tcp/192.0.2.1:7447 --listen",
+            ),
+            ("close", "z_close"),
+            (
+                "put office/pressure '1016.5 hPa'",
+                "z_put office/pressure '1016.5 hPa'",
+            ),
+            (
+                "get office/** --parameters 'unit=hPa' --timeout-ms 20",
+                "z_get office/** --parameters 'unit=hPa' --timeout-ms 20",
+            ),
+            (
+                "pub office/pressure 1016.5 --interval-ms 60 --count 2",
+                "z_pub office/pressure 1016.5 --interval-ms 60 --count 2",
+            ),
+            ("sub office/**", "z_sub office/**"),
+            (
+                "queryable office/pressure 1016.5",
+                "z_queryable office/pressure 1016.5",
+            ),
+            (
+                "querier office/** --count 2",
+                "z_querier office/** --count 2",
+            ),
+            ("ping --size 16 --count 2", "z_ping --size 16 --count 2"),
+            (
+                "pong test/ping --peer-key test/reply",
+                "z_pong test/ping --peer-key test/reply",
+            ),
+            (
+                "pub-thr --size 16 --count 4",
+                "z_pub_thr --size 16 --count 4",
+            ),
+            (
+                "sub-thr test/throughput --count 4",
+                "z_sub_thr test/throughput --count 4",
+            ),
+            (
+                "broker --listen-2 tcp/192.0.2.1:7447",
+                "z_broker --listen-2 tcp/192.0.2.1:7447",
+            ),
+        ] {
+            let mut line = heapless::String::<128>::new();
+            write!(line, "zenoh {namespaced}").unwrap();
+            assert_eq!(command(&line), command(legacy));
+        }
+    }
+    #[test]
     fn malformed_commands_cannot_reach_the_runner() {
         for input in [
             "z_get",
@@ -431,6 +485,10 @@ mod tests {
             "z_put a/** x",
             "z_put '' x",
             "status unexpected",
+            "zenoh status unexpected",
+            "zenoh close unexpected",
+            "zenoh put office/pressure",
+            "zenoh put office/** 1016.5",
             "z_close --unexpected",
             "quit extra",
             "z_open --listen --listen",
@@ -466,6 +524,10 @@ mod tests {
             "help z_sub_thr",
             "help z_broker",
             "help status",
+            "help zenoh",
+            "help zenoh put",
+            "help zenoh get",
+            "zenoh pub-thr --help",
             "help quit",
             "z_get --help",
         ] {

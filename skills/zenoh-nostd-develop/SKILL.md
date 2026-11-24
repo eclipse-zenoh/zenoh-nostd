@@ -16,6 +16,7 @@ relative to this skill's canonical directory.
 | Protocol encoding or state machines | `crates/zenoh-proto`, `crates/zenoh-sansio`; [architecture](../../docs/architecture.md) |
 | Session, callbacks, storage, or broker API | `crates/zenoh-nostd`; [application contract](../../docs/architecture.md#application-contract) |
 | Network adapter or new MCU | `platforms/`, board project; [porting steps](../../docs/architecture.md#add-an-mcu-target) |
+| Reusable CLI schema or inbox | [`crates/zenoh-cli`](../../crates/zenoh-cli/README.md); [consumer integration skill](../zenoh-nostd-integrate/SKILL.md#add-zenoh-commands-to-an-existing-embedded-cli-console) |
 | CLI command or startup scenario | `examples/common/src/cli`, `examples/common/src/scenarios`; [applications](../../docs/applications.md) |
 | Console or board startup | `examples/embassy`; [MCU consoles and board guides](../../examples/embassy/README.md) |
 | Build, test, or documentation | [development commands](../../docs/README.md#development-commands), root/example justfiles, CI |
@@ -43,6 +44,9 @@ missing public documentation, broken links and invalid examples across libraries
   UART by default on MCUs, and `console-usb` enabling `cli` when supported.
   Reuse scenarios in `examples/common`, MCU helpers directly in `examples/embassy`,
   and family setup under its family directory; keep pins/HAL policy in board projects.
+- Keep shared command definitions and the bounded inbox in `zenoh-cli`.
+  Applications choose which commands to support, convert parsed arguments to
+  owned requests, and execute them using their own session and transport policy.
 - Poll the session driver alongside operations. Preserve separate transport and
   link-resource lifetimes and drop the driver/session before its transport.
   Static cells are one-shot storage, not a reconnect mechanism. Keep current

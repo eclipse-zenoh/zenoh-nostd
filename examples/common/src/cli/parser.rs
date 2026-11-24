@@ -1,4 +1,5 @@
 use heapless::{String, Vec};
+use zenoh_cli::{LegacyZenohCommand, ZenohCommand};
 
 pub const LINE_CAPACITY: usize = 512;
 pub use crate::scenarios::{KEY_CAPACITY, PAYLOAD_CAPACITY};
@@ -23,7 +24,7 @@ pub enum Kind {
     Broker,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Command {
     pub kind: Kind,
     pub key: String<KEY_CAPACITY>,
@@ -40,116 +41,21 @@ pub struct Command {
     pub listen: bool,
 }
 
-/// Command names, arguments, help and completion share one definition.
-#[derive(Debug, embedded_cli::Command)]
+#[derive(Debug, embedded_cli::CommandGroup)]
 pub(super) enum Schema<'a> {
-    /// Show connection state, capacities and dropped output.
-    Status,
-    /// Open a session using the default or supplied endpoint.
-    #[command(name = "z_open")]
-    Open {
-        endpoint: Option<&'a str>,
-        /// Accept an incoming connection instead of connecting.
-        #[arg(long)]
-        listen: bool,
-    },
-    /// Close the session and release its resources.
-    #[command(name = "z_close")]
-    Close,
+    Local(ConsoleCommand<'a>),
+    Legacy(LegacyZenohCommand<'a>),
+}
+
+#[derive(Debug, embedded_cli::Command)]
+pub(super) enum ConsoleCommand<'a> {
     /// Exit the application (reset an MCU to restart).
     Quit,
     /// Alias for quit.
     Exit,
-    /// Publish one value.
-    #[command(name = "z_put")]
-    Put { key: &'a str, payload: &'a str },
-    /// Query values until finalization or timeout.
-    #[command(name = "z_get")]
-    Get {
-        key: &'a str,
-        #[arg(long, default_value = "")]
-        parameters: &'a str,
-        #[arg(long, default_value_t = 2000)]
-        timeout_ms: u64,
-    },
-    /// Publish repeatedly; Ctrl-C stops an unbounded run.
-    #[command(name = "z_pub")]
-    Pub {
-        key: &'a str,
-        payload: &'a str,
-        #[arg(long, default_value_t = 1000)]
-        interval_ms: u64,
-        #[arg(long)]
-        count: Option<u64>,
-    },
-    /// Receive matching samples until Ctrl-C.
-    #[command(name = "z_sub")]
-    Sub { key: &'a str },
-    /// Answer queries with the supplied payload until Ctrl-C.
-    #[command(name = "z_queryable")]
-    Queryable { key: &'a str, payload: &'a str },
-    /// Repeat queries through a reusable querier.
-    #[command(name = "z_querier")]
-    Querier {
-        key: &'a str,
-        #[arg(long, default_value = "")]
-        parameters: &'a str,
-        #[arg(long, default_value_t = 2000)]
-        timeout_ms: u64,
-        #[arg(long, default_value_t = 1000)]
-        interval_ms: u64,
-        #[arg(long)]
-        count: Option<u64>,
-    },
-    /// Publish pings and measure reply latency.
-    #[command(name = "z_ping")]
-    Ping {
-        #[arg(default_value = "test/ping")]
-        key: &'a str,
-        #[arg(long, default_value = "test/pong")]
-        peer_key: &'a str,
-        #[arg(long, default_value_t = 8)]
-        size: usize,
-        #[arg(long, default_value_t = 100)]
-        count: u64,
-        #[arg(long, default_value_t = 2000)]
-        timeout_ms: u64,
-    },
-    /// Echo samples to the peer key until Ctrl-C.
-    #[command(name = "z_pong")]
-    Pong {
-        #[arg(default_value = "test/ping")]
-        key: &'a str,
-        #[arg(long, default_value = "test/pong")]
-        peer_key: &'a str,
-    },
-    /// Publish throughput traffic; Ctrl-C stops an unbounded run.
-    #[command(name = "z_pub_thr")]
-    PubThr {
-        #[arg(default_value = "test/thr")]
-        key: &'a str,
-        #[arg(long, default_value_t = 8)]
-        size: usize,
-        #[arg(long)]
-        count: Option<u64>,
-    },
-    /// Count received throughput traffic until Ctrl-C or the count limit.
-    #[command(name = "z_sub_thr")]
-    SubThr {
-        #[arg(default_value = "test/thr")]
-        key: &'a str,
-        #[arg(long)]
-        count: Option<u64>,
-    },
-    /// Run an exclusive broker; requires alloc and listening support.
-    #[command(name = "z_broker")]
-    Broker {
-        upstream: Option<&'a str>,
-        #[arg(long = "listen-1", default_value = "")]
-        listen1: &'a str,
-        #[arg(long = "listen-2", default_value = "")]
-        listen2: &'a str,
-    },
+    /// Run a Zenoh command.
+    #[command(subcommand)]
+    Zenoh(ZenohCommand<'a>),
 }
 
 impl Command {
@@ -219,36 +125,40 @@ impl Command {
 impl TryFrom<Schema<'_>> for Command {
     type Error = &'static str;
     fn try_from(schema: Schema<'_>) -> Result<Self, Self::Error> {
-        let (kind, key, payload) = match &schema {
-            Schema::Status => (Kind::Status, "", ""),
-            Schema::Open { .. } => (Kind::Open, "", ""),
-            Schema::Close => (Kind::Close, "", ""),
-            Schema::Quit | Schema::Exit => (Kind::Quit, "", ""),
-            Schema::Put { key, payload } => (Kind::Put, *key, *payload),
-            Schema::Get { key, .. } => (Kind::Get, *key, ""),
-            Schema::Pub { key, payload, .. } => (Kind::Pub, *key, *payload),
-            Schema::Sub { key } => (Kind::Sub, *key, ""),
-            Schema::Queryable { key, payload } => (Kind::Queryable, *key, *payload),
-            Schema::Querier { key, .. } => (Kind::Querier, *key, ""),
-            Schema::Ping { key, .. } => (Kind::Ping, *key, ""),
-            Schema::Pong { key, .. } => (Kind::Pong, *key, ""),
-            Schema::PubThr { key, .. } => (Kind::PubThr, *key, ""),
-            Schema::SubThr { key, .. } => (Kind::SubThr, *key, ""),
-            Schema::Broker { .. } => (Kind::Broker, "", ""),
+        let command = match schema {
+            Schema::Local(ConsoleCommand::Quit | ConsoleCommand::Exit) => return Ok(Self::quit()),
+            Schema::Local(ConsoleCommand::Zenoh(command)) => command,
+            Schema::Legacy(command) => command.into(),
+        };
+        let (kind, key, payload) = match &command {
+            ZenohCommand::Status => (Kind::Status, "", ""),
+            ZenohCommand::Open { .. } => (Kind::Open, "", ""),
+            ZenohCommand::Close => (Kind::Close, "", ""),
+            ZenohCommand::Put { key, payload } => (Kind::Put, *key, *payload),
+            ZenohCommand::Get { key, .. } => (Kind::Get, *key, ""),
+            ZenohCommand::Pub { key, payload, .. } => (Kind::Pub, *key, *payload),
+            ZenohCommand::Sub { key } => (Kind::Sub, *key, ""),
+            ZenohCommand::Queryable { key, payload } => (Kind::Queryable, *key, *payload),
+            ZenohCommand::Querier { key, .. } => (Kind::Querier, *key, ""),
+            ZenohCommand::Ping { key, .. } => (Kind::Ping, *key, ""),
+            ZenohCommand::Pong { key, .. } => (Kind::Pong, *key, ""),
+            ZenohCommand::PubThr { key, .. } => (Kind::PubThr, *key, ""),
+            ZenohCommand::SubThr { key, .. } => (Kind::SubThr, *key, ""),
+            ZenohCommand::Broker { .. } => (Kind::Broker, "", ""),
         };
         let mut cmd = Self::new(kind);
         cmd.key.push_str(key).map_err(|_| "key exceeds 128 bytes")?;
         cmd.payload
             .push_str(payload)
             .map_err(|_| "payload exceeds 256 bytes")?;
-        match schema {
-            Schema::Open { endpoint, listen } => {
+        match command {
+            ZenohCommand::Open { endpoint, listen } => {
                 cmd.endpoint
                     .push_str(endpoint.unwrap_or(""))
                     .map_err(|_| "endpoint exceeds 128 bytes")?;
                 cmd.listen = listen;
             }
-            Schema::Get {
+            ZenohCommand::Get {
                 parameters,
                 timeout_ms,
                 ..
@@ -258,13 +168,13 @@ impl TryFrom<Schema<'_>> for Command {
                     .map_err(|_| "parameters exceed 128 bytes")?;
                 cmd.timeout_ms = timeout_ms;
             }
-            Schema::Pub {
+            ZenohCommand::Pub {
                 interval_ms, count, ..
             } => {
                 cmd.interval_ms = interval_ms;
                 cmd.count = count;
             }
-            Schema::Querier {
+            ZenohCommand::Querier {
                 parameters,
                 timeout_ms,
                 interval_ms,
@@ -278,7 +188,7 @@ impl TryFrom<Schema<'_>> for Command {
                 cmd.interval_ms = interval_ms;
                 cmd.count = count;
             }
-            Schema::Ping {
+            ZenohCommand::Ping {
                 peer_key,
                 size,
                 count,
@@ -292,19 +202,19 @@ impl TryFrom<Schema<'_>> for Command {
                 cmd.count = Some(count);
                 cmd.timeout_ms = timeout_ms;
             }
-            Schema::Pong { peer_key, .. } => {
+            ZenohCommand::Pong { peer_key, .. } => {
                 cmd.peer_key
                     .push_str(peer_key)
                     .map_err(|_| "peer key exceeds 128 bytes")?;
             }
-            Schema::PubThr { size, count, .. } => {
+            ZenohCommand::PubThr { size, count, .. } => {
                 cmd.size = size;
                 cmd.count = count;
             }
-            Schema::SubThr { count, .. } => {
+            ZenohCommand::SubThr { count, .. } => {
                 cmd.count = count;
             }
-            Schema::Broker {
+            ZenohCommand::Broker {
                 upstream,
                 listen1,
                 listen2,
@@ -364,7 +274,15 @@ pub(super) fn validate_raw(
     let mut seen = Vec::<&str, 10>::new();
     let mut pending = false;
     let mut count = 0;
-    for arg in raw.args().args() {
+    let mut args = raw.args().args().peekable();
+    if raw.name() == "zenoh" && matches!(args.peek(), Some(Ok(Arg::Value("status" | "close")))) {
+        args.next();
+        if args.next().is_some() {
+            return Err("this command takes no arguments");
+        }
+        return Ok(());
+    }
+    for arg in args {
         count += 1;
         if count > 19 {
             return Err("too many arguments");

@@ -16,6 +16,7 @@ use embassy_futures::{
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Channel, signal::Signal};
 use heapless::{String, Vec};
+use zenoh_cli::CommandInbox;
 
 pub trait ConsoleRead {
     fn read(&mut self, bytes: &mut [u8]) -> impl core::future::Future<Output = Result<usize, ()>>;
@@ -51,7 +52,7 @@ enum Output {
 }
 
 pub struct Cli {
-    commands: Channel<NoopRawMutex, Command, 2>,
+    commands: CommandInbox<NoopRawMutex, Command, 2>,
     initial: RefCell<Option<Line>>,
     output: Channel<NoopRawMutex, Output, 16>,
     scenario: Context,
@@ -73,7 +74,7 @@ impl Default for Cli {
 impl Cli {
     pub const fn new() -> Self {
         Self {
-            commands: Channel::new(),
+            commands: CommandInbox::new(),
             initial: RefCell::new(None),
             output: Channel::new(),
             scenario: Context::new(),

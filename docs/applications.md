@@ -48,6 +48,7 @@ configured default automatically. There is no automatic reconnection.
 | Commands | Purpose |
 | --- | --- |
 | `help`, `help z_get`, `status` | Discover syntax, limits, session/network state, and dropped output |
+| `zenoh <command>` | Namespaced forms such as `zenoh status`, `zenoh put`, `zenoh get`, and `zenoh pub-thr` |
 | `z_open [endpoint] [--listen]`, `z_close` | Manage a connection |
 | `z_put`, `z_pub`, `z_sub` | One-shot publication, repeated publication, subscription |
 | `z_get`, `z_querier`, `z_queryable` | One-shot query, repeated queries, replies |
@@ -65,6 +66,13 @@ Example limits are 512-byte input lines, 128-byte keys, and 256-byte payloads;
 `alloc` does not remove those limits. Slow output can fill bounded queues;
 check `status` for drops. Subscription readiness is local registration, not an
 acknowledgment that the router has propagated it.
+
+The [`zenoh-cli`](../crates/zenoh-cli/README.md) crate provides `ZenohCommand`
+and a `CommandInbox` for native, WebAssembly, and embedded applications. A console
+can mount `ZenohCommand` as a subcommand or supply its own schema. The legacy
+spellings above use the same argument definitions and execution path. The
+console forwards requests through the inbox, and the Zenoh task executes them
+using its session and available transports.
 
 ## Microcontrollers
 

@@ -1764,6 +1764,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "zenoh-cli"
+version = "0.1.0"
+dependencies = [
+ "embassy-sync",
+ "embedded-cli",
+]
+
+[[package]]
 name = "zenoh-derive"
 version = "0.1.0"
 dependencies = [
@@ -1783,6 +1791,7 @@ dependencies = [
  "embedded-io 0.6.1",
  "embedded-io-async 0.7.0",
  "heapless",
+ "zenoh-cli",
  "zenoh-nostd",
 ]
 

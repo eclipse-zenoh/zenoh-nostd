@@ -11,11 +11,12 @@ resolver = "3"
 
 [features]
 default = ["cli"]
-cli = ["dep:embedded-cli", "dep:embedded-io", "dep:embedded-io-async"]
+cli = ["dep:embedded-cli", "dep:embedded-io", "dep:embedded-io-async", "dep:zenoh-cli"]
 alloc = ["zenoh-nostd/alloc"]
 
 [dependencies]
 zenoh-nostd = { path = "../../crates/zenoh-nostd", default-features = false }
+zenoh-cli = { path = "../../crates/zenoh-cli", optional = true }
 
 heapless = "0.8"
 embassy-sync = "0.7.2"
