@@ -16,6 +16,10 @@ enum State {
 }
 
 #[derive(Debug)]
+/// Receive codec backed by an application-owned buffer.
+///
+/// Construct through [`Transport::builder`](crate::Transport::builder). Borrowed
+/// message/byte views cannot outlive the codec borrow. No I/O is performed here.
 pub struct TransportRx<Buff> {
     buff: Buff,
 
@@ -83,10 +87,17 @@ impl<Buff> TransportRx<Buff> {
         })
     }
 
+    /// Disable receive frame sequence-number validation for this codec.
+    ///
+    /// Intended for diagnostics/interoperability; it weakens transport validation and
+    /// cannot be undone on this instance.
     pub fn ignore_invalid_sn(&mut self) {
         self.ignore_invalid_sn = true;
     }
 
+    /// Update activity/lease bookkeeping using a monotonic timestamp from a common epoch.
+    ///
+    /// An optional opposite half propagates closure. This performs no network I/O.
     pub fn sync(&mut self, tx: Option<&TransportTx<Buff>>, now: Duration) {
         if let Some(tx) = tx
             && tx.closed()
@@ -104,6 +115,10 @@ impl<Buff> TransportRx<Buff> {
         };
     }
 
+    /// Absolute next receive lease deadline in the same epoch as `sync`.
+    ///
+    /// Returns zero before initial synchronization, after activity, or when closed;
+    /// this is not a relative sleep duration.
     pub fn next_timeout(&self) -> Duration {
         match self.state {
             State::Opened | State::Closed | State::Used => Duration::from_secs(0),
@@ -111,6 +126,10 @@ impl<Buff> TransportRx<Buff> {
         }
     }
 
+    /// Whether inactivity exceeds the lease at `now`; call `sync` to commit closure.
+    ///
+    /// Returns false before synchronization, immediately after activity and when
+    /// already closed. Use `closed()` to inspect the committed closed state.
     pub fn should_close(&self, now: Duration) -> bool {
         match self.state {
             State::Opened | State::Closed | State::Used => false,
@@ -118,6 +137,7 @@ impl<Buff> TransportRx<Buff> {
         }
     }
 
+    /// Whether lease synchronization or protocol handling has marked this half closed.
     pub fn closed(&self) -> bool {
         matches!(self.state, State::Closed)
     }

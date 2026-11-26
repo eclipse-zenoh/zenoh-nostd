@@ -178,12 +178,16 @@ crate::declare_zerror! {
 }
 
 #[derive(Debug)]
+/// Error from either the protocol layer (`A`) or the application-supplied I/O callback (`B`).
 pub enum EitherError<A, B> {
+    /// Protocol/first error branch.
     A(A),
+    /// Application I/O/second error branch.
     B(B),
 }
 
 impl<A> EitherError<A, A> {
+    /// Discard the branch tag when both branches contain the same error type.
     pub fn flatten(self) -> A {
         match self {
             Self::A(x) => x,
@@ -193,6 +197,7 @@ impl<A> EitherError<A, A> {
 }
 
 impl<A, B> EitherError<A, B> {
+    /// Convert either error branch into a common error type using `From`.
     pub fn flatten_map<C>(self) -> C
     where
         C: From<A> + From<B>,
@@ -211,6 +216,11 @@ impl<A, B> From<A> for EitherError<A, B> {
 }
 
 #[macro_export]
+/// Return a converted error, optionally logging context.
+///
+/// `zbail!(err)` returns `Err(err.into())`; `@log` also logs. `@None` returns
+/// `None`, `@continue` continues a loop, and `@ret value, err` returns `value`
+/// after logging. Logging uses the application-selected backend.
 macro_rules! zbail {
     ($err:expr) => {
         return Err($err.into())
@@ -244,6 +254,7 @@ macro_rules! zbail {
 }
 
 #[macro_export]
+/// Expand to a static `file:line:column` string at the invocation site.
 macro_rules! zctx {
     () => {
         concat!(core::file!(), ":", core::line!(), ":", core::column!(),)

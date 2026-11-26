@@ -3,6 +3,7 @@ pub use log;
 
 #[cfg(feature = "log")]
 #[macro_export]
+/// Emit a trace record using the selected backend; with no backend, arguments are evaluated without emitting a record.
 macro_rules! trace {
     ($s:literal $(, $arg:expr)* $(,)?) => {
         $crate::logging::log::trace!($s $(, $arg)*)
@@ -11,6 +12,7 @@ macro_rules! trace {
 
 #[cfg(feature = "log")]
 #[macro_export]
+/// Emit a debug record using the selected backend; with no backend, arguments are evaluated without emitting a record.
 macro_rules! debug {
     ($s:literal $(, $arg:expr)* $(,)?) => {
         $crate::logging::log::debug!($s $(, $arg)*)
@@ -19,6 +21,7 @@ macro_rules! debug {
 
 #[cfg(feature = "log")]
 #[macro_export]
+/// Emit a info record using the selected backend; with no backend, arguments are evaluated without emitting a record.
 macro_rules! info {
     ($s:literal $(, $arg:expr)* $(,)?) => {
         $crate::logging::log::info!($s $(, $arg)*)
@@ -27,6 +30,7 @@ macro_rules! info {
 
 #[cfg(feature = "log")]
 #[macro_export]
+/// Emit a warn record using the selected backend; with no backend, arguments are evaluated without emitting a record.
 macro_rules! warn {
     ($s:literal $(, $arg:expr)* $(,)?) => {
         $crate::logging::log::warn!($s $(, $arg)*)
@@ -35,6 +39,7 @@ macro_rules! warn {
 
 #[cfg(feature = "log")]
 #[macro_export]
+/// Emit an error record using the selected backend; with no backend, arguments are evaluated without emitting a record.
 macro_rules! error {
     ($s:literal $(, $arg:expr)* $(,)?) => {
         $crate::logging::log::error!($s $(, $arg)*)
@@ -46,6 +51,7 @@ pub use defmt;
 
 #[cfg(feature = "defmt")]
 #[macro_export]
+/// Emit a trace record using the selected backend; with no backend, arguments are evaluated without emitting a record.
 macro_rules! trace {
     ($s:literal $(, $arg:expr)* $(,)?) => {{
         use $crate::logging::defmt as defmt;
@@ -55,6 +61,7 @@ macro_rules! trace {
 
 #[cfg(feature = "defmt")]
 #[macro_export]
+/// Emit a debug record using the selected backend; with no backend, arguments are evaluated without emitting a record.
 macro_rules! debug {
     ($s:literal $(, $arg:expr)* $(,)?) => {{
         use $crate::logging::defmt as defmt;
@@ -64,6 +71,7 @@ macro_rules! debug {
 
 #[cfg(feature = "defmt")]
 #[macro_export]
+/// Emit a info record using the selected backend; with no backend, arguments are evaluated without emitting a record.
 macro_rules! info {
     ($s:literal $(, $arg:expr)* $(,)?) => {{
         use $crate::logging::defmt as defmt;
@@ -73,6 +81,7 @@ macro_rules! info {
 
 #[cfg(feature = "defmt")]
 #[macro_export]
+/// Emit a warn record using the selected backend; with no backend, arguments are evaluated without emitting a record.
 macro_rules! warn {
     ($s:literal $(, $arg:expr)* $(,)?) => {{
         use $crate::logging::defmt as defmt;
@@ -82,6 +91,7 @@ macro_rules! warn {
 
 #[cfg(feature = "defmt")]
 #[macro_export]
+/// Emit an error record using the selected backend; with no backend, arguments are evaluated without emitting a record.
 macro_rules! error {
     ($s:literal $(, $arg:expr)* $(,)?) => {{
         use $crate::logging::defmt as defmt;
@@ -94,6 +104,7 @@ pub use web_sys::console;
 
 #[cfg(feature = "web_console")]
 #[macro_export]
+/// Emit a trace record using the selected backend; with no backend, arguments are evaluated without emitting a record.
 macro_rules! trace {
     ($s:literal $(, $arg:expr)* $(,)?) => {
         $crate::logging::console::trace_1(&format!($s $(, $arg)*).into())
@@ -102,6 +113,7 @@ macro_rules! trace {
 
 #[cfg(feature = "web_console")]
 #[macro_export]
+/// Emit a debug record using the selected backend; with no backend, arguments are evaluated without emitting a record.
 macro_rules! debug {
     ($s:literal $(, $arg:expr)* $(,)?) => {
         $crate::logging::console::debug_1(&format!($s $(, $arg)*).into())
@@ -110,6 +122,7 @@ macro_rules! debug {
 
 #[cfg(feature = "web_console")]
 #[macro_export]
+/// Emit a info record using the selected backend; with no backend, arguments are evaluated without emitting a record.
 macro_rules! info {
     ($s:literal $(, $arg:expr)* $(,)?) => {
         $crate::logging::console::info_1(&format!($s $(, $arg)*).into())
@@ -118,6 +131,7 @@ macro_rules! info {
 
 #[cfg(feature = "web_console")]
 #[macro_export]
+/// Emit a warn record using the selected backend; with no backend, arguments are evaluated without emitting a record.
 macro_rules! warn {
     ($s:literal $(, $arg:expr)* $(,)?) => {
         $crate::logging::console::warn_1(&format!($s $(, $arg)*).into())
@@ -126,6 +140,7 @@ macro_rules! warn {
 
 #[cfg(feature = "web_console")]
 #[macro_export]
+/// Emit an error record using the selected backend; with no backend, arguments are evaluated without emitting a record.
 macro_rules! error {
     ($s:literal $(, $arg:expr)* $(,)?) => {
         $crate::logging::console::error_1(&format!($s $(, $arg)*).into())
@@ -134,6 +149,7 @@ macro_rules! error {
 
 #[cfg(not(any(feature = "log", feature = "defmt", feature = "web_console")))]
 #[macro_export]
+/// Emit a trace record using the selected backend; with no backend, arguments are evaluated without emitting a record.
 macro_rules! trace {
     ($s:literal $(, $arg:expr)* $(,)?) => {{
         let _ = format_args!($s $(, $arg)*);
@@ -142,6 +158,7 @@ macro_rules! trace {
 
 #[cfg(not(any(feature = "log", feature = "defmt", feature = "web_console")))]
 #[macro_export]
+/// Emit a debug record using the selected backend; with no backend, arguments are evaluated without emitting a record.
 macro_rules! debug {
     ($s:literal $(, $arg:expr)* $(,)?) => {{
         let _ = format_args!($s $(, $arg)*);
@@ -150,6 +167,7 @@ macro_rules! debug {
 
 #[cfg(not(any(feature = "log", feature = "defmt", feature = "web_console")))]
 #[macro_export]
+/// Emit a info record using the selected backend; with no backend, arguments are evaluated without emitting a record.
 macro_rules! info {
     ($s:literal $(, $arg:expr)* $(,)?) => {{
         let _ = format_args!($s $(, $arg)*);
@@ -158,6 +176,7 @@ macro_rules! info {
 
 #[cfg(not(any(feature = "log", feature = "defmt", feature = "web_console")))]
 #[macro_export]
+/// Emit a warn record using the selected backend; with no backend, arguments are evaluated without emitting a record.
 macro_rules! warn {
     ($s:literal $(, $arg:expr)* $(,)?) => {{
         let _ = format_args!($s $(, $arg)*);
@@ -166,6 +185,7 @@ macro_rules! warn {
 
 #[cfg(not(any(feature = "log", feature = "defmt", feature = "web_console")))]
 #[macro_export]
+/// Emit an error record using the selected backend; with no backend, arguments are evaluated without emitting a record.
 macro_rules! error {
     ($s:literal $(, $arg:expr)* $(,)?) => {{
         let _ = format_args!($s $(, $arg)*);

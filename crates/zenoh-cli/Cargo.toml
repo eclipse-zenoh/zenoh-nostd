@@ -1,0 +1,20 @@
+[package]
+name = "zenoh-cli"
+description = "Zenoh command definitions and an allocation-free CLI inbox"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = ["commands"]
+commands = ["embedded-cli/macros"]
+
+[dependencies]
+embassy-sync.workspace = true
+embedded-cli = { version = "0.2.1", default-features = false }
+
+[dev-dependencies]
+embedded-cli = { version = "0.2.1", default-features = false, features = ["macros"] }
+heapless.workspace = true

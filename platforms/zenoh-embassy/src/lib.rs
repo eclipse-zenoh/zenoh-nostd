@@ -1,15 +1,55 @@
+//! Embassy TCP/UDP adapter with application-owned network initialization and bounded socket storage.
+//!
+//! Start with [`EmbassyLinkManager`]. Supply a running `embassy-net` stack, including
+//! its network runner, interface setup and addressing; no HAL or MCU is selected.
+//! The application also owns time/entropy integration and session-driver polling.
+//!
+//! # Features and endpoint support
+//!
+//! Default features enable `tcp` and `udp`. Disable defaults to choose only the
+//! transport(s) required, and select `medium-ip` or `medium-ethernet` to match the
+//! network driver. At least one transport and a network medium are needed.
+//! `defmt` enables embedded logging. Core allocation and other logging policies
+//! are selected on the application's `zenoh-nostd` dependency, not this adapter.
+//!
+//! Endpoints use numeric IPv4 addresses. TCP supports connect and listen, including
+//! `tcp/0.0.0.0:7447` wildcard listeners. UDP supports outgoing links only. Socket
+//! buffers are independent of the session protocol buffer and callback capacities.
+//! Drop failed/cancelled connections before opening replacements to reclaim slots.
+
+#![warn(missing_docs)]
 #![no_std]
 
 use core::{cell::RefCell, net::SocketAddr};
-use embassy_net::{
-    IpAddress, IpEndpoint, Stack,
-    tcp::TcpSocket,
-    udp::{PacketMetadata, UdpSocket},
-};
+#[cfg(feature = "tcp")]
+use embassy_net::tcp::TcpSocket;
+#[cfg(feature = "udp")]
+use embassy_net::udp::{PacketMetadata, UdpSocket};
+use embassy_net::{IpAddress, IpEndpoint, Stack};
+
+#[cfg(not(any(feature = "tcp", feature = "udp")))]
+compile_error!("zenoh-embassy requires at least one transport: tcp or udp");
 use zenoh_nostd::platform::*;
 
+#[cfg(feature = "tcp")]
+/// TCP stream links borrowing Embassy socket resources; requires `tcp`.
 pub mod tcp;
+#[cfg(feature = "udp")]
+/// UDP datagram links borrowing Embassy socket resources; requires `udp`.
 pub mod udp;
+
+#[cfg(feature = "tcp")]
+fn tcp_listen_endpoint(address: SocketAddr) -> Result<embassy_net::IpListenEndpoint, LinkError> {
+    let addr = match address.ip() {
+        core::net::IpAddr::V4(ip) if ip.is_unspecified() => None,
+        core::net::IpAddr::V4(ip) => Some(IpAddress::Ipv4(ip)),
+        core::net::IpAddr::V6(_) => return Err(LinkError::CouldNotConnect),
+    };
+    Ok(embassy_net::IpListenEndpoint {
+        addr,
+        port: address.port(),
+    })
+}
 
 struct BufferPool<T, const MTU: usize, const SOCKS: usize> {
     tx_buffers: [[T; MTU]; SOCKS],
@@ -40,6 +80,22 @@ pub(crate) trait BufferPoolDrop {
     fn release(&mut self, idx: usize);
 }
 
+/// Return a buffer slot on errors, cancellation, and normal link destruction.
+pub(crate) struct PoolLease<'a> {
+    idx: usize,
+    pool: &'a RefCell<dyn BufferPoolDrop>,
+}
+impl<'a> PoolLease<'a> {
+    fn new(pool: &'a RefCell<dyn BufferPoolDrop>, idx: usize) -> Self {
+        Self { idx, pool }
+    }
+}
+impl Drop for PoolLease<'_> {
+    fn drop(&mut self) {
+        self.pool.borrow_mut().release(self.idx);
+    }
+}
+
 impl<T, const MTU: usize, const SOCKS: usize> BufferPoolDrop for BufferPool<T, MTU, SOCKS> {
     fn release(&mut self, idx: usize) {
         if idx < SOCKS {
@@ -48,17 +104,36 @@ impl<T, const MTU: usize, const SOCKS: usize> BufferPoolDrop for BufferPool<T, M
     }
 }
 
+/// Bounded link factory borrowing an initialized Embassy network stack.
+///
+/// `MTU` reserves RX and TX **bytes per slot**, and `SOCKS` is the shared
+/// concurrent-link limit across enabled transports. With `udp`, each slot also
+/// reserves `MTU` RX and `MTU` TX `PacketMetadata` entries; that metadata count
+/// is currently coupled to the byte-buffer size and can dominate RAM. Datagram
+/// queue occupancy is bounded by both metadata count and available payload bytes.
+///
+/// Protocol buffers from `ZSessionConfig` are additional storage. No heap is used
+/// for these pools. Choose `MTU` within `u16` range and enough network stack socket
+/// resources for the links. Dropping a link releases its slot; failed/cancelled
+/// connect attempts release reservations too. Keep access in one executor/thread
+/// context because pool bookkeeping uses `RefCell`.
 pub struct EmbassyLinkManager<'net, const MTU: usize, const SOCKS: usize> {
     stack: Stack<'net>,
     buffers: RefCell<BufferPool<u8, MTU, SOCKS>>,
+    #[cfg(feature = "udp")]
     metadatas: RefCell<BufferPool<PacketMetadata, MTU, SOCKS>>,
 }
 
 impl<'net, const MTU: usize, const SOCKS: usize> EmbassyLinkManager<'net, MTU, SOCKS> {
+    /// Reserve empty byte/UDP-metadata pools for links on `stack`; starts no network tasks.
+    ///
+    /// The application must keep the stack runner polled and configure addressing
+    /// before connecting. Pools live inline in the returned manager.
     pub fn new(stack: Stack<'net>) -> Self {
         Self {
             stack,
             buffers: RefCell::new(BufferPool::new(0)),
+            #[cfg(feature = "udp")]
             metadatas: RefCell::new(BufferPool::new(PacketMetadata::EMPTY)),
         }
     }
@@ -76,6 +151,7 @@ impl<'net, const MTU: usize, const SOCKS: usize> EmbassyLinkManager<'net, MTU, S
         Some((idx, tx, rx))
     }
 
+    #[cfg(feature = "udp")]
     #[allow(clippy::mut_from_ref)]
     fn allocate_metadatas(&self) -> Option<(usize, &mut [PacketMetadata], &mut [PacketMetadata])> {
         let idx = self.metadatas.borrow_mut().allocate()?;
@@ -92,20 +168,35 @@ impl<'net, const MTU: usize, const SOCKS: usize> EmbassyLinkManager<'net, MTU, S
 
 #[derive(ZLinkInfo, ZLinkTx, ZLinkRx, ZLink)]
 #[zenoh(ZLink = (EmbassyLinkTx<'link>, EmbassyLinkRx<'link>))]
+/// Connection selected by the link manager; split it through the `ZLink` trait.
 pub enum EmbassyLink<'net> {
+    #[cfg(feature = "tcp")]
+    /// TCP byte stream.
     Tcp(tcp::EmbassyTcpLink<'net>),
+    #[cfg(feature = "udp")]
+    /// UDP datagrams.
     Udp(udp::EmbassyUdpLink<'net>),
 }
 
 #[derive(ZLinkInfo, ZLinkTx)]
+/// Transmit half produced by `ZLink::split`; retains the selected framing policy.
 pub enum EmbassyLinkTx<'link> {
+    #[cfg(feature = "tcp")]
+    /// TCP byte stream.
     Tcp(tcp::EmbassyTcpLinkTx<'link>),
+    #[cfg(feature = "udp")]
+    /// UDP datagrams.
     Udp(udp::EmbassyUdpLinkTx<'link>),
 }
 
 #[derive(ZLinkInfo, ZLinkRx)]
+/// Receive half produced by `ZLink::split`; retains the selected framing policy.
 pub enum EmbassyLinkRx<'link> {
+    #[cfg(feature = "tcp")]
+    /// TCP byte stream.
     Tcp(tcp::EmbassyTcpLinkRx<'link>),
+    #[cfg(feature = "udp")]
+    /// UDP datagrams.
     Udp(udp::EmbassyUdpLinkRx<'link>),
 }
 
@@ -125,9 +216,11 @@ impl<'net, const MTU: usize, const SOCKS: usize> ZLinkManager
         let address = endpoint.address();
 
         match protocol.as_str() {
+            #[cfg(feature = "tcp")]
             "tcp" => {
                 let dst_addr = SocketAddr::try_from(address)?;
                 let (idx, tx, rx) = self.allocate_buffers().ok_or(LinkError::CouldNotConnect)?;
+                let lease = PoolLease::new(&self.buffers, idx);
                 let mut socket = TcpSocket::new(self.stack, rx, tx);
 
                 let address: IpAddress = match dst_addr.ip() {
@@ -145,20 +238,20 @@ impl<'net, const MTU: usize, const SOCKS: usize> ZLinkManager
                     .map_err(|_| LinkError::CouldNotConnect)?;
 
                 Ok(Self::Link::Tcp(tcp::EmbassyTcpLink::new(
-                    socket,
-                    MTU as u16,
-                    idx,
-                    &self.buffers,
+                    socket, MTU as u16, lease,
                 )))
             }
+            #[cfg(feature = "udp")]
             "udp" => {
                 let dst_addr = SocketAddr::try_from(address)?;
                 let (idx1, tx, rx) = self.allocate_buffers().ok_or(LinkError::CouldNotConnect)?;
+                let buffers = PoolLease::new(&self.buffers, idx1);
 
                 let (idx2, tm, rm) = self
                     .allocate_metadatas()
                     .ok_or(LinkError::CouldNotConnect)?;
 
+                let metadatas = PoolLease::new(&self.metadatas, idx2);
                 let mut socket = UdpSocket::new(self.stack, rm, rx, tm, tx);
                 socket.bind(0).map_err(|_| LinkError::CouldNotConnect)?;
 
@@ -175,10 +268,8 @@ impl<'net, const MTU: usize, const SOCKS: usize> ZLinkManager
                     socket,
                     ip_endpoint.into(),
                     MTU as u16,
-                    idx1,
-                    &self.buffers,
-                    idx2,
-                    &self.metadatas,
+                    buffers,
+                    metadatas,
                 )))
             }
             _ => zenoh::zbail!(LinkError::CouldNotParseProtocol),
@@ -190,22 +281,17 @@ impl<'net, const MTU: usize, const SOCKS: usize> ZLinkManager
         endpoint: Endpoint<'_>,
     ) -> core::result::Result<Self::Link<'_>, LinkError> {
         let protocol = endpoint.protocol();
+        #[cfg(feature = "tcp")]
         let address = endpoint.address();
 
         match protocol.as_str() {
+            #[cfg(feature = "tcp")]
             "tcp" => {
                 let src_addr = SocketAddr::try_from(address)?;
+                let ip_endpoint = tcp_listen_endpoint(src_addr)?;
                 let (idx, tx, rx) = self.allocate_buffers().ok_or(LinkError::CouldNotConnect)?;
+                let lease = PoolLease::new(&self.buffers, idx);
                 let mut socket = TcpSocket::new(self.stack, rx, tx);
-
-                let address: IpAddress = match src_addr.ip() {
-                    core::net::IpAddr::V4(v4) => IpAddress::Ipv4(v4),
-                    core::net::IpAddr::V6(_) => {
-                        zenoh::zbail!(LinkError::CouldNotConnect)
-                    }
-                };
-
-                let ip_endpoint = IpEndpoint::new(address, src_addr.port());
 
                 socket
                     .accept(ip_endpoint)
@@ -213,13 +299,52 @@ impl<'net, const MTU: usize, const SOCKS: usize> ZLinkManager
                     .map_err(|_| LinkError::CouldNotConnect)?;
 
                 Ok(Self::Link::Tcp(tcp::EmbassyTcpLink::new(
-                    socket,
-                    MTU as u16,
-                    idx,
-                    &self.buffers,
+                    socket, MTU as u16, lease,
                 )))
             }
             _ => zenoh::zbail!(LinkError::CouldNotParseProtocol),
         }
+    }
+}
+
+#[cfg(all(test, feature = "tcp"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cancelled_allocation_returns_its_pool_slot() {
+        let pool = RefCell::new(BufferPool::<u8, 16, 1>::new(0));
+        for _ in 0..1000 {
+            let idx = pool.borrow_mut().allocate().unwrap();
+            let lease = PoolLease::new(&pool, idx);
+            assert!(pool.borrow_mut().allocate().is_none());
+            drop(lease);
+        }
+        assert_eq!(pool.borrow_mut().allocate(), Some(0));
+    }
+
+    #[test]
+    fn wildcard_listener_accepts_any_local_address() {
+        let endpoint = tcp_listen_endpoint("0.0.0.0:7444".parse().unwrap()).unwrap();
+        assert_eq!(endpoint.addr, None);
+        assert_eq!(endpoint.port, 7444);
+    }
+
+    #[test]
+    fn explicit_listener_keeps_its_address() {
+        let endpoint = tcp_listen_endpoint("192.0.2.1:7445".parse().unwrap()).unwrap();
+        assert_eq!(
+            endpoint.addr,
+            Some(IpAddress::Ipv4(core::net::Ipv4Addr::new(192, 0, 2, 1)))
+        );
+        assert_eq!(endpoint.port, 7445);
+    }
+
+    #[test]
+    fn ipv6_listener_is_rejected() {
+        assert!(matches!(
+            tcp_listen_endpoint("[::1]:7444".parse().unwrap()),
+            Err(LinkError::CouldNotConnect)
+        ));
     }
 }
