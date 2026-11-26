@@ -9,6 +9,19 @@ Work from the zenoh-nostd repository root. Load only the guide relevant to the
 change. Repository paths are relative to the checkout root; Markdown links are
 relative to this skill's canonical directory.
 
+## Before editing
+
+1. Read [CONTRIBUTING.md](../../CONTRIBUTING.md), any applicable `AGENTS.md`,
+   and the [development environment setup](../../docs/README.md#set-up).
+   Use that setup and check the affected project's toolchain, target, Cargo
+   features, and workspace boundaries before choosing build commands.
+2. Find the owning code, callers, and existing tests. Read the relevant
+   Rustdoc and examples at this checkout when changing public behavior.
+3. Keep the patch to one concern. Reuse existing code and interfaces where they
+   fit. Keep unrelated refactors and formatting out of the diff. For a new
+   feature, public API change, or large refactor, follow the contributor guide's
+   process for agreeing on the approach.
+
 ## Find the right layer
 
 | Task | Start with |
@@ -52,6 +65,33 @@ missing public documentation, broken links and invalid examples across libraries
   failure. Keep example callbacks short and queues bounded with `alloc` as well
   as with fixed storage. Verify scenario changes through both CLI and typed
   headless entry points.
+
+## Review the Rust change
+
+Review the affected paths before finalizing the patch:
+
+- **Concurrency and cancellation.** Check which task or executor owns state,
+  what is held across each await, and how callbacks, backpressure, and a
+  cancelled future affect progress and cleanup.
+- **Errors and partial work.** Trace capacity and I/O failures to the caller.
+  Check error propagation, state left behind when an operation fails midway,
+  and whether retry or reconnect starts from a valid state.
+- **Ownership and lifetimes.** Trace borrows, callback captures, and drop order
+  through success and failure. Check that queued data outlives the producer's
+  buffer and that the session releases its transport borrow before reuse.
+
+## Update coverage and guidance
+
+- Extend the closest test suite for changed behavior. For a bug fix, add a
+  regression test and verify that it fails before the fix and passes after it
+  when practical. Cover the normal path and relevant boundaries, such as full
+  buffers, invalid inputs, timeout, cancellation, or partial I/O. Use explicit
+  readiness and isolated resources for network or concurrency tests.
+- Update affected Rustdoc and examples with public API or behavior changes.
+  Check the example through its normal entry point with the relevant features.
+  Update repository guides when setup or commands change, and update any skill
+  whose workflow, links, or verification steps the change affects. Link from
+  skills to the API contract in Rustdoc.
 
 ## Build and verify the change
 

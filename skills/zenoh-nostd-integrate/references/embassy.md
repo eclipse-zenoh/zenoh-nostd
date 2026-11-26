@@ -11,8 +11,8 @@ No upstream `zenoh-app`, CLI, USB console or ESP-specific crate is required.
    network driver. Verify the feature names and `embassy-net` version against
    the adapter docs and manifest.
 2. Reuse the initialized `embassy_net::Stack` and keep its runner polled. Retain
-   the project's DHCP/static address setup; wait for network readiness before
-   connecting to the router's reachable LAN IPv4 address.
+   the project's DHCP/static address setup. Wait for network readiness before
+   connecting to the selected IPv4 endpoint or starting a supported listener.
 3. Configure the entropy backend documented by the core crate in the final
    application. Reuse its time driver, critical-section implementation and panic handler.
 4. Construct `EmbassyLinkManager` with buffer size and socket count chosen from
@@ -54,13 +54,13 @@ the alias defaults in the application's resolved SDK revision.
 
 - The project's target check and release link succeed with its existing HAL and
   executor; fixed-capacity operation introduces no Zenoh allocator requirement.
-- Observe an actual publication in both directions and a finalized query response
-  using a reachable peer. Test the queue-full path without blocking the driver.
+- Observe the requested exchange with a reachable peer. Test queue saturation
+  without blocking the driver when the integration uses a queue.
 - For cancellation/write failure, drop operation, driver/session and transport;
   recreate a connection before further network I/O. Keep diagnostics outside the
   cancelled connection scope.
-- Report compilation separately from physical-board behavior. If a board or
-  router is unavailable, identify that coverage gap; do not fabricate runtime results.
+- Report compilation separately from physical-board behavior. Identify coverage
+  gaps if the board or the selected test peer is unavailable.
 
 Run Cargo from the application's directory so its `.cargo/config.toml` is loaded.
 Use the target/toolchain the project already selects; Xtensa and RISC-V ESP boards

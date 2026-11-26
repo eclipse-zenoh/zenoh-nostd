@@ -36,17 +36,18 @@ For a newly created project, generate its lockfile before using `--locked`.
 
 ## Verify actual communication
 
-Use an explicitly selected router or start a local one in a separate terminal:
+Use the endpoint and connection direction selected for the application. If the
+agreed test setup uses an isolated local router, start it in a separate terminal:
 
 ```sh
 zenohd --listen tcp/127.0.0.1:7447
 ```
 
-Connect the application to that endpoint and use a second session or peer to
-observe publication delivery and provide a queryable. Allow declaration
-propagation, verify the received key/payload and a reply followed by query
-completion, then explicitly clean up successful work and flush before exiting.
-Use the application's existing configuration mechanism for the endpoint.
+Configure the endpoint through the application's existing configuration.
+Use a second session or peer to exercise the requested operation. For pub/sub,
+allow declarations to propagate, then verify the received key and payload. For
+queries, observe the expected reply and completion. Clean up successful work
+and flush as appropriate before exiting.
 
 An unreachable peer must produce a bounded failure. Cancellation or transport
 write errors require dropping the connection before diagnostics or reconnecting.
