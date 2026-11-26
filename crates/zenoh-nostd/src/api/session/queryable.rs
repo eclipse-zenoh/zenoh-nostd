@@ -14,7 +14,7 @@ use crate::api::callbacks::AllocCallbacks;
 use crate::{
     api::{
         arg::QueryableQueryRef,
-        callbacks::{AsyncCallback, DynCallback, FixedCapacityCallbacks, SyncCallback, ZCallbacks},
+        callbacks::{AsyncCallback, DynCallback, FixedCapacityCallbacks, ZCallback, ZCallbacks},
         query::QueryableQuery,
         session::Session,
     },
@@ -23,33 +23,53 @@ use crate::{
 };
 
 pub type FixedCapacityQueryableCallbacks<
-    'a,
+    'transport,
+    'resources,
     Config,
     const CAPACITY: usize,
     Callback = RawOrBox<16>,
     Future = RawOrBox<128>,
-> = FixedCapacityCallbacks<'a, QueryableQueryRef<'a, Config>, CAPACITY, Callback, Future>;
+    const MAX_KEYEXPR: usize = 128,
+> = FixedCapacityCallbacks<
+    'transport,
+    QueryableQueryRef<'transport, 'resources, Config>,
+    CAPACITY,
+    Callback,
+    Future,
+    MAX_KEYEXPR,
+>;
 
 #[cfg(feature = "alloc")]
-pub type AllocQueryableCallbacks<'a, Config, Callback = RawOrBox<16>, Future = RawOrBox<128>> =
-    AllocCallbacks<'a, QueryableQueryRef<'a, Config>, Callback, Future>;
+pub type AllocQueryableCallbacks<
+    'transport,
+    'resources,
+    Config,
+    Callback = RawOrBox<16>,
+    Future = RawOrBox<128>,
+> = AllocCallbacks<'transport, QueryableQueryRef<'transport, 'resources, Config>, Callback, Future>;
 
-pub struct Queryable<Config, OwnedQuery = (), const CHANNEL: bool = false>
-where
-    Config: ZSessionConfig + 'static,
-    OwnedQuery: 'static,
+pub struct Queryable<
+    'a,
+    'transport,
+    'resources: 'transport,
+    Config,
+    OwnedQuery = (),
+    const CHANNEL: bool = false,
+> where
+    Config: ZSessionConfig + 'resources,
+    OwnedQuery: 'transport,
 {
-    session: &'static Session<'static, Config>,
+    session: &'a Session<'transport, 'resources, Config>,
     id: u32,
-    receiver: Option<DynamicReceiver<'static, OwnedQuery>>,
+    receiver: Option<DynamicReceiver<'transport, OwnedQuery>>,
 }
 
-impl<Config, OwnedQuery, const CHANNEL: bool> Queryable<Config, OwnedQuery, CHANNEL>
+impl<'a, 'transport, 'resources: 'transport, Config, OwnedQuery, const CHANNEL: bool>
+    Queryable<'a, 'transport, 'resources, Config, OwnedQuery, CHANNEL>
 where
     Config: ZSessionConfig,
 {
-    #[allow(dead_code)]
-    async fn undeclare(self) -> core::result::Result<(), SessionError> {
+    pub async fn undeclare(self) -> core::result::Result<(), SessionError> {
         let msg = Declare {
             body: DeclareBody::UndeclareQueryable(UndeclareQueryable {
                 id: self.id,
@@ -75,11 +95,12 @@ where
             }))
             .await?;
 
-        todo!("Also stop the channel if any")
+        Ok(())
     }
 }
 
-impl<Config, OwnedQuery> Queryable<Config, OwnedQuery, true>
+impl<'a, 'transport, 'resources: 'transport, Config, OwnedQuery>
+    Queryable<'a, 'transport, 'resources, Config, OwnedQuery, true>
 where
     Config: ZSessionConfig,
 {
@@ -92,46 +113,53 @@ where
     }
 }
 
-type CallbackStorage<Config> =
-    <<Config as ZSessionConfig>::QueryableCallbacks<'static> as ZCallbacks<
-        'static,
-        QueryableQueryRef<'static, Config>,
+type CallbackStorage<'transport, 'resources, Config> =
+    <<Config as ZSessionConfig>::QueryableCallbacks<'transport, 'resources> as ZCallbacks<
+        'transport,
+        QueryableQueryRef<'transport, 'resources, Config>,
     >>::Callback;
 
-type FutureStorage<Config> =
-    <<Config as ZSessionConfig>::QueryableCallbacks<'static> as ZCallbacks<
-        'static,
-        QueryableQueryRef<'static, Config>,
+type FutureStorage<'transport, 'resources, Config> =
+    <<Config as ZSessionConfig>::QueryableCallbacks<'transport, 'resources> as ZCallbacks<
+        'transport,
+        QueryableQueryRef<'transport, 'resources, Config>,
     >>::Future;
 
 pub struct QueryableBuilder<
+    'a,
+    'transport,
+    'resources: 'transport,
     Config,
     OwnedQuery = (),
     const READY: bool = false,
     const CHANNEL: bool = false,
 > where
-    Config: ZSessionConfig + 'static,
-    OwnedQuery: 'static,
+    Config: ZSessionConfig + 'resources,
+    OwnedQuery: 'transport,
 {
-    session: &'static Session<'static, Config>,
-    ke: &'static keyexpr,
+    session: &'a Session<'transport, 'resources, Config>,
+    ke: &'a keyexpr,
 
     callback: Option<
         DynCallback<
-            'static,
-            CallbackStorage<Config>,
-            FutureStorage<Config>,
-            QueryableQueryRef<'static, Config>,
+            'transport,
+            CallbackStorage<'transport, 'resources, Config>,
+            FutureStorage<'transport, 'resources, Config>,
+            QueryableQueryRef<'transport, 'resources, Config>,
         >,
     >,
-    receiver: Option<DynamicReceiver<'static, OwnedQuery>>,
+    receiver: Option<DynamicReceiver<'transport, OwnedQuery>>,
 }
 
-impl<Config> QueryableBuilder<Config, (), false, false>
+impl<'a, 'transport, 'resources: 'transport, Config>
+    QueryableBuilder<'a, 'transport, 'resources, Config, (), false, false>
 where
     Config: ZSessionConfig,
 {
-    pub(crate) fn new(session: &'static Session<'static, Config>, ke: &'static keyexpr) -> Self {
+    pub(crate) fn new(
+        session: &'a Session<'transport, 'resources, Config>,
+        ke: &'a keyexpr,
+    ) -> Self {
         Self {
             session,
             ke,
@@ -142,30 +170,36 @@ where
 
     pub fn callback(
         self,
-        callback: impl AsyncFnMut(&QueryableQuery<'_, 'static, Config>) + 'static,
-    ) -> QueryableBuilder<Config, (), true, false> {
+        callback: impl AsyncFnMut(&QueryableQuery<'_, 'transport, 'resources, Config>) + 'transport,
+    ) -> QueryableBuilder<'a, 'transport, 'resources, Config, (), true, false> {
         QueryableBuilder {
             session: self.session,
             ke: self.ke,
-            callback: Some(DynObject::new(AsyncCallback::new(callback))),
+            callback: Some(DynObject::new(QueryableAsyncCallback(
+                callback,
+                core::marker::PhantomData,
+            ))),
             receiver: None,
         }
     }
 
     pub fn callback_sync(
         self,
-        callback: impl FnMut(&QueryableQuery<'_, 'static, Config>) + 'static,
-    ) -> QueryableBuilder<Config, (), true, false> {
+        callback: impl FnMut(&QueryableQuery<'_, 'transport, 'resources, Config>) + 'transport,
+    ) -> QueryableBuilder<'a, 'transport, 'resources, Config, (), true, false> {
         QueryableBuilder {
             session: self.session,
             ke: self.ke,
-            callback: Some(DynObject::new(SyncCallback::new(callback))),
+            callback: Some(DynObject::new(QueryableSyncCallback(
+                callback,
+                core::marker::PhantomData,
+            ))),
             receiver: None,
         }
     }
 }
 
-impl<Config> QueryableBuilder<Config, (), false, false>
+impl<Config> QueryableBuilder<'static, 'static, 'static, Config, (), false, false>
 where
     Config: ZSessionConfig,
 {
@@ -173,12 +207,12 @@ where
         self,
         sender: DynamicSender<'static, OwnedQuery>,
         receiver: DynamicReceiver<'static, OwnedQuery>,
-    ) -> QueryableBuilder<Config, OwnedQuery, true, true>
+    ) -> QueryableBuilder<'static, 'static, 'static, Config, OwnedQuery, true, true>
     where
         OwnedQuery: for<'any> TryFrom<
                 (
-                    &'any QueryableQuery<'any, 'static, Config>,
-                    &'static Session<'static, Config>,
+                    &'any QueryableQuery<'any, 'static, 'static, Config>,
+                    &'static Session<'static, 'static, Config>,
                 ),
                 Error = E,
             >,
@@ -187,7 +221,7 @@ where
             session: self.session,
             ke: self.ke,
             callback: Some(DynObject::new(AsyncCallback::new(
-                async move |resp: &'_ QueryableQuery<'_, 'static, Config>| {
+                async move |resp: &'_ QueryableQuery<'_, 'static, 'static, Config>| {
                     if let Ok(resp) = OwnedQuery::try_from((resp, self.session)) {
                         sender.send(resp).await;
                     } else {
@@ -203,13 +237,17 @@ where
     }
 }
 
-impl<Config, OwnedQuery, const CHANNEL: bool> QueryableBuilder<Config, OwnedQuery, true, CHANNEL>
+impl<'a, 'transport, 'resources: 'transport, Config, OwnedQuery, const CHANNEL: bool>
+    QueryableBuilder<'a, 'transport, 'resources, Config, OwnedQuery, true, CHANNEL>
 where
     Config: ZSessionConfig,
 {
     pub async fn finish(
         self,
-    ) -> core::result::Result<Queryable<Config, OwnedQuery, CHANNEL>, SessionError> {
+    ) -> core::result::Result<
+        Queryable<'a, 'transport, 'resources, Config, OwnedQuery, CHANNEL>,
+        SessionError,
+    > {
         let mut state = self.session.state().await;
         let id = state.next();
 
@@ -229,7 +267,8 @@ where
             ..Default::default()
         };
 
-        self.session
+        let result = self
+            .session
             .driver
             .tx()
             .await
@@ -238,7 +277,11 @@ where
                 qos: QoS::default(),
                 body: NetworkBody::Declare(msg),
             }))
-            .await?;
+            .await;
+        if let Err(error) = result {
+            state.queryable_callbacks.remove(id)?;
+            return Err(error.into());
+        }
 
         Ok(Queryable {
             id,
@@ -248,20 +291,23 @@ where
     }
 }
 
-impl<Config> Session<'static, Config>
+impl<'transport, 'resources: 'transport, Config> Session<'transport, 'resources, Config>
 where
     Config: ZSessionConfig,
 {
-    pub fn declare_queryable(&'static self, ke: &'static keyexpr) -> QueryableBuilder<Config> {
+    pub fn declare_queryable<'a>(
+        &'a self,
+        ke: &'a keyexpr,
+    ) -> QueryableBuilder<'a, 'transport, 'resources, Config> {
         QueryableBuilder::new(self, ke)
     }
 }
 
-impl<'res, Config> Session<'res, Config>
+impl<'transport, 'resources: 'transport, Config> Session<'transport, 'resources, Config>
 where
     Config: ZSessionConfig,
 {
-    pub(crate) async fn reply(
+    pub async fn reply(
         &self,
         rid: u32,
         ke: &keyexpr,
@@ -290,7 +336,7 @@ where
             .await?)
     }
 
-    pub(crate) async fn err(
+    pub async fn err(
         &self,
         rid: u32,
         ke: &keyexpr,
@@ -316,7 +362,7 @@ where
             .await?)
     }
 
-    pub(crate) async fn finalize(&self, rid: u32) -> core::result::Result<(), SessionError> {
+    pub async fn finalize(&self, rid: u32) -> core::result::Result<(), SessionError> {
         if self.state().await.queryable_callbacks.decrease(rid) {
             self.driver
                 .tx()
@@ -333,5 +379,37 @@ where
         }
 
         Ok(())
+    }
+}
+
+// Spell out the argument type here: the generic callback wrapper's GAT/HRTB
+// bound currently implies a static lifetime for a query's session resources.
+struct QueryableAsyncCallback<'transport, 'resources: 'transport, Config, F>(
+    F,
+    core::marker::PhantomData<(&'transport (), &'resources Config)>,
+);
+impl<'transport, 'resources: 'transport, Config: ZSessionConfig, F> ZCallback
+    for QueryableAsyncCallback<'transport, 'resources, Config, F>
+where
+    F: AsyncFnMut(&QueryableQuery<'_, 'transport, 'resources, Config>),
+{
+    type Arg = QueryableQueryRef<'transport, 'resources, Config>;
+    async fn call(&mut self, arg: <Self::Arg as crate::api::arg::ZArg>::Of<'_>) {
+        (self.0)(arg).await
+    }
+}
+struct QueryableSyncCallback<'transport, 'resources: 'transport, Config, F>(
+    F,
+    core::marker::PhantomData<(&'transport (), &'resources Config)>,
+);
+impl<'transport, 'resources: 'transport, Config: ZSessionConfig, F> ZCallback
+    for QueryableSyncCallback<'transport, 'resources, Config, F>
+where
+    F: FnMut(&QueryableQuery<'_, 'transport, 'resources, Config>),
+{
+    type Arg = QueryableQueryRef<'transport, 'resources, Config>;
+    #[dyn_utils::sync]
+    async fn call(&mut self, arg: <Self::Arg as crate::api::arg::ZArg>::Of<'_>) {
+        (self.0)(arg)
     }
 }

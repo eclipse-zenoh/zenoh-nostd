@@ -15,7 +15,7 @@ pub mod session {
     pub use super::resources::Resources;
     #[doc(hidden)]
     pub use static_cell::StaticCell as __StaticCell;
-    pub use zenoh_proto::{Endpoint, Error};
+    pub use zenoh_proto::{Endpoint, Error, SessionError};
 
     pub use super::api::{
         query::*,
