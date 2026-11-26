@@ -12,6 +12,7 @@ use {
 
 impl ZenohIdProto {
     #[cfg(test)]
+    /// Generate a random node ID for codec tests; the supplied storage is unused.
     pub fn rand<'a>(_: &mut impl crate::ZStoreable<'a>) -> ZenohIdProto {
         ZenohIdProto(uhlc::ID::rand())
     }
@@ -19,6 +20,7 @@ impl ZenohIdProto {
 
 impl Resolution {
     #[cfg(test)]
+    /// Generate a random four-bit resolution value for codec round-trip tests.
     pub fn rand() -> Self {
         use rand::Rng;
 
@@ -30,6 +32,7 @@ impl Resolution {
 
 impl<'a> Encoding<'a> {
     #[cfg(test)]
+    /// Generate encoding metadata, storing any borrowed schema in the test writer.
     pub fn rand(w: &mut impl crate::ZStoreable<'a>) -> Self {
         use rand::Rng;
 
@@ -609,6 +612,7 @@ impl ResponseFinal {
 
 impl InterestOptions {
     #[cfg(test)]
+    /// Randomize the key-expression, subscriber, token and aggregation test flags.
     pub fn rand() -> Self {
         let mut s = Self { options: 0 };
         if thread_rng().gen_bool(0.5) {

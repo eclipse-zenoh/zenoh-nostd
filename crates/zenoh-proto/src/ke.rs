@@ -6,9 +6,19 @@ const SINGLE_WILD: u8 = b'*';
 #[allow(non_camel_case_types)]
 #[repr(transparent)]
 #[derive(PartialEq, Eq, Hash, PartialOrd, Ord)]
+/// Borrowed Zenoh key expression with slash-separated chunks and wildcard matching.
+///
+/// Use [`Self::new`] for application input. No allocation or normalization occurs;
+/// the returned reference borrows the original UTF-8 string. `*` matches a chunk
+/// and `**` matches multiple chunks, subject to Zenoh's verbatim-chunk rules.
+/// See [`Self::intersects`] to match expressions without expanding wildcards.
 pub struct keyexpr(str);
 
 impl keyexpr {
+    /// Validate application key text and borrow it as a key expression.
+    ///
+    /// Returns a `KeyexprError` for invalid chunk/wildcard syntax rather than
+    /// normalizing the input. The caller owns the string for the returned borrow.
     pub fn new(v: &str) -> core::result::Result<&'_ Self, crate::KeyexprError> {
         macro_rules! zbail {
             ($err:expr) => {
@@ -106,10 +116,15 @@ impl keyexpr {
         self.0.contains(SINGLE_WILD as char)
     }
 
+    /// Borrow the underlying UTF-8 text without copying or allocating.
     pub const fn as_str(&self) -> &str {
         &self.0
     }
 
+    /// Borrow text as a key expression without validation.
+    ///
+    /// The caller must supply valid Zenoh key-expression syntax. Prefer [`Self::new`]
+    /// for application input; matching code assumes these invariants.
     pub const fn from_str_unchecked(s: &str) -> &Self {
         unsafe { core::mem::transmute(s) }
     }
@@ -162,6 +177,7 @@ impl PartialEq<keyexpr> for str {
 #[allow(non_camel_case_types)]
 #[repr(transparent)]
 #[derive(PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]
+/// A key expression containing no wildcard. Convert from `&keyexpr` with `TryFrom`; wildcard input returns `KeyexprError::WildChunk`.
 pub struct nonwild_keyexpr(keyexpr);
 
 impl nonwild_keyexpr {}
@@ -212,6 +228,16 @@ impl keyexpr {
         }
     }
 
+    /// Whether the two expressions match at least one common key.
+    ///
+    /// This is symmetric overlap, not string equality or a subset test.
+    ///
+    /// ```
+    /// use zenoh_proto::keyexpr;
+    /// assert!(keyexpr::new("demo/**")?.intersects(keyexpr::new("demo/room/temp")?));
+    /// assert!(!keyexpr::new("demo/*")?.intersects(keyexpr::new("demo/room/temp")?));
+    /// # Ok::<(), zenoh_proto::KeyexprError>(())
+    /// ```
     pub fn intersects(&self, other: &Self) -> bool {
         let left = self.as_bytes();
         let right = other.as_bytes();

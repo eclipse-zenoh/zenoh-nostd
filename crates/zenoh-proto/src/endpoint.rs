@@ -18,18 +18,25 @@ fn address(s: &str) -> &str {
 
 #[repr(u8)]
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
+/// Known protocol names; recognition here does not imply adapter support.
 pub enum ProtocolId {
+    /// TCP byte-stream protocol (`tcp`).
     Tcp,
+    /// UDP datagram protocol (`udp`).
     Udp,
+    /// WebSocket message protocol (`ws`).
     WebSocket,
+    /// Serial protocol name (`serial`); availability depends on the adapter.
     Serial,
 }
 
 #[repr(transparent)]
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
+/// Borrowed protocol prefix of an endpoint, such as `tcp` or `ws`.
 pub struct Protocol<'a>(&'a str);
 
 impl<'a> Protocol<'a> {
+    /// Borrow the underlying UTF-8 text without copying or allocating.
     pub fn as_str(&self) -> &'_ str {
         self.0
     }
@@ -69,9 +76,11 @@ impl TryFrom<Protocol<'_>> for ProtocolId {
 
 #[repr(transparent)]
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
+/// Borrowed endpoint address. Socket conversion accepts numeric IP addresses and ports, not DNS names.
 pub struct Address<'a>(&'a str);
 
 impl<'a> Address<'a> {
+    /// Borrow the underlying UTF-8 text without copying or allocating.
     pub fn as_str(&self) -> &'_ str {
         self.0
     }
@@ -110,15 +119,31 @@ impl TryFrom<Address<'_>> for SocketAddr {
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]
+/// Borrowed `protocol/address` locator, parsed with `Endpoint::try_from`.
+///
+/// Parsing checks the separator and rejects metadata (`?`) and configuration (`#`).
+/// It does not validate the protocol or resolve the address; the adapter does that.
+/// Keep the input string alive for the endpoint's lifetime.
+///
+/// ```
+/// use zenoh_proto::Endpoint;
+/// let endpoint = Endpoint::try_from("tcp/192.0.2.1:7447")?;
+/// assert_eq!(endpoint.protocol().as_str(), "tcp");
+/// assert_eq!(endpoint.address().as_str(), "192.0.2.1:7447");
+/// assert!(Endpoint::try_from("tcp/192.0.2.1:7447#foo=bar").is_err());
+/// # Ok::<(), zenoh_proto::EndpointError>(())
+/// ```
 pub struct Endpoint<'a> {
     pub(super) inner: &'a str,
 }
 
 impl Endpoint<'_> {
+    /// Borrow the protocol prefix; this accessor does not check adapter support.
     pub fn protocol(&self) -> Protocol<'_> {
         Protocol(protocol(self.inner))
     }
 
+    /// Borrow the address portion, excluding the protocol separator.
     pub fn address(&self) -> Address<'_> {
         Address(address(self.inner))
     }

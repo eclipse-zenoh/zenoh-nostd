@@ -207,6 +207,7 @@ fn parse_part(
             // Generate constants
             let name_slot = Ident::new(&format!("HEADER_SLOT_{}", name_str), Span::call_site());
             Ok(quote::quote! {
+                #[doc = concat!("Unshifted wire value of the constant `", stringify!(#name), "` header field, generated from `#[zenoh(header = ...)]`.")]
                 pub const #name: u8 = #value;
                 const #name_slot: u8 = #slot;
             })
